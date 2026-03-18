@@ -1,34 +1,46 @@
 <template>
   <header class="header">
     <div class="header-left">
-      <button @click="goHome" class="home-btn" title="返回主页">
-        <span class="logo-icon">🌟</span>
+      <button @click="goHome" class="logo-btn">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" class="logo-svg">
+            <circle cx="12" cy="5" r="2" />
+            <circle cx="5" cy="12" r="2" />
+            <circle cx="19" cy="12" r="2" />
+            <circle cx="8" cy="19" r="2" />
+            <circle cx="16" cy="19" r="2" />
+            <line x1="12" y1="5" x2="5" y2="12" stroke-width="1" opacity="0.4" />
+            <line x1="12" y1="5" x2="19" y2="12" stroke-width="1" opacity="0.4" />
+            <line x1="5" y1="12" x2="8" y2="19" stroke-width="1" opacity="0.4" />
+            <line x1="19" y1="12" x2="16" y2="19" stroke-width="1" opacity="0.4" />
+            <circle cx="12" cy="12" r="2.5" />
+          </svg>
+        </div>
         <span class="logo-text">知枢星图</span>
       </button>
     </div>
     
     <div class="search-box">
-      <span class="search-icon">🔍</span>
+      <Search :size="16" class="search-icon" />
       <input 
         v-model="searchQuery"
         type="text"
-        placeholder="搜索笔记或输入问题..."
+        placeholder="搜索笔记..."
         @keyup.enter="handleSearch"
         class="search-input"
       />
       <button @click="handleSearch" class="search-btn">
-        <span>搜索</span>
-        <span class="shortcut">⌘K</span>
+        搜索
       </button>
     </div>
     
-    <div class="header-actions">
-      <button @click="goToGraph" class="action-btn" title="知识图谱">
-        <span>🌐</span>
+    <div class="header-right">
+      <button @click="goToGraph" class="icon-btn" title="知识图谱">
+        <Network :size="20" />
       </button>
-      <button @click="toggleTheme" class="action-btn theme-btn" :title="themeStore.isDark ? '切换到浅色模式' : '切换到深色模式'">
-        <span v-if="themeStore.isDark">🌙</span>
-        <span v-else>☀️</span>
+      <button @click="toggleTheme" class="icon-btn" :title="themeStore.isDark ? '浅色模式' : '深色模式'">
+        <Sun v-if="themeStore.isDark" :size="20" />
+        <Moon v-else :size="20" />
       </button>
       <div class="user-menu">
         <div class="user-avatar">
@@ -36,7 +48,7 @@
         </div>
         <span class="user-name">{{ authStore.user?.username }}</span>
         <button @click="handleLogout" class="logout-btn">
-          <span>登出</span>
+          <LogOut :size="16" />
         </button>
       </div>
     </div>
@@ -48,6 +60,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
+import { Search, Network, Sun, Moon, LogOut } from 'lucide-vue-next'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -84,25 +97,10 @@ function handleLogout() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 24px;
-  background: linear-gradient(180deg, rgba(18, 18, 31, 0.95) 0%, rgba(13, 13, 26, 0.95) 100%);
-  border-bottom: 1px solid rgba(0, 212, 255, 0.1);
-  backdrop-filter: blur(10px);
-  position: relative;
-  
-  &::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    height: 1px;
-    background: linear-gradient(90deg, 
-      transparent 0%, 
-      rgba(0, 212, 255, 0.3) 50%, 
-      transparent 100%
-    );
-  }
+  padding: 12px 20px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
 }
 
 .header-left {
@@ -110,159 +108,136 @@ function handleLogout() {
   align-items: center;
 }
 
-.home-btn {
+.logo-btn {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 16px;
+  padding: 8px 12px;
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.3s;
-  
+  transition: all var(--transition-fast);
+
   &:hover {
-    background: rgba(0, 212, 255, 0.1);
-    border-color: rgba(0, 212, 255, 0.2);
-    
-    .logo-icon {
-      transform: rotate(180deg) scale(1.1);
-    }
-    
-    .logo-text {
-      color: #00d4ff;
-    }
+    background: var(--bg-hover);
+  }
+}
+
+.logo-icon {
+  width: 28px;
+  height: 28px;
+}
+
+.logo-svg {
+  width: 100%;
+  height: 100%;
+  
+  circle {
+    fill: var(--primary-color);
   }
   
-  .logo-icon {
-    font-size: 22px;
-    transition: transform 0.5s ease;
+  circle:last-child {
+    fill: var(--accent-purple);
   }
   
-  .logo-text {
-    font-size: 16px;
-    font-weight: 600;
-    background: linear-gradient(135deg, #00d4ff, #7b2cbf);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    transition: all 0.3s;
+  line {
+    stroke: var(--primary-color);
   }
+}
+
+.logo-text {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 .search-box {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex: 1;
-  max-width: 600px;
+  max-width: 480px;
   margin: 0 24px;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(0, 212, 255, 0.15);
-  border-radius: 12px;
-  padding: 4px 4px 4px 16px;
-  transition: all 0.3s;
-  
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+
   &:focus-within {
-    border-color: rgba(0, 212, 255, 0.4);
-    box-shadow: 0 0 20px rgba(0, 212, 255, 0.1);
+    border-color: var(--border-default);
+    background: var(--bg-tertiary);
   }
   
   .search-icon {
-    font-size: 16px;
-    opacity: 0.5;
+    color: var(--text-muted);
+    flex-shrink: 0;
   }
   
   .search-input {
     flex: 1;
     border: none;
     background: transparent;
-    color: #fff;
+    color: var(--text-primary);
     font-size: 14px;
-    padding: 8px 0;
     
     &:focus {
       outline: none;
     }
     
     &::placeholder {
-      color: rgba(255, 255, 255, 0.3);
+      color: var(--text-muted);
     }
   }
   
   .search-btn {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 16px;
-    background: linear-gradient(135deg, #00d4ff 0%, #7b2cbf 100%);
+    padding: 6px 14px;
+    background: var(--primary-color);
     border: none;
-    border-radius: 8px;
-    color: white;
+    border-radius: var(--radius-sm);
+    color: #000;
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.3s;
+    transition: all var(--transition-fast);
     
     &:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3);
-    }
-    
-    .shortcut {
-      font-size: 11px;
-      opacity: 0.7;
-      padding: 2px 6px;
-      background: rgba(255, 255, 255, 0.15);
-      border-radius: 4px;
+      background: var(--primary-hover);
     }
   }
 }
 
-.header-actions {
+.header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
-.action-btn {
-  width: 40px;
-  height: 40px;
+.icon-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(0, 212, 255, 0.15);
-  border-radius: 10px;
+  width: 40px;
+  height: 40px;
+  background: transparent;
+  border-radius: var(--radius-md);
+  color: var(--text-tertiary);
   cursor: pointer;
-  font-size: 18px;
-  transition: all 0.2s;
+  transition: all var(--transition-fast);
   
   &:hover {
-    background: rgba(0, 212, 255, 0.1);
-    border-color: rgba(0, 212, 255, 0.3);
-    transform: translateY(-2px);
-  }
-}
-
-:global(body.light) .action-btn {
-  background: rgba(255, 255, 255, 0.6);
-  border-color: rgba(8, 145, 178, 0.2);
-  
-  &:hover {
-    background: rgba(8, 145, 178, 0.1);
-    border-color: rgba(8, 145, 178, 0.4);
+    background: var(--bg-hover);
+    color: var(--text-primary);
   }
 }
 
 .user-menu {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 4px 4px 4px 12px;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(0, 212, 255, 0.15);
-  border-radius: 12px;
+  gap: 10px;
+  padding: 6px 10px 6px 12px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
 }
 
 .user-avatar {
@@ -271,39 +246,40 @@ function handleLogout() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #00d4ff 0%, #7b2cbf 100%);
-  border-radius: 8px;
-  font-size: 14px;
+  background: var(--primary-color);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
   font-weight: 600;
-  color: white;
+  color: #000;
 }
 
 .user-name {
   font-size: 14px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--text-primary);
 }
 
 .logout-btn {
-  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
   background: transparent;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
   cursor: pointer;
-  color: rgba(239, 68, 68, 0.8);
-  font-size: 13px;
-  transition: all 0.2s;
+  transition: all var(--transition-fast);
   
   &:hover {
     background: rgba(239, 68, 68, 0.1);
-    border-color: rgba(239, 68, 68, 0.5);
-    color: #ef4444;
+    color: var(--accent-red);
   }
 }
 
 @media (max-width: 768px) {
   .header {
-    padding: 12px 16px;
+    padding: 10px 16px;
   }
   
   .logo-text {
@@ -311,14 +287,10 @@ function handleLogout() {
   }
   
   .search-box {
-    margin: 0 12px;
+    margin: 0 16px;
     
     .search-btn {
-      padding: 8px 12px;
-      
-      .shortcut {
-        display: none;
-      }
+      display: none;
     }
   }
   

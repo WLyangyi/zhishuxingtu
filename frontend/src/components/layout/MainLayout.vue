@@ -2,7 +2,6 @@
   <div class="main-layout">
     <Header />
     <div class="main-content">
-      <Sidebar />
       <main class="content-area">
         <router-view />
       </main>
@@ -17,7 +16,6 @@ import { useFoldersStore } from '@/stores/folders'
 import { useTagsStore } from '@/stores/tags'
 import { useNotesStore } from '@/stores/notes'
 import Header from './Header.vue'
-import Sidebar from './Sidebar.vue'
 
 const authStore = useAuthStore()
 const foldersStore = useFoldersStore()

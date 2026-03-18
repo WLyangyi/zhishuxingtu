@@ -1,68 +1,105 @@
 <template>
   <div class="home-page">
-    <div class="stars-bg">
-      <div v-for="n in 50" :key="n" class="star" :style="getStarStyle(n)"></div>
-    </div>
-
-    <div class="category-entries">
-      <div
-        v-for="(category, index) in categories"
-        :key="category.id"
-        class="category-card"
-        :class="'card-' + (index + 1)"
-        :style="{
-          '--card-color': category.color,
-          '--card-image': `url(https://picsum.photos/seed/${category.id}/600/800)`
-        }"
-        @click="enterCategory(category)"
-      >
-        <div class="card-image-bg"></div>
-        <div class="card-overlay"></div>
-        <div class="card-content">
-          <div class="card-icon">
-            <component :is="getCategoryIcon(category.name)" />
-          </div>
-          <h2 class="card-title">{{ category.name }}</h2>
-          <p class="card-desc">{{ getCategoryDesc(category.name) }}</p>
-          <div class="card-meta">
-            <span class="meta-item">
-              <component :is="getIcon('folder')" />
-              {{ getFolderCount(category.id) }} 文件夹
-            </span>
-            <span class="meta-item">
-              <component :is="getIcon('file')" />
-              {{ getContentCount(category.id) }} 内容
-            </span>
-          </div>
+    <div class="home-header">
+      <div class="greeting-section">
+        <div class="greeting-text">
+          <span class="greeting-time">{{ timeGreeting }}</span>
+          <h1 class="greeting-name">{{ username }}</h1>
         </div>
-        <div class="card-arrow">
-          <component :is="getIcon('arrow')" />
+        <p class="greeting-hint">今天想记录些什么？</p>
+      </div>
+      <div class="quick-stats">
+        <div class="stat-item">
+          <span class="stat-value">{{ totalNotes }}</span>
+          <span class="stat-label">篇笔记</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <span class="stat-value">{{ totalFolders }}</span>
+          <span class="stat-label">个文件夹</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <span class="stat-value">{{ totalLinks }}</span>
+          <span class="stat-label">条链接</span>
         </div>
       </div>
     </div>
 
-    <div class="quick-access">
-      <div class="quick-header">
-        <h3>快捷入口</h3>
+    <div class="home-content">
+      <div class="main-section">
+        <div class="section-header">
+          <h2 class="section-title">分类</h2>
+          <span class="section-count">{{ categories.length }}</span>
+        </div>
+        <div class="category-list">
+          <div
+            v-for="category in categories"
+            :key="category.id"
+            class="category-item"
+            @click="enterCategory(category)"
+          >
+            <div class="category-icon" :style="{ backgroundColor: getCategoryColor(category.name) + '20', color: getCategoryColor(category.name) }">
+              <component :is="getCategoryIcon(category.name)" :size="20" />
+            </div>
+            <div class="category-info">
+              <h3 class="category-name">{{ category.name }}</h3>
+              <p class="category-desc">{{ getCategoryDesc(category.name) }}</p>
+            </div>
+            <div class="category-meta">
+              <span class="meta-item">
+                <Folder :size="14" />
+                {{ getFolderCount(category.id) }}
+              </span>
+              <span class="meta-item">
+                <FileText :size="14" />
+                {{ getContentCount(category.id) }}
+              </span>
+            </div>
+            <ChevronRight class="category-arrow" :size="18" />
+          </div>
+        </div>
       </div>
-      <div class="quick-grid">
-        <div class="quick-item" @click="goToSearch">
-          <div class="quick-icon">
-            <component :is="getIcon('search')" />
+
+      <div class="side-section">
+        <div class="quick-actions">
+          <h3 class="section-title">快捷操作</h3>
+          <div class="action-list">
+            <button class="action-item" @click="goToSearch">
+              <Search :size="18" />
+              <span>搜索笔记</span>
+            </button>
+            <button class="action-item" @click="goToGraph">
+              <Network :size="18" />
+              <span>知识图谱</span>
+            </button>
+            <button class="action-item" @click="goToSkills">
+              <Zap :size="18" />
+              <span>智能模块</span>
+            </button>
           </div>
-          <span>智能检索</span>
         </div>
-        <div class="quick-item" @click="goToGraph">
-          <div class="quick-icon">
-            <component :is="getIcon('graph')" />
+
+        <div class="recent-section">
+          <h3 class="section-title">最近编辑</h3>
+          <div class="recent-list">
+            <div
+              v-for="note in recentNotes"
+              :key="note.id"
+              class="recent-item"
+              @click="openNote(note.id)"
+            >
+              <div class="recent-dot"></div>
+              <div class="recent-info">
+                <span class="recent-title">{{ note.title }}</span>
+                <span class="recent-date">{{ formatDate(note.updated_at) }}</span>
+              </div>
+            </div>
+            <div v-if="notesStore.notes.length === 0" class="empty-state">
+              <p>暂无笔记</p>
+              <p class="empty-hint">创建第一篇笔记开始记录</p>
+            </div>
           </div>
-          <span>知识图谱</span>
-        </div>
-        <div class="quick-item" @click="goToSkills">
-          <div class="quick-icon">
-            <component :is="getIcon('skill')" />
-          </div>
-          <span>智能模块</span>
         </div>
       </div>
     </div>
@@ -70,69 +107,59 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, h } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCategoryStore } from '@/stores/category'
 import { useFoldersStore } from '@/stores/folders'
+import { useNotesStore } from '@/stores/notes'
+import { useAuthStore } from '@/stores/auth'
+import { 
+  FileText, Folder, ChevronRight, Search, Network, Zap, User, Briefcase, TrendingUp
+} from 'lucide-vue-next'
 
 const router = useRouter()
 const categoryStore = useCategoryStore()
 const foldersStore = useFoldersStore()
+const notesStore = useNotesStore()
+const authStore = useAuthStore()
 
 const categories = computed(() => categoryStore.categories)
+const username = computed(() => authStore.user?.username || '用户')
+const totalNotes = computed(() => notesStore.notes.length)
+const totalFolders = computed(() => foldersStore.folders.length)
+const recentNotes = computed(() => notesStore.notes.slice(0, 5))
 
-const icons = {
-  folder: () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'currentColor' }, [
-    h('path', { d: 'M19.5 21a3 3 0 0 0 3-3v-4.5a3 3 0 0 0-3-3h-15a3 3 0 0 0-3 3V18a3 3 0 0 0 3 3h15zM1.5 10.146V6a3 3 0 0 1 3-3h5.379a2.25 2.25 0 0 1 1.59.659l2.122 2.121c.14.141.331.22.53.22H19.5a3 3 0 0 1 3 3v1.146A4.483 4.483 0 0 0 19.5 9h-15a4.483 4.483 0 0 0-3 1.146z' })
-  ]),
-  file: () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [
-    h('path', { d: 'M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z' }),
-    h('polyline', { points: '14 2 14 8 20 8' })
-  ]),
-  search: () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [
-    h('circle', { cx: '11', cy: '11', r: '8' }),
-    h('path', { d: 'm21 21-4.3-4.3' })
-  ]),
-  graph: () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [
-    h('circle', { cx: '12', cy: '12', r: '3' }),
-    h('circle', { cx: '19', cy: '5', r: '2' }),
-    h('circle', { cx: '5', cy: '19', r: '2' }),
-    h('path', { d: 'M10.4 10.5 5 5' }),
-    h('path', { d: 'M13.6 13.5 19 19' }),
-    h('path', { d: 'M5 17v-3' }),
-    h('path', { d: 'M19 7V5' })
-  ]),
-  skill: () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [
-    h('path', { d: 'M13 2 3 14h9l-1 8 10-12h-9l1-8z' })
-  ]),
-  arrow: () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [
-    h('path', { d: 'M5 12h14' }),
-    h('path', { d: 'm12 5 7 7-7 7' })
-  ]),
-  user: () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [
-    h('circle', { cx: '12', cy: '8', r: '5' }),
-    h('path', { d: 'M20 21a8 8 0 0 0-16 0' })
-  ]),
-  briefcase: () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [
-    h('rect', { width: '20', height: '14', x: '2', y: '7', rx: '2', ry: '2' }),
-    h('path', { d: 'M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16' })
-  ]),
-  assets: () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [
-    h('path', { d: 'm21 8-9 9-4-4-3 3' }),
-    h('rect', { width: '6', height: '6', x: '15', y: '3', rx: '1' })
-  ])
-}
+const totalLinks = computed(() => {
+  let count = 0
+  notesStore.notes.forEach(note => {
+    const matches = note.content?.match(/\[\[([^\]]+)\]\]/g) || []
+    count += matches.length
+  })
+  return count
+})
 
-function getIcon(name: string) {
-  return icons[name as keyof typeof icons] || icons.file
-}
+const timeGreeting = computed(() => {
+  const hour = new Date().getHours()
+  if (hour >= 5 && hour < 12) return '早安'
+  if (hour >= 12 && hour < 18) return '午安'
+  if (hour >= 18 && hour < 22) return '傍晚好'
+  return '夜深了'
+})
 
 function getCategoryIcon(name: string) {
   const nameLower = name.toLowerCase()
-  if (nameLower.includes('个人')) return icons.user
-  if (nameLower.includes('工作')) return icons.briefcase
-  if (nameLower.includes('素材')) return icons.assets
-  return icons.file
+  if (nameLower.includes('个人')) return User
+  if (nameLower.includes('工作')) return Briefcase
+  if (nameLower.includes('素材')) return TrendingUp
+  return Folder
+}
+
+function getCategoryColor(name: string): string {
+  const nameLower = name.toLowerCase()
+  if (nameLower.includes('个人')) return '#f59e0b'
+  if (nameLower.includes('工作')) return '#3b82f6'
+  if (nameLower.includes('素材')) return '#10b981'
+  return '#8b5cf6'
 }
 
 function getCategoryDesc(name: string): string {
@@ -151,17 +178,26 @@ function getContentCount(categoryId: string): number {
   return categoryStore.contents.filter(c => c.category_id === categoryId).length
 }
 
-function getStarStyle(_n: number) {
-  return {
-    left: `${Math.random() * 100}%`,
-    top: `${Math.random() * 100}%`,
-    animationDelay: `${Math.random() * 3}s`
-  }
+function formatDate(dateStr: string): string {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+  
+  if (days === 0) return '今天'
+  if (days === 1) return '昨天'
+  if (days < 7) return `${days}天前`
+  return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
 }
 
 function enterCategory(category: any) {
   categoryStore.currentCategory = category
   router.push(`/categories/${category.id}`)
+}
+
+function openNote(noteId: string) {
+  router.push(`/notes/${noteId}`)
 }
 
 function goToSearch() {
@@ -180,6 +216,7 @@ onMounted(async () => {
   await categoryStore.fetchCategories()
   await foldersStore.fetchFolders()
   await categoryStore.fetchContents()
+  await notesStore.fetchNotes()
 })
 </script>
 
@@ -187,148 +224,175 @@ onMounted(async () => {
 .home-page {
   padding: 24px;
   min-height: 100%;
-  min-height: 100dvh;
-  max-width: 1400px;
+  max-width: 1200px;
   margin: 0 auto;
-  position: relative;
-  overflow: hidden;
 }
 
-.stars-bg {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  pointer-events: none;
-  z-index: 0;
+.home-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 24px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  margin-bottom: 24px;
 }
 
-.star {
-  position: absolute;
-  width: 2px;
-  height: 2px;
-  background: white;
-  border-radius: 50%;
-  animation: twinkle 3s infinite ease-in-out;
+.greeting-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-@keyframes twinkle {
-  0%, 100% { opacity: 0.3; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.2); }
+.greeting-text {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
 
-.category-entries {
-  display: grid;
-  grid-template-columns: 1.2fr 1fr 0.8fr;
+.greeting-time {
+  font-size: 14px;
+  color: var(--text-tertiary);
+}
+
+.greeting-name {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.greeting-hint {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.quick-stats {
+  display: flex;
+  align-items: center;
   gap: 20px;
-  margin-bottom: 32px;
-  position: relative;
-  z-index: 1;
+  padding: 12px 20px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
 }
 
-.category-card {
-  position: relative;
-  height: 360px;
-  border-radius: 24px;
-  overflow: hidden;
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.stat-divider {
+  width: 1px;
+  height: 32px;
+  background: var(--border-default);
+}
+
+.home-content {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 24px;
+}
+
+.main-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.section-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 2px 8px;
+  background: var(--bg-hover);
+  border-radius: 10px;
+}
+
+.category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.category-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all var(--transition-base);
 
   &:hover {
-    transform: translateY(-8px);
+    background: var(--bg-elevated);
+    border-color: var(--border-default);
+    transform: translateX(4px);
 
-    .card-arrow {
+    .category-arrow {
       opacity: 1;
       transform: translateX(0);
     }
-
-    .card-image-bg {
-      transform: scale(1.05);
-    }
-  }
-
-  &:nth-child(1) {
-    grid-row: span 1;
-  }
-
-  &:nth-child(2) {
-    height: 400px;
-    margin-top: -20px;
-  }
-
-  &:nth-child(3) {
-    height: 340px;
-    margin-top: 10px;
   }
 }
 
-.card-image-bg {
-  position: absolute;
-  inset: 0;
-  background-image: var(--card-image);
-  background-size: cover;
-  background-position: center;
-  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.card-overlay {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(0, 0, 0, 0.1) 0%,
-    rgba(0, 0, 0, 0.6) 50%,
-    rgba(0, 0, 0, 0.9) 100%
-  );
-}
-
-.card-content {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 28px;
-  z-index: 1;
-}
-
-.card-icon {
-  width: 56px;
-  height: 56px;
+.category-icon {
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(10px);
-  border-radius: 16px;
-  margin-bottom: 16px;
-  color: var(--card-color);
-  transition: transform 0.3s;
-
-  svg {
-    width: 28px;
-    height: 28px;
-  }
-
-  .category-card:hover & {
-    transform: scale(1.1);
-  }
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
 }
 
-.card-title {
-  font-size: 28px;
-  font-weight: 700;
-  color: #fff;
-  margin-bottom: 8px;
+.category-info {
+  flex: 1;
+  min-width: 0;
 }
 
-.card-desc {
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.7);
-  margin-bottom: 16px;
+.category-name {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin: 0 0 4px;
 }
 
-.card-meta {
+.category-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.category-meta {
   display: flex;
   gap: 16px;
 }
@@ -337,127 +401,170 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
-
-  svg {
-    width: 14px;
-    height: 14px;
-  }
+  font-size: 13px;
+  color: var(--text-tertiary);
 }
 
-.card-arrow {
-  position: absolute;
-  top: 28px;
-  right: 28px;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  border-radius: 12px;
-  color: #fff;
+.category-arrow {
+  color: var(--text-muted);
   opacity: 0;
-  transform: translateX(-10px);
-  transition: all 0.3s;
-
-  svg {
-    width: 20px;
-    height: 20px;
-  }
+  transform: translateX(-8px);
+  transition: all var(--transition-base);
 }
 
-.quick-access {
-  background: rgba(18, 18, 31, 0.6);
-  border-radius: 20px;
-  padding: 24px;
-  border: 1px solid rgba(0, 212, 255, 0.1);
-  position: relative;
-  z-index: 1;
-}
-
-.quick-header {
-  margin-bottom: 20px;
-
-  h3 {
-    font-size: 16px;
-    font-weight: 600;
-    color: rgba(255, 255, 255, 0.8);
-  }
-}
-
-.quick-grid {
+.side-section {
   display: flex;
-  gap: 16px;
+  flex-direction: column;
+  gap: 24px;
 }
 
-.quick-item {
-  flex: 1;
+.quick-actions {
+  padding: 20px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+}
+
+.action-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.action-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 16px 20px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 14px;
-  cursor: pointer;
-  transition: all 0.3s;
+  padding: 12px 14px;
+  background: transparent;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 14px;
+  text-align: left;
+  transition: all var(--transition-fast);
 
   &:hover {
-    background: rgba(0, 212, 255, 0.08);
-    border-color: rgba(0, 212, 255, 0.2);
-    transform: translateY(-2px);
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+}
 
-    .quick-icon {
-      background: rgba(0, 212, 255, 0.2);
-      color: #00d4ff;
+.recent-section {
+  padding: 20px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+}
+
+.recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.recent-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+
+  &:hover {
+    background: var(--bg-hover);
+
+    .recent-dot {
+      background: var(--primary-color);
     }
   }
-
-  span {
-    font-size: 14px;
-    color: rgba(255, 255, 255, 0.7);
-  }
 }
 
-.quick-icon {
-  width: 40px;
-  height: 40px;
+.recent-dot {
+  width: 6px;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+  transition: background var(--transition-fast);
+}
+
+.recent-info {
+  flex: 1;
+  min-width: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 10px;
-  color: rgba(255, 255, 255, 0.6);
-  transition: all 0.3s;
+  flex-direction: column;
+  gap: 2px;
+}
 
-  svg {
-    width: 20px;
-    height: 20px;
+.recent-title {
+  font-size: 13px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-date {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.empty-state {
+  padding: 24px;
+  text-align: center;
+
+  p {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin: 0;
+  }
+
+  .empty-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
   }
 }
 
-@media (max-width: 1024px) {
-  .category-entries {
+@media (max-width: 900px) {
+  .home-content {
     grid-template-columns: 1fr;
-    gap: 16px;
   }
 
-  .category-card {
-    height: 240px !important;
-    margin-top: 0 !important;
+  .side-section {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .quick-actions,
+  .recent-section {
+    flex: 1;
+    min-width: 280px;
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 600px) {
   .home-page {
     padding: 16px;
   }
 
-  .quick-grid {
+  .home-header {
     flex-direction: column;
+    gap: 16px;
+    padding: 20px;
+  }
+
+  .quick-stats {
+    width: 100%;
+    justify-content: space-around;
+  }
+
+  .category-meta {
+    display: none;
   }
 }
 </style>

@@ -5,122 +5,113 @@
         <span class="logo-icon">✦</span>
         <span class="logo-text">知枢星图</span>
       </div>
+      <div class="header-actions">
+        <button class="create-btn" @click="toggleCreateMenu">
+          <span class="btn-icon">+</span>
+          新建
+        </button>
+        <div v-if="showCreateDropdown" class="create-dropdown" @click.stop>
+          <div class="dropdown-item" @click="createNewNote">
+            <FileText :size="16" />
+            新建内容
+          </div>
+          <div class="dropdown-item" @click="openNewFolderDialog(currentCategoryId || undefined)">
+            <Folder :size="16" />
+            新建文件夹
+          </div>
+        </div>
+      </div>
     </div>
 
-    <div class="category-tabs">
-      <button
+    <div class="sidebar-content">
+      <div
         v-for="cat in categories"
         :key="cat.id"
-        class="category-tab"
+        class="category-section"
         :class="{ active: currentCategoryId === cat.id }"
-        :style="{
-          '--tab-color': cat.color
-        }"
-        @click="switchCategory(cat.id)"
       >
-        <component :is="getCategoryIcon(cat.name)" />
-      </button>
-    </div>
-
-    <div class="sidebar-section quick-nav">
-      <div class="nav-item" @click="goToCategories">
-        <span class="nav-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>
-          </svg>
-        </span>
-        <span>内容分类</span>
-      </div>
-      <div class="nav-item" @click="goToGraph">
-        <span class="nav-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="3"/>
-            <circle cx="19" cy="5" r="2"/>
-            <circle cx="5" cy="19" r="2"/>
-            <path d="M10.4 10.5 5 5"/>
-            <path d="M13.6 13.5 19 19"/>
-          </svg>
-        </span>
-        <span>知识图谱</span>
-      </div>
-      <div class="nav-item" @click="goToSkills">
-        <span class="nav-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>
-          </svg>
-        </span>
-        <span>智能模块</span>
-      </div>
-    </div>
-
-    <div class="sidebar-section">
-      <div class="section-header">
-        <h3>文件夹</h3>
-        <button @click="showNewFolderDialog = true" class="add-btn">+</button>
-      </div>
-      <div class="folder-list">
-        <div
-          class="folder-item"
-          :class="{ active: !selectedFolderId, 'drag-over': dragOverFolderId === null }"
-          @click="clearFilter"
-          @dragover="onDragOver($event, null)"
-          @dragleave="onDragLeave"
-          @drop="onDrop($event, null)"
-        >
-          <span class="folder-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M19.5 21a3 3 0 0 0 3-3v-4.5a3 3 0 0 0-3-3h-15a3 3 0 0 0-3 3V18a3 3 0 0 0 3 3h15zM1.5 10.146V6a3 3 0 0 1 3-3h5.379a2.25 2.25 0 0 1 1.59.659l2.122 2.121c.14.141.331.22.53.22H19.5a3 3 0 0 1 3 3v1.146A4.483 4.483 0 0 0 19.5 9h-15a4.483 4.483 0 0 0-3 1.146z"/>
-            </svg>
-          </span>
-          <span>全部内容</span>
-          <span class="note-count">{{ totalNoteCount }}</span>
+        <div class="category-header" @click="switchCategory(cat.id)">
+          <div class="category-info">
+            <component :is="getCategoryIcon(cat.name)" :size="16" class="category-icon" />
+            <span class="category-name">{{ cat.name }}</span>
+            <span class="category-count">{{ getCategoryNoteCount(cat.id) }}</span>
+          </div>
+          <div class="category-actions">
+            <button class="action-btn" @click.stop="toggleCategoryCreateMenu(cat.id)">
+              <Plus :size="14" />
+            </button>
+            <div v-if="activeCreateMenu === cat.id" class="create-menu" @click.stop>
+              <div class="menu-item" @click="openNewNoteDialog(cat.id)">
+                <FileText :size="14" />
+                新建笔记
+              </div>
+              <div class="menu-item" @click="openNewFolderDialog(cat.id)">
+                <Folder :size="14" />
+                新建文件夹
+              </div>
+            </div>
+          </div>
         </div>
-        <template v-for="folder in flatFolders" :key="folder.id">
+        <div v-if="currentCategoryId === cat.id" class="folder-list">
           <div
             class="folder-item"
-            :class="{
-              active: selectedFolderId === folder.id,
-              editing: editingFolderId === folder.id,
-              ['level-' + folder.level]: true,
-              'drag-over': dragOverFolderId === folder.id
-            }"
-            :style="{ paddingLeft: (16 + folder.level * 16) + 'px' }"
-            @click="selectFolder(folder.id)"
-            @contextmenu.prevent="showFolderMenu($event, folder)"
-            @dragover="onDragOver($event, folder.id)"
+            :class="{ active: !selectedFolderId && currentCategoryId === cat.id, 'drag-over': dragOverFolderId === null }"
+            @click="clearFilter"
+            @dragover="onDragOver($event, null)"
             @dragleave="onDragLeave"
-            @drop="onDrop($event, folder.id)"
+            @drop="onDrop($event, null)"
           >
-            <template v-if="editingFolderId === folder.id">
-              <input
-                ref="renameInput"
-                v-model="renameValue"
-                type="text"
-                class="rename-input"
-                placeholder="输入文件夹名称"
-                @click.stop
-                @keyup.enter="confirmRename"
-                @keyup.escape="cancelRename"
-                @blur="confirmRename"
-              />
-            </template>
-            <template v-else>
-              <span class="folder-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M19.5 21a3 3 0 0 0 3-3v-4.5a3 3 0 0 0-3-3h-15a3 3 0 0 0-3 3V18a3 3 0 0 0 3 3h15zM1.5 10.146V6a3 3 0 0 1 3-3h5.379a2.25 2.25 0 0 1 1.59.659l2.122 2.121c.14.141.331.22.53.22H19.5a3 3 0 0 1 3 3v1.146A4.483 4.483 0 0 0 19.5 9h-15a4.483 4.483 0 0 0-3 1.146z"/>
-                </svg>
-              </span>
-              <span class="folder-name">{{ folder.name }}</span>
-              <span class="note-count">{{ folder.note_count || 0 }}</span>
-              <button
-                class="folder-menu-btn"
-                @click.stop="showFolderMenu($event, folder)"
-              >
-                ⋮
-              </button>
-            </template>
+            <span class="folder-icon">
+              <Folder :size="16" />
+            </span>
+            <span>全部内容</span>
+            <span class="note-count">{{ getCategoryNoteCount(cat.id) }}</span>
           </div>
-        </template>
+          <template v-for="folder in getFoldersByCategory(cat.id)" :key="folder.id">
+            <div
+              class="folder-item"
+              :class="{
+                active: selectedFolderId === folder.id,
+                editing: editingFolderId === folder.id,
+                ['level-' + folder.level]: true,
+                'drag-over': dragOverFolderId === folder.id
+              }"
+              :style="{ paddingLeft: (16 + folder.level * 16) + 'px' }"
+              @click="selectFolder(folder.id)"
+              @contextmenu.prevent="showFolderMenu($event, folder)"
+              @dragover="onDragOver($event, folder.id)"
+              @dragleave="onDragLeave"
+              @drop="onDrop($event, folder.id)"
+            >
+              <template v-if="editingFolderId === folder.id">
+                <input
+                  ref="renameInput"
+                  v-model="renameValue"
+                  type="text"
+                  class="rename-input"
+                  placeholder="输入文件夹名称"
+                  @click.stop
+                  @keyup.enter="confirmRename"
+                  @keyup.escape="cancelRename"
+                  @blur="confirmRename"
+                />
+              </template>
+              <template v-else>
+                <span class="folder-icon">
+                  <Folder :size="16" />
+                </span>
+                <span class="folder-name">{{ folder.name }}</span>
+                <span class="note-count">{{ folder.note_count || 0 }}</span>
+                <button
+                  class="folder-menu-btn"
+                  @click.stop="showFolderMenu($event, folder)"
+                >
+                  ⋮
+                </button>
+              </template>
+            </div>
+          </template>
+        </div>
       </div>
     </div>
 
@@ -178,11 +169,6 @@
       </div>
     </div>
 
-    <button @click="createNewNote" class="new-note-btn">
-      <span class="btn-icon">+</span>
-      <span>新建笔记</span>
-    </button>
-
     <Teleport to="body">
       <div
         v-if="contextMenu.visible"
@@ -191,21 +177,15 @@
         @click.stop
       >
         <div class="menu-item" @click="startRename">
-          <span class="menu-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
-            </svg>
-          </span>
+          <Edit2 :size="14" />
           重命名
         </div>
+        <div class="menu-item" @click="openSubfolderDialog" v-if="contextMenu.folder && contextMenu.folder.level < 3">
+          <FolderPlus :size="14" />
+          新建子文件夹
+        </div>
         <div class="menu-item danger" @click="deleteFolder">
-          <span class="menu-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M3 6h18"/>
-              <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
-              <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
-            </svg>
-          </span>
+          <Trash2 :size="14" />
           删除文件夹
         </div>
       </div>
@@ -219,29 +199,24 @@
         @click.stop
       >
         <div class="menu-item" @click="startEditTag">
-          <span class="menu-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
-            </svg>
-          </span>
+          <Edit2 :size="14" />
           编辑标签
         </div>
         <div class="menu-item danger" @click="deleteTag">
-          <span class="menu-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M3 6h18"/>
-              <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
-            </svg>
-          </span>
+          <Trash2 :size="14" />
           删除标签
         </div>
       </div>
     </Teleport>
 
     <Teleport to="body">
-      <div v-if="showNewFolderDialog" class="modal-overlay" @click="showNewFolderDialog = false">
+      <div v-if="showNewFolderDialog" class="modal-overlay" @click="closeFolderDialog">
         <div class="modal-content" @click.stop>
-          <h3 class="modal-title">新建文件夹</h3>
+          <h3 class="modal-title">{{ parentFolderId ? '新建子文件夹' : '新建文件夹' }}</h3>
+          <div v-if="parentFolder" class="parent-info">
+            <span class="parent-label">父文件夹：</span>
+            <span class="parent-name">{{ parentFolder.name }}</span>
+          </div>
           <input
             v-model="newFolderName"
             type="text"
@@ -251,7 +226,7 @@
             ref="newFolderInput"
           />
           <div class="modal-actions">
-            <button class="btn-cancel" @click="showNewFolderDialog = false">取消</button>
+            <button class="btn-cancel" @click="closeFolderDialog">取消</button>
             <button class="btn-confirm" @click="createFolder">创建</button>
           </div>
         </div>
@@ -328,6 +303,7 @@ import { useNotesStore } from '@/stores/notes'
 import { useCategoryStore } from '@/stores/category'
 import { useNotificationStore } from '@/stores/notification'
 import type { FolderTree, Tag } from '@/types'
+import { FileText, Folder, Plus, Edit2, FolderPlus, Trash2, User, Briefcase, TrendingUp } from 'lucide-vue-next'
 
 const router = useRouter()
 const foldersStore = useFoldersStore()
@@ -342,14 +318,18 @@ const showNewFolderDialog = ref(false)
 const showNewTagDialog = ref(false)
 const newFolderName = ref('')
 const newTagName = ref('')
-const newTagColor = ref('#00d4ff')
+const newTagColor = ref('#f59e0b')
 const renameInput = ref<HTMLInputElement | null>(null)
 const newFolderInput = ref<HTMLInputElement | null>(null)
 const newTagInput = ref<HTMLInputElement | null>(null)
+const showCreateDropdown = ref(false)
+const parentFolderId = ref<string | null>(null)
 
 const editingFolderId = ref<string | null>(null)
 const renameValue = ref('')
 const dragOverFolderId = ref<string | null>(null)
+const activeCreateMenu = ref<string | null>(null)
+const createMenuCategoryId = ref<string | null>(null)
 
 const tagContextMenu = ref({
   visible: false,
@@ -360,7 +340,7 @@ const tagContextMenu = ref({
 
 const showEditTagDialog = ref(false)
 const editTagName = ref('')
-const editTagColor = ref('#00d4ff')
+const editTagColor = ref('#f59e0b')
 const editingTagId = ref<string | null>(null)
 
 const contextMenu = ref({
@@ -371,8 +351,8 @@ const contextMenu = ref({
 })
 
 const tagColors = [
-  '#00d4ff', '#7b2cbf', '#10b981', '#f59e0b',
-  '#ef4444', '#ec4899', '#8b5cf6', '#06b6d4'
+  '#f59e0b', '#3b82f6', '#10b981', '#ef4444',
+  '#8b5cf6', '#ec4899', '#06b6d4', '#6366f1'
 ]
 
 const categories = computed(() => categoryStore.categories)
@@ -380,6 +360,11 @@ const currentCategoryId = computed(() => categoryStore.currentCategory?.id)
 
 const recentNotes = computed(() => notesStore.notes.slice(0, 5))
 const totalNoteCount = computed(() => notesStore.notes.length)
+
+const parentFolder = computed(() => {
+  if (!parentFolderId.value) return null
+  return flatFolders.value.find(f => f.id === parentFolderId.value)
+})
 
 interface FlatFolder extends FolderTree {
   level: number
@@ -401,27 +386,66 @@ const flatFolders = computed(() => {
   return result
 })
 
-const categoryIcons: Record<string, () => any> = {
-  user: () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [
-    h('circle', { cx: '12', cy: '8', r: '5' }),
-    h('path', { d: 'M20 21a8 8 0 0 0-16 0' })
-  ]),
-  briefcase: () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [
-    h('rect', { width: '20', height: '14', x: '2', y: '7', rx: '2', ry: '2' }),
-    h('path', { d: 'M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16' })
-  ]),
-  assets: () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [
-    h('path', { d: 'm21 8-9 9-4-4-3 3' }),
-    h('rect', { width: '6', height: '6', x: '15', y: '3', rx: '1' })
-  ])
-}
-
 function getCategoryIcon(name: string) {
   const nameLower = name.toLowerCase()
-  if (nameLower.includes('个人')) return categoryIcons.user
-  if (nameLower.includes('工作')) return categoryIcons.briefcase
-  if (nameLower.includes('素材')) return categoryIcons.assets
-  return categoryIcons.assets
+  if (nameLower.includes('个人')) return User
+  if (nameLower.includes('工作')) return Briefcase
+  if (nameLower.includes('素材')) return TrendingUp
+  return Folder
+}
+
+function toggleCategoryCreateMenu(categoryId: string) {
+  if (activeCreateMenu.value === categoryId) {
+    activeCreateMenu.value = null
+  } else {
+    activeCreateMenu.value = categoryId
+  }
+}
+
+function openNewNoteDialog(categoryId: string) {
+  activeCreateMenu.value = null
+  router.push({ name: 'NewNote', query: { category_id: categoryId } })
+}
+
+function openNewFolderDialog(categoryId?: string) {
+  showCreateDropdown.value = false
+  activeCreateMenu.value = null
+  createMenuCategoryId.value = categoryId || currentCategoryId.value || null
+  parentFolderId.value = null
+  showNewFolderDialog.value = true
+}
+
+function openSubfolderDialog() {
+  if (!contextMenu.value.folder) return
+  parentFolderId.value = contextMenu.value.folder.id
+  createMenuCategoryId.value = contextMenu.value.folder.category_id || null
+  hideContextMenu()
+  showNewFolderDialog.value = true
+}
+
+function closeFolderDialog() {
+  showNewFolderDialog.value = false
+  newFolderName.value = ''
+  parentFolderId.value = null
+  createMenuCategoryId.value = null
+}
+
+function getFoldersByCategory(categoryId: string): FlatFolder[] {
+  return flatFolders.value.filter(f => f.category_id === categoryId)
+}
+
+function getCategoryNoteCount(categoryId: string): number {
+  const categoryFolders = getFoldersByCategory(categoryId)
+  let count = 0
+  for (const folder of categoryFolders) {
+    count += folder.note_count || 0
+  }
+  const uncategorizedNotes = notesStore.notes.filter(n => {
+    const folder = flatFolders.value.find(f => f.id === n.folder_id)
+    return !folder || folder.category_id === categoryId
+  })
+  count += uncategorizedNotes.length
+  return count
 }
 
 async function switchCategory(categoryId: string) {
@@ -436,19 +460,28 @@ async function switchCategory(categoryId: string) {
 onMounted(async () => {
   document.addEventListener('click', hideContextMenu)
   document.addEventListener('click', hideTagContextMenu)
+  document.addEventListener('click', hideCreateDropdown)
   await categoryStore.fetchCategories()
+  await tagsStore.fetchTags()
   if (categoryStore.categories.length > 0 && !categoryStore.currentCategory) {
     categoryStore.currentCategory = categoryStore.categories[0]
     await foldersStore.fetchFolders(categoryStore.currentCategory.id)
+    await notesStore.fetchNotes({ category_id: categoryStore.currentCategory.id })
   } else {
     await foldersStore.fetchFolders()
+    await notesStore.fetchNotes()
   }
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', hideContextMenu)
   document.removeEventListener('click', hideTagContextMenu)
+  document.removeEventListener('click', hideCreateDropdown)
 })
+
+function hideCreateDropdown() {
+  showCreateDropdown.value = false
+}
 
 watch(() => categoryStore.currentCategory, async (newCat) => {
   if (newCat) {
@@ -488,7 +521,12 @@ function openNote(noteId: string) {
 }
 
 function createNewNote() {
-  router.push({ name: 'NewNote' })
+  showCreateDropdown.value = false
+  router.push({ name: 'NewNote', query: { category_id: currentCategoryId.value } })
+}
+
+function toggleCreateMenu() {
+  showCreateDropdown.value = !showCreateDropdown.value
 }
 
 function goToCategories() {
@@ -583,13 +621,16 @@ async function createFolder() {
 
   try {
     const folderData: any = { name }
-    if (currentCategoryId.value) {
-      folderData.category_id = currentCategoryId.value
+    const targetCategoryId = createMenuCategoryId.value || currentCategoryId.value
+    if (targetCategoryId) {
+      folderData.category_id = targetCategoryId
+    }
+    if (parentFolderId.value) {
+      folderData.parent_id = parentFolderId.value
     }
     await foldersStore.createFolder(folderData)
     notification.success('创建成功', `文件夹「${name}」已创建`)
-    showNewFolderDialog.value = false
-    newFolderName.value = ''
+    closeFolderDialog()
   } catch (error: any) {
     notification.error('创建失败', error.response?.data?.detail || '操作失败')
   }
@@ -607,7 +648,7 @@ async function createTag() {
     notification.success('创建成功', `标签「${name}」已创建`)
     showNewTagDialog.value = false
     newTagName.value = ''
-    newTagColor.value = '#00d4ff'
+    newTagColor.value = '#f59e0b'
   } catch (error: any) {
     notification.error('创建失败', error.response?.data?.detail || '操作失败')
   }
@@ -650,7 +691,7 @@ async function confirmEditTag() {
     showEditTagDialog.value = false
     editingTagId.value = null
     editTagName.value = ''
-    editTagColor.value = '#00d4ff'
+    editTagColor.value = '#f59e0b'
   } catch (error: any) {
     notification.error('编辑失败', error.response?.data?.detail || '操作失败')
   }
@@ -703,173 +744,236 @@ async function onDrop(event: DragEvent, folderId: string | null) {
 
 <style scoped lang="scss">
 .sidebar {
-  width: 280px;
-  background: linear-gradient(180deg, #0d0d1a 0%, #0a0a14 100%);
-  border-right: 1px solid rgba(0, 212, 255, 0.1);
+  width: 260px;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
   padding: 0;
   position: relative;
-
-  &::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    right: 0;
-    width: 1px;
-    height: 100%;
-    background: linear-gradient(180deg,
-      transparent 0%,
-      rgba(0, 212, 255, 0.3) 50%,
-      transparent 100%
-    );
-    pointer-events: none;
-  }
+  flex-shrink: 0;
 }
 
 .sidebar-header {
-  padding: 20px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-actions {
+  position: relative;
+}
+
+.create-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--primary-color);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: #000;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+
+  &:hover {
+    background: var(--primary-hover);
+  }
+
+  .btn-icon {
+    font-size: 14px;
+  }
+}
+
+.create-dropdown {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 4px 0;
+  min-width: 140px;
+  z-index: 100;
+
+  .dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+
+    &:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+  }
 }
 
 .logo {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 
   .logo-icon {
-    font-size: 24px;
-    background: linear-gradient(135deg, #00d4ff, #7b2cbf);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    font-size: 20px;
+    color: var(--primary-color);
   }
 
   .logo-text {
-    font-size: 18px;
-    font-weight: 700;
-    background: linear-gradient(135deg, #00d4ff, #7b2cbf);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
   }
 }
 
-.category-tabs {
-  display: flex;
-  gap: 8px;
-  padding: 12px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+.sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
 }
 
-.category-tab {
+.category-section {
+  border-bottom: 1px solid var(--border-subtle);
+
+  &.active {
+    .category-header {
+      background: var(--bg-hover);
+    }
+  }
+}
+
+.category-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+
+  &:hover {
+    background: var(--bg-hover);
+  }
+}
+
+.category-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   flex: 1;
+}
+
+.category-icon {
+  color: var(--text-tertiary);
+}
+
+.category-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.category-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-hover);
+  padding: 2px 6px;
+  border-radius: 8px;
+}
+
+.category-actions {
+  position: relative;
+}
+
+.action-btn {
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
   cursor: pointer;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
-  transition: all 0.3s;
-
-  svg {
-    width: 16px;
-    height: 16px;
-  }
+  transition: all var(--transition-fast);
 
   &:hover {
-    background: rgba(255, 255, 255, 0.06);
-    color: rgba(255, 255, 255, 0.8);
+    background: var(--bg-hover);
+    color: var(--text-primary);
   }
+}
 
-  &.active {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: var(--tab-color, #00d4ff);
-    color: var(--tab-color, #00d4ff);
-    box-shadow: 0 0 12px rgba(0, 212, 255, 0.2);
+.create-menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 4px 0;
+  min-width: 130px;
+  z-index: 100;
+
+  .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+
+    &:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
   }
 }
 
 .sidebar-section {
-  padding: 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-
-  &.quick-nav {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 12px 16px;
-  }
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  background: rgba(0, 212, 255, 0.05);
-  border: 1px solid rgba(0, 212, 255, 0.1);
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.7);
-  transition: all 0.2s;
-
-  &:hover {
-    background: rgba(0, 212, 255, 0.1);
-    border-color: rgba(0, 212, 255, 0.3);
-    color: #fff;
-  }
-
-  .nav-icon {
-    width: 18px;
-    height: 18px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    svg {
-      width: 100%;
-      height: 100%;
-    }
-  }
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 
   h3 {
     font-size: 11px;
     font-weight: 600;
-    color: rgba(255, 255, 255, 0.4);
+    color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
   }
 
   .add-btn {
-    width: 22px;
-    height: 22px;
-    border: 1px solid rgba(0, 212, 255, 0.3);
-    border-radius: 6px;
+    width: 20px;
+    height: 20px;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
     background: transparent;
-    color: #00d4ff;
+    color: var(--text-tertiary);
     cursor: pointer;
-    font-size: 14px;
+    font-size: 12px;
     line-height: 1;
-    transition: all 0.2s;
+    transition: all var(--transition-fast);
 
     &:hover {
-      background: rgba(0, 212, 255, 0.1);
-      border-color: #00d4ff;
-      box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+      background: var(--bg-hover);
+      border-color: var(--border-strong);
+      color: var(--text-primary);
     }
   }
 }
@@ -883,24 +987,18 @@ async function onDrop(event: DragEvent, folderId: string | null) {
 .folder-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 8px;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--transition-fast);
   border: 1px solid transparent;
   position: relative;
-
-  &.level-1 {
-    font-size: 13px;
-
-    .folder-icon {
-      color: rgba(0, 212, 255, 0.6);
-    }
-  }
+  font-size: 13px;
+  color: var(--text-secondary);
 
   &:hover {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--bg-hover);
 
     .folder-menu-btn {
       opacity: 1;
@@ -908,36 +1006,25 @@ async function onDrop(event: DragEvent, folderId: string | null) {
   }
 
   &.active {
-    background: rgba(0, 212, 255, 0.08);
-    border-color: rgba(0, 212, 255, 0.3);
-
-    .folder-icon {
-      transform: scale(1.1);
-    }
+    background: var(--bg-active);
+    border-color: var(--border-default);
+    color: var(--text-primary);
   }
 
   &.editing {
-    background: rgba(0, 212, 255, 0.1);
-    border-color: rgba(0, 212, 255, 0.4);
+    background: var(--bg-active);
+    border-color: var(--primary-color);
     padding: 6px 12px;
   }
 
   &.drag-over {
-    background: rgba(0, 212, 255, 0.2) !important;
-    border-color: #00d4ff !important;
+    background: var(--primary-muted);
+    border-color: var(--primary-color);
   }
 
   .folder-icon {
-    width: 16px;
-    height: 16px;
+    color: var(--text-muted);
     flex-shrink: 0;
-    transition: transform 0.2s;
-    color: rgba(0, 212, 255, 0.8);
-
-    svg {
-      width: 100%;
-      height: 100%;
-    }
   }
 
   .folder-name {
@@ -949,83 +1036,75 @@ async function onDrop(event: DragEvent, folderId: string | null) {
 
   .note-count {
     font-size: 11px;
-    color: rgba(255, 255, 255, 0.3);
-    background: rgba(255, 255, 255, 0.05);
-    padding: 2px 8px;
-    border-radius: 10px;
+    color: var(--text-muted);
   }
 
   .folder-menu-btn {
     position: absolute;
     right: 8px;
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     display: flex;
     align-items: center;
     justify-content: center;
     background: transparent;
     border: none;
-    color: rgba(255, 255, 255, 0.4);
+    color: var(--text-muted);
     cursor: pointer;
     opacity: 0;
-    transition: all 0.2s;
-    font-size: 14px;
+    transition: all var(--transition-fast);
+    font-size: 12px;
 
     &:hover {
-      color: #00d4ff;
+      color: var(--text-primary);
     }
   }
 }
 
 .rename-input {
   flex: 1;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(0, 212, 255, 0.4);
-  border-radius: 6px;
-  padding: 6px 10px;
-  color: #fff;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  color: var(--text-primary);
   font-size: 13px;
 
   &:focus {
     outline: none;
-    border-color: #00d4ff;
-    box-shadow: 0 0 10px rgba(0, 212, 255, 0.2);
+    border-color: var(--primary-color);
   }
 
   &::placeholder {
-    color: rgba(255, 255, 255, 0.3);
+    color: var(--text-muted);
   }
 }
 
 .tag-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .tag-item {
-  padding: 6px 12px;
-  border-radius: 20px;
+  padding: 4px 10px;
+  border-radius: 12px;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   border: 1px solid;
-  transition: all 0.2s;
+  transition: all var(--transition-fast);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   position: relative;
 
   &:hover {
     transform: translateY(-1px);
-
-    .tag-menu-btn {
-      opacity: 1;
-    }
   }
 
   &.active {
-    box-shadow: 0 0 15px currentColor;
+    box-shadow: 0 0 0 1px currentColor;
   }
 
   .tag-count {
@@ -1035,24 +1114,23 @@ async function onDrop(event: DragEvent, folderId: string | null) {
 
   .tag-menu-btn {
     position: absolute;
-    right: 4px;
-    width: 18px;
-    height: 18px;
+    right: 2px;
+    width: 16px;
+    height: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
     background: transparent;
     border: none;
-    color: rgba(255, 255, 255, 0.4);
+    color: inherit;
     cursor: pointer;
     opacity: 0;
-    transition: all 0.2s;
-    font-size: 12px;
+    transition: all var(--transition-fast);
+    font-size: 10px;
     border-radius: 4px;
 
     &:hover {
-      color: #fff;
-      background: rgba(255, 255, 255, 0.1);
+      opacity: 1;
     }
   }
 }
@@ -1064,37 +1142,36 @@ async function onDrop(event: DragEvent, folderId: string | null) {
 }
 
 .note-item {
-  padding: 10px 12px;
-  border-radius: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.7);
-  transition: all 0.2s;
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.03);
-    color: #fff;
+    background: var(--bg-hover);
+    color: var(--text-primary);
 
     .note-dot {
-      background: #00d4ff;
-      box-shadow: 0 0 8px #00d4ff;
+      background: var(--primary-color);
     }
   }
 
   &:focus {
     outline: none;
-    background: rgba(0, 212, 255, 0.1);
+    background: var(--bg-active);
   }
 
   .note-dot {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.2);
-    transition: all 0.2s;
+    background: var(--text-muted);
+    transition: background var(--transition-fast);
     flex-shrink: 0;
   }
 
@@ -1107,102 +1184,42 @@ async function onDrop(event: DragEvent, folderId: string | null) {
 }
 
 .empty-hint {
-  padding: 20px;
+  padding: 16px;
   text-align: center;
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--text-muted);
   font-size: 12px;
-}
-
-.new-note-btn {
-  margin: 16px;
-  margin-top: auto;
-  padding: 14px;
-  background: linear-gradient(135deg, #00d4ff 0%, #7b2cbf 100%);
-  color: white;
-  border: none;
-  border-radius: 12px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  transition: all 0.3s;
-  position: relative;
-  overflow: hidden;
-
-  &::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-    transition: left 0.5s;
-  }
-
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(0, 212, 255, 0.4);
-
-    &::before {
-      left: 100%;
-    }
-  }
-
-  .btn-icon {
-    font-size: 18px;
-    font-weight: 400;
-  }
 }
 
 .context-menu {
   position: fixed;
-  background: rgba(18, 18, 31, 0.98);
-  border: 1px solid rgba(0, 212, 255, 0.3);
-  border-radius: 10px;
-  padding: 6px 0;
-  min-width: 160px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 4px 0;
+  min-width: 150px;
   z-index: 1000;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(10px);
 }
 
 .menu-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 16px;
+  padding: 10px 14px;
   cursor: pointer;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.8);
-  transition: all 0.2s;
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
 
   &:hover {
-    background: rgba(0, 212, 255, 0.1);
-    color: #fff;
+    background: var(--bg-hover);
+    color: var(--text-primary);
   }
 
   &.danger {
-    color: #ef4444;
+    color: var(--accent-red);
 
     &:hover {
       background: rgba(239, 68, 68, 0.1);
-    }
-  }
-
-  .menu-icon {
-    width: 16px;
-    height: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    svg {
-      width: 100%;
-      height: 100%;
     }
   }
 }
@@ -1213,64 +1230,82 @@ async function onDrop(event: DragEvent, folderId: string | null) {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  backdrop-filter: blur(4px);
 }
 
 .modal-content {
-  background: linear-gradient(135deg, rgba(18, 18, 31, 0.98) 0%, rgba(26, 26, 46, 0.98) 100%);
-  border: 1px solid rgba(0, 212, 255, 0.3);
-  border-radius: 16px;
-  padding: 24px;
-  min-width: 320px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  min-width: 300px;
 }
 
 .modal-title {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
-  margin-bottom: 20px;
-  color: #fff;
+  margin-bottom: 16px;
+  color: var(--text-primary);
+}
+
+.parent-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-hover);
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+  
+  .parent-label {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  
+  .parent-name {
+    font-size: 13px;
+    color: var(--text-primary);
+    font-weight: 500;
+  }
 }
 
 .modal-input {
   width: 100%;
-  padding: 12px 16px;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(0, 212, 255, 0.3);
-  border-radius: 10px;
-  color: #fff;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
   font-size: 14px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 
   &:focus {
     outline: none;
-    border-color: #00d4ff;
-    box-shadow: 0 0 15px rgba(0, 212, 255, 0.2);
+    border-color: var(--primary-color);
   }
 
   &::placeholder {
-    color: rgba(255, 255, 255, 0.3);
+    color: var(--text-muted);
   }
 }
 
 .color-picker {
   display: flex;
-  gap: 8px;
-  margin-bottom: 20px;
+  gap: 6px;
+  margin-bottom: 16px;
 }
 
 .color-option {
   display: inline-block;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--transition-fast);
   border: 2px solid transparent;
 
   &:hover {
@@ -1278,45 +1313,43 @@ async function onDrop(event: DragEvent, folderId: string | null) {
   }
 
   &.active {
-    border-color: #fff;
-    box-shadow: 0 0 10px currentColor;
+    border-color: var(--text-primary);
   }
 }
 
 .modal-actions {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   justify-content: flex-end;
 }
 
 .btn-cancel, .btn-confirm {
-  padding: 10px 20px;
-  border-radius: 8px;
-  font-size: 14px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--transition-fast);
 }
 
 .btn-cancel {
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
 
   &:hover {
-    border-color: rgba(255, 255, 255, 0.4);
-    color: #fff;
+    border-color: var(--border-strong);
+    color: var(--text-primary);
   }
 }
 
 .btn-confirm {
-  background: linear-gradient(135deg, #00d4ff 0%, #7b2cbf 100%);
+  background: var(--primary-color);
   border: none;
-  color: white;
+  color: #000;
 
   &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3);
+    background: var(--primary-hover);
   }
 }
 </style>
