@@ -3,7 +3,7 @@ import type { Response, PaginatedResponse } from '@/types/api'
 import type { Note, NoteCreate, NoteUpdate, Backlink } from '@/types/note'
 
 export const notesApi = {
-  list: async (params?: { folder_id?: string; tag_id?: string; page?: number; page_size?: number }): Promise<Response<PaginatedResponse<Note>>> => {
+  list: async (params?: { folder_id?: string; tag_id?: string; category_id?: string; page?: number; page_size?: number }): Promise<Response<PaginatedResponse<Note>>> => {
     const response = await api.get('/notes', { params })
     return response.data
   },

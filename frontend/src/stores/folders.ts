@@ -6,9 +6,11 @@ import type { FolderTree, FolderCreate, FolderUpdate } from '@/types'
 export const useFoldersStore = defineStore('folders', () => {
   const folders = ref<FolderTree[]>([])
   const loading = ref(false)
+  const currentCategoryId = ref<string | undefined>(undefined)
 
   async function fetchFolders(categoryId?: string) {
     loading.value = true
+    currentCategoryId.value = categoryId
     try {
       const response = await foldersApi.list(categoryId)
       folders.value = response.data
@@ -19,24 +21,25 @@ export const useFoldersStore = defineStore('folders', () => {
 
   async function createFolder(data: FolderCreate) {
     const response = await foldersApi.create(data)
-    await fetchFolders()
+    await fetchFolders(currentCategoryId.value)
     return response.data
   }
 
   async function updateFolder(id: string, data: FolderUpdate) {
     const response = await foldersApi.update(id, data)
-    await fetchFolders()
+    await fetchFolders(currentCategoryId.value)
     return response.data
   }
 
   async function deleteFolder(id: string) {
     await foldersApi.delete(id)
-    await fetchFolders()
+    await fetchFolders(currentCategoryId.value)
   }
 
   return {
     folders,
     loading,
+    currentCategoryId,
     fetchFolders,
     createFolder,
     updateFolder,

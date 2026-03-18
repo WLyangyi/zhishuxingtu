@@ -4,10 +4,10 @@
       <div class="header-left">
         <div class="header-top">
           <button @click="goHome" class="back-btn" title="返回主页">
-            <span>🏠</span>
+            <Home :size="18" />
           </button>
           <h1 class="page-title">
-            <span class="title-icon">⚡</span>
+            <Zap :size="28" class="title-icon" />
             Skill 智能模块
           </h1>
         </div>
@@ -15,7 +15,7 @@
       </div>
       <div class="header-actions">
         <button @click="showCreateModal = true" class="create-btn">
-          <span class="btn-icon">+</span>
+          <Plus :size="18" />
           创建 Skill
         </button>
       </div>
@@ -23,7 +23,7 @@
 
     <div class="templates-section">
       <h2 class="section-title">
-        <span class="title-icon">📦</span>
+        <Package :size="18" class="title-icon" />
         模板库
       </h2>
       <div class="templates-grid">
@@ -34,7 +34,7 @@
           @click="createFromTemplate(index)"
         >
           <div class="template-icon" :style="{ color: template.color }">
-            {{ template.icon }}
+            <Sparkles :size="28" />
           </div>
           <div class="template-info">
             <h3 class="template-name">{{ template.name }}</h3>
@@ -50,7 +50,7 @@
     <div class="skills-section">
       <div class="section-header">
         <h2 class="section-title">
-          <span class="title-icon">🚀</span>
+          <Rocket :size="18" class="title-icon" />
           我的 Skills
         </h2>
         <div class="filter-tabs">
@@ -82,11 +82,10 @@
           class="skill-card"
           :class="{ inactive: !skill.is_active }"
         >
-          <div class="card-glow"></div>
           <div class="card-content">
             <div class="card-header">
               <span class="skill-icon" :style="{ color: skill.color }">
-                {{ skill.icon }}
+                <Zap :size="24" />
               </span>
               <div class="skill-info">
                 <h3 class="skill-name">{{ skill.name }}</h3>
@@ -96,13 +95,14 @@
               </div>
               <div class="skill-actions">
                 <button @click="toggleSkillStatus(skill)" class="action-btn" :title="skill.is_active ? '停用' : '启用'">
-                  {{ skill.is_active ? '⏸️' : '▶️' }}
+                  <Pause v-if="skill.is_active" :size="14" />
+                  <Play v-else :size="14" />
                 </button>
                 <button @click="editSkill(skill)" class="action-btn" title="编辑">
-                  ✏️
+                  <Edit3 :size="14" />
                 </button>
                 <button @click="deleteSkill(skill)" class="action-btn danger" title="删除">
-                  🗑️
+                  <Trash2 :size="14" />
                 </button>
               </div>
             </div>
@@ -112,16 +112,16 @@
             <div class="card-footer">
               <div class="skill-meta">
                 <span class="meta-item">
-                  <span class="meta-icon">📊</span>
+                  <BarChart3 :size="12" />
                   {{ skill.execution_count || 0 }} 次执行
                 </span>
                 <span class="meta-item">
-                  <span class="meta-icon">📅</span>
+                  <Calendar :size="12" />
                   {{ formatDate(skill.updated_at) }}
                 </span>
               </div>
               <button @click="executeSkill(skill)" class="execute-btn" :disabled="!skill.is_active">
-                <span class="btn-icon">▶</span>
+                <Play :size="14" />
                 执行
               </button>
             </div>
@@ -129,7 +129,7 @@
         </div>
 
         <div v-if="filteredSkills.length === 0" class="empty-state">
-          <div class="empty-icon">⚡</div>
+          <Zap :size="48" class="empty-icon" />
           <h3>暂无 Skill</h3>
           <p>从模板库选择或创建自定义 Skill</p>
         </div>
@@ -140,7 +140,9 @@
       <div class="modal">
         <div class="modal-header">
           <h3>创建 Skill</h3>
-          <button @click="showCreateModal = false" class="close-btn">×</button>
+          <button @click="showCreateModal = false" class="close-btn">
+            <X :size="20" />
+          </button>
         </div>
         <div class="modal-body">
           <div class="form-group">
@@ -182,7 +184,7 @@
             <select v-model="newSkill.output_category_id">
               <option :value="null">不保存到知识库</option>
               <option v-for="cat in categoryStore.categories" :key="cat.id" :value="cat.id">
-                {{ cat.icon }} {{ cat.name }}
+                {{ cat.name }}
               </option>
             </select>
           </div>
@@ -198,7 +200,9 @@
       <div class="modal">
         <div class="modal-header">
           <h3>执行 Skill: {{ currentSkill?.name }}</h3>
-          <button @click="showExecuteModal = false" class="close-btn">×</button>
+          <button @click="showExecuteModal = false" class="close-btn">
+            <X :size="20" />
+          </button>
         </div>
         <div class="modal-body">
           <div class="form-group">
@@ -232,6 +236,10 @@ import { useCategoryStore } from '@/stores/category'
 import { useNotificationStore } from '@/stores/notification'
 import { skillsApi } from '@/api/skills'
 import type { Skill, SkillTemplate } from '@/types/skill'
+import { 
+  Home, Zap, Plus, Package, Sparkles, Rocket, Play, Pause,
+  Edit3, Trash2, BarChart3, Calendar, X
+} from 'lucide-vue-next'
 
 const router = useRouter()
 const categoryStore = useCategoryStore()
@@ -251,14 +259,14 @@ const newSkill = ref({
   name: '',
   description: '',
   icon: '⚡',
-  color: '#00d4ff',
+  color: '#0066FF',
   trigger_type: 'manual',
   output_category_id: null as string | null
 })
 
 const colorOptions = [
-  '#00d4ff', '#7b2cbf', '#10b981', '#f59e0b',
-  '#ef4444', '#ec4899', '#8b5cf6', '#06b6d4'
+  '#0066FF', '#f59e0b', '#10b981', '#ef4444',
+  '#ec4899', '#8b5cf6', '#06b6d4', '#3b82f6'
 ]
 
 const filteredSkills = computed(() => {
@@ -330,7 +338,7 @@ function resetNewSkill() {
     name: '',
     description: '',
     icon: '⚡',
-    color: '#00d4ff',
+    color: '#0066FF',
     trigger_type: 'manual',
     output_category_id: null
   }
@@ -410,6 +418,8 @@ function goHome() {
   padding: 24px;
   max-width: 1400px;
   margin: 0 auto;
+  background: var(--bg-primary);
+  min-height: 100%;
 }
 
 .page-header {
@@ -437,16 +447,16 @@ function goHome() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 212, 255, 0.1);
-  border: 1px solid rgba(0, 212, 255, 0.2);
-  border-radius: 10px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   cursor: pointer;
-  font-size: 18px;
+  color: var(--text-secondary);
   transition: all 0.2s;
 
   &:hover {
-    background: rgba(0, 212, 255, 0.2);
-    border-color: #00d4ff;
+    background: var(--bg-active);
+    color: var(--text-primary);
   }
 }
 
@@ -456,15 +466,16 @@ function goHome() {
   display: flex;
   align-items: center;
   gap: 12px;
+  color: var(--text-primary);
   
   .title-icon {
-    font-size: 32px;
+    color: var(--tech-blue);
   }
 }
 
 .page-subtitle {
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-muted);
 }
 
 .create-btn {
@@ -472,22 +483,18 @@ function goHome() {
   align-items: center;
   gap: 8px;
   padding: 12px 24px;
-  background: linear-gradient(135deg, #00d4ff 0%, #7b2cbf 100%);
+  background: var(--primary-color);
   border: none;
-  border-radius: 12px;
-  color: white;
+  border-radius: var(--radius-md);
+  color: #000;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.2s;
   
   &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(0, 212, 255, 0.3);
-  }
-  
-  .btn-icon {
-    font-size: 18px;
+    background: var(--primary-hover);
+    transform: translateY(-1px);
   }
 }
 
@@ -496,15 +503,16 @@ function goHome() {
 }
 
 .section-title {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   display: flex;
   align-items: center;
   gap: 10px;
   margin-bottom: 20px;
+  color: var(--text-primary);
   
   .title-icon {
-    font-size: 20px;
+    color: var(--tech-blue);
   }
 }
 
@@ -521,22 +529,22 @@ function goHome() {
   
   button {
     padding: 8px 16px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--bg-hover);
+    border: 1px solid var(--border-subtle);
     border-radius: 20px;
-    color: rgba(255, 255, 255, 0.6);
+    color: var(--text-secondary);
     font-size: 13px;
     cursor: pointer;
     transition: all 0.2s;
     
     &:hover {
-      background: rgba(255, 255, 255, 0.1);
+      background: var(--bg-active);
     }
     
     &.active {
-      background: rgba(0, 212, 255, 0.2);
-      border-color: rgba(0, 212, 255, 0.4);
-      color: #00d4ff;
+      background: var(--tech-blue-muted);
+      border-color: var(--tech-blue);
+      color: var(--tech-blue);
     }
   }
 }
@@ -552,20 +560,22 @@ function goHome() {
   align-items: center;
   gap: 16px;
   padding: 20px;
-  background: linear-gradient(135deg, rgba(18, 18, 31, 0.9) 0%, rgba(26, 26, 46, 0.9) 100%);
-  border: 1px solid rgba(0, 212, 255, 0.1);
-  border-radius: 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.2s;
   
   &:hover {
-    transform: translateY(-4px);
-    border-color: rgba(0, 212, 255, 0.3);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    transform: translateY(-2px);
+    border-color: var(--border-default);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
   }
   
   .template-icon {
-    font-size: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   
   .template-info {
@@ -576,11 +586,12 @@ function goHome() {
     font-size: 15px;
     font-weight: 600;
     margin-bottom: 4px;
+    color: var(--text-primary);
   }
   
   .template-desc {
     font-size: 12px;
-    color: rgba(255, 255, 255, 0.5);
+    color: var(--text-muted);
   }
   
   .template-badge {
@@ -599,37 +610,20 @@ function goHome() {
 
 .skill-card {
   position: relative;
-  background: linear-gradient(135deg, rgba(18, 18, 31, 0.9) 0%, rgba(26, 26, 46, 0.9) 100%);
-  border: 1px solid rgba(0, 212, 255, 0.1);
-  border-radius: 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
   padding: 24px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s;
   
   &:hover {
-    transform: translateY(-4px);
-    border-color: rgba(0, 212, 255, 0.3);
-    
-    .card-glow {
-      opacity: 1;
-    }
+    transform: translateY(-2px);
+    border-color: var(--border-default);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
   }
   
   &.inactive {
     opacity: 0.6;
-  }
-  
-  .card-glow {
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(
-      400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
-      rgba(0, 212, 255, 0.08),
-      transparent 40%
-    );
-    opacity: 0;
-    transition: opacity 0.4s;
-    pointer-events: none;
-    border-radius: 14px;
   }
   
   .card-content {
@@ -645,7 +639,9 @@ function goHome() {
   }
   
   .skill-icon {
-    font-size: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   
   .skill-info {
@@ -656,6 +652,7 @@ function goHome() {
     font-size: 17px;
     font-weight: 600;
     margin-bottom: 6px;
+    color: var(--text-primary);
   }
   
   .skill-type {
@@ -676,26 +673,28 @@ function goHome() {
       display: flex;
       align-items: center;
       justify-content: center;
-      background: rgba(255, 255, 255, 0.05);
+      background: var(--bg-hover);
       border: none;
-      border-radius: 8px;
+      border-radius: var(--radius-md);
       cursor: pointer;
-      font-size: 14px;
+      color: var(--text-secondary);
       transition: all 0.2s;
       
       &:hover {
-        background: rgba(0, 212, 255, 0.2);
+        background: var(--bg-active);
+        color: var(--text-primary);
       }
       
       &.danger:hover {
-        background: rgba(239, 68, 68, 0.2);
+        background: rgba(239, 68, 68, 0.1);
+        color: var(--accent-red);
       }
     }
   }
   
   .skill-description {
     font-size: 13px;
-    color: rgba(255, 255, 255, 0.5);
+    color: var(--text-muted);
     line-height: 1.6;
     margin-bottom: 16px;
   }
@@ -716,11 +715,7 @@ function goHome() {
     align-items: center;
     gap: 6px;
     font-size: 12px;
-    color: rgba(255, 255, 255, 0.4);
-    
-    .meta-icon {
-      font-size: 12px;
-    }
+    color: var(--text-muted);
   }
   
   .execute-btn {
@@ -728,18 +723,18 @@ function goHome() {
     align-items: center;
     gap: 6px;
     padding: 8px 16px;
-    background: linear-gradient(135deg, #00d4ff 0%, #7b2cbf 100%);
+    background: var(--primary-color);
     border: none;
-    border-radius: 10px;
-    color: white;
+    border-radius: var(--radius-md);
+    color: #000;
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.3s;
+    transition: all 0.2s;
     
     &:hover:not(:disabled) {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3);
+      background: var(--primary-hover);
+      transform: translateY(-1px);
     }
     
     &:disabled {
@@ -758,7 +753,7 @@ function goHome() {
   text-align: center;
   
   .empty-icon {
-    font-size: 48px;
+    color: var(--text-muted);
     margin-bottom: 16px;
     opacity: 0.5;
   }
@@ -767,12 +762,12 @@ function goHome() {
     font-size: 18px;
     font-weight: 600;
     margin-bottom: 8px;
-    color: rgba(255, 255, 255, 0.6);
+    color: var(--text-secondary);
   }
   
   p {
     font-size: 14px;
-    color: rgba(255, 255, 255, 0.3);
+    color: var(--text-muted);
   }
 }
 
@@ -793,9 +788,9 @@ function goHome() {
   width: 500px;
   max-height: 80vh;
   overflow-y: auto;
-  background: rgba(18, 18, 31, 0.98);
-  border: 1px solid rgba(0, 212, 255, 0.2);
-  border-radius: 16px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
 }
 
 .modal-header {
@@ -803,11 +798,12 @@ function goHome() {
   justify-content: space-between;
   align-items: center;
   padding: 20px;
-  border-bottom: 1px solid rgba(0, 212, 255, 0.1);
+  border-bottom: 1px solid var(--border-subtle);
   
   h3 {
     font-size: 18px;
     font-weight: 600;
+    color: var(--text-primary);
   }
   
   .close-btn {
@@ -818,12 +814,11 @@ function goHome() {
     justify-content: center;
     background: transparent;
     border: none;
-    color: rgba(255, 255, 255, 0.5);
-    font-size: 24px;
+    color: var(--text-muted);
     cursor: pointer;
     
     &:hover {
-      color: #fff;
+      color: var(--text-primary);
     }
   }
 }
@@ -838,26 +833,26 @@ function goHome() {
   label {
     display: block;
     font-size: 13px;
-    color: rgba(255, 255, 255, 0.6);
+    color: var(--text-secondary);
     margin-bottom: 8px;
   }
   
   input, textarea, select {
     width: 100%;
     padding: 10px 14px;
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(0, 212, 255, 0.2);
-    border-radius: 10px;
-    color: #fff;
+    background: var(--bg-hover);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
     font-size: 14px;
     
     &:focus {
       outline: none;
-      border-color: #00d4ff;
+      border-color: var(--tech-blue);
     }
     
     &::placeholder {
-      color: rgba(255, 255, 255, 0.3);
+      color: var(--text-muted);
     }
   }
   
@@ -867,7 +862,7 @@ function goHome() {
   }
   
   select option {
-    background: #1a1a2e;
+    background: var(--bg-elevated);
   }
 }
 
@@ -896,26 +891,25 @@ function goHome() {
   }
   
   &.active {
-    border-color: #fff;
-    box-shadow: 0 0 10px currentColor;
+    border-color: var(--text-primary);
   }
 }
 
 .execute-result {
   margin-top: 16px;
   padding: 16px;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 10px;
+  background: var(--bg-hover);
+  border-radius: var(--radius-md);
   
   h4 {
     font-size: 13px;
-    color: rgba(255, 255, 255, 0.6);
+    color: var(--text-secondary);
     margin-bottom: 8px;
   }
   
   pre {
     font-size: 12px;
-    color: #00d4ff;
+    color: var(--tech-blue);
     white-space: pre-wrap;
     word-break: break-all;
   }
@@ -926,12 +920,12 @@ function goHome() {
   justify-content: flex-end;
   gap: 12px;
   padding: 20px;
-  border-top: 1px solid rgba(0, 212, 255, 0.1);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .btn-cancel, .btn-confirm {
   padding: 10px 20px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
@@ -939,27 +933,38 @@ function goHome() {
 
 .btn-cancel {
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
   
   &:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--bg-hover);
   }
 }
 
 .btn-confirm {
-  background: linear-gradient(135deg, #00d4ff 0%, #7b2cbf 100%);
+  background: var(--primary-color);
   border: none;
-  color: white;
+  color: #000;
+  font-weight: 500;
   
   &:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3);
+    background: var(--primary-hover);
   }
   
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+}
+
+@media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+    gap: 16px;
+  }
+  
+  .skills-grid, .templates-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

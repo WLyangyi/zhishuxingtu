@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Exo+2:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap');
 
 :root {
   --primary-color: #f59e0b;
@@ -12,6 +12,9 @@
   --accent-green: #10b981;
   --accent-red: #ef4444;
   --accent-purple: #8b5cf6;
+  --tech-blue: #0066FF;
+  --tech-blue-glow: rgba(0, 102, 255, 0.4);
+  --tech-blue-muted: rgba(0, 102, 255, 0.15);
   
   --bg-primary: #0a0a0b;
   --bg-secondary: #0f0f11;
@@ -19,6 +22,7 @@
   --bg-elevated: #1a1a1d;
   --bg-hover: rgba(255, 255, 255, 0.04);
   --bg-active: rgba(255, 255, 255, 0.08);
+  --bg-deep: #121212;
   
   --border-subtle: rgba(255, 255, 255, 0.06);
   --border-default: rgba(255, 255, 255, 0.1);

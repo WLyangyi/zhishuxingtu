@@ -1,189 +1,495 @@
 <template>
   <div class="search-page">
     <div class="search-header">
-      <div class="header-left">
+      <div class="header-top">
         <button @click="goHome" class="back-btn" title="返回主页">
-          <span class="back-icon">←</span>
-          <span class="back-text">主页</span>
+          <Home :size="18" />
         </button>
-        <h2>搜索结果: "{{ searchQuery }}"</h2>
+        <h1 class="page-title">
+          <Search :size="24" class="title-icon" />
+          全局搜索
+        </h1>
+      </div>
+      <div class="search-input-wrapper">
+        <Search :size="20" class="search-icon" />
+        <input
+          ref="searchInputRef"
+          v-model="searchQuery"
+          type="text"
+          placeholder="搜索笔记、标签、链接..."
+          class="search-input"
+          @input="handleSearch"
+        />
+        <kbd class="search-shortcut">ESC</kbd>
       </div>
     </div>
-    
-    <div class="search-results">
-      <div 
-        v-for="note in notesStore.notes" 
-        :key="note.id"
-        class="result-card"
-        @click="openNote(note.id)"
-      >
-        <h3>{{ note.title }}</h3>
-        <p class="result-preview">{{ getPreview(note.content) }}</p>
-        <div class="result-meta">
-          <span>{{ formatDate(note.updated_at) }}</span>
+
+    <div class="search-content">
+      <div class="results-section" v-if="searchQuery">
+        <div class="results-header">
+          <span class="results-count">找到 {{ totalResults }} 个结果</span>
+          <div class="filter-tabs">
+            <button 
+              :class="{ active: filterType === 'all' }"
+              @click="filterType = 'all'"
+            >
+              全部
+            </button>
+            <button 
+              :class="{ active: filterType === 'notes' }"
+              @click="filterType = 'notes'"
+            >
+              笔记
+            </button>
+            <button 
+              :class="{ active: filterType === 'tags' }"
+              @click="filterType = 'tags'"
+            >
+              标签
+            </button>
+          </div>
+        </div>
+
+        <div class="results-list">
+          <div 
+            v-for="result in filteredResults" 
+            :key="result.id"
+            class="result-item"
+            @click="openResult(result)"
+          >
+            <div class="result-icon">
+              <FileText v-if="result.type === 'note'" :size="20" />
+              <Tag v-else-if="result.type === 'tag'" :size="20" />
+              <Link v-else :size="20" />
+            </div>
+            <div class="result-content">
+              <h3 class="result-title" v-html="highlightText(result.title)"></h3>
+              <p class="result-excerpt" v-if="result.excerpt" v-html="highlightText(result.excerpt)"></p>
+              <div class="result-meta">
+                <span class="meta-item">
+                  <Folder :size="12" />
+                  {{ result.category || '未分类' }}
+                </span>
+                <span class="meta-item" v-if="result.updated_at">
+                  <Clock :size="12" />
+                  {{ formatDate(result.updated_at) }}
+                </span>
+              </div>
+            </div>
+            <ChevronRight :size="16" class="result-arrow" />
+          </div>
+
+          <div v-if="filteredResults.length === 0" class="empty-results">
+            <Search :size="48" class="empty-icon" />
+            <h3>未找到结果</h3>
+            <p>尝试使用不同的关键词</p>
+          </div>
         </div>
       </div>
-      
-      <div v-if="notesStore.notes.length === 0" class="no-results">
-        <div class="empty-icon">🔍</div>
-        <h3>没有找到相关笔记</h3>
-        <p>尝试使用不同的关键词搜索</p>
-        <button @click="goHome" class="back-home-btn">返回主页</button>
+
+      <div class="empty-state" v-else>
+        <Search :size="64" class="empty-icon" />
+        <h2>搜索你的知识库</h2>
+        <p>输入关键词查找笔记、标签和链接</p>
+        <div class="quick-tips">
+          <div class="tip">
+            <Hash :size="14" />
+            使用 <code>#标签</code> 搜索特定标签
+          </div>
+          <div class="tip">
+            <Link :size="14" />
+            使用 <code>[[标题]]</code> 搜索双向链接
+          </div>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useNotesStore } from '@/stores/notes'
-import { searchApi } from '@/api/search'
+import { useTagsStore } from '@/stores/tags'
+import { useCategoryStore } from '@/stores/category'
+import { 
+  Search, Home, FileText, Tag, Link, Folder, Clock,
+  ChevronRight, Hash
+} from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
 const notesStore = useNotesStore()
+const tagsStore = useTagsStore()
+const categoryStore = useCategoryStore()
 
 const searchQuery = ref('')
+const filterType = ref<'all' | 'notes' | 'tags'>('all')
+const searchInputRef = ref<HTMLInputElement | null>(null)
 
-onMounted(async () => {
-  searchQuery.value = route.query.q as string
-  if (searchQuery.value) {
-    const response = await searchApi.search(searchQuery.value)
-    notesStore.notes = response.data.items
-  }
+interface SearchResult {
+  id: string
+  type: 'note' | 'tag' | 'link'
+  title: string
+  excerpt?: string
+  category?: string
+  updated_at?: string
+}
+
+const results = computed<SearchResult[]>(() => {
+  if (!searchQuery.value.trim()) return []
+  
+  const query = searchQuery.value.toLowerCase()
+  const results: SearchResult[] = []
+  
+  notesStore.notes.forEach(note => {
+    if (note.title.toLowerCase().includes(query) || 
+        (note.content && note.content.toLowerCase().includes(query))) {
+      const cat = categoryStore.categories.find(c => c.id === note.category_id)
+      results.push({
+        id: note.id,
+        type: 'note',
+        title: note.title,
+        excerpt: getExcerpt(note.content, query),
+        category: cat?.name,
+        updated_at: note.updated_at
+      })
+    }
+  })
+  
+  tagsStore.tags.forEach(tag => {
+    if (tag.name.toLowerCase().includes(query)) {
+      results.push({
+        id: tag.id,
+        type: 'tag',
+        title: tag.name
+      })
+    }
+  })
+  
+  return results
 })
 
-watch(() => route.query.q, async (newQuery) => {
-  if (newQuery) {
-    searchQuery.value = newQuery as string
-    const response = await searchApi.search(searchQuery.value)
-    notesStore.notes = response.data.items
-  }
+const filteredResults = computed(() => {
+  if (filterType.value === 'all') return results.value
+  if (filterType.value === 'notes') return results.value.filter(r => r.type === 'note')
+  if (filterType.value === 'tags') return results.value.filter(r => r.type === 'tag')
+  return results.value
 })
+
+const totalResults = computed(() => results.value.length)
+
+function getExcerpt(content: string | undefined, query: string): string {
+  if (!content) return ''
+  const lowerContent = content.toLowerCase()
+  const index = lowerContent.indexOf(query)
+  if (index === -1) return content.slice(0, 100)
+  
+  const start = Math.max(0, index - 30)
+  const end = Math.min(content.length, index + query.length + 50)
+  return (start > 0 ? '...' : '') + content.slice(start, end) + (end < content.length ? '...' : '')
+}
+
+function highlightText(text: string): string {
+  if (!searchQuery.value) return text
+  const regex = new RegExp(`(${searchQuery.value})`, 'gi')
+  return text.replace(regex, '<mark>$1</mark>')
+}
+
+function formatDate(date: string): string {
+  const d = new Date(date)
+  return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+}
+
+function handleSearch() {
+}
+
+function openResult(result: SearchResult) {
+  if (result.type === 'note') {
+    router.push(`/notes/${result.id}`)
+  } else if (result.type === 'tag') {
+    router.push({ path: '/search', query: { q: `#${result.title}` } })
+  }
+}
 
 function goHome() {
   router.push('/')
 }
 
-function openNote(id: string) {
-  router.push(`/notes/${id}`)
-}
+onMounted(async () => {
+  await Promise.all([
+    notesStore.fetchNotes(),
+    tagsStore.fetchTags(),
+    categoryStore.fetchCategories()
+  ])
+  
+  if (route.query.q) {
+    searchQuery.value = route.query.q as string
+  }
+  
+  searchInputRef.value?.focus()
+  
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      searchQuery.value = ''
+    }
+  })
+})
 
-function getPreview(content: string | null): string {
-  if (!content) return '暂无内容'
-  return content.slice(0, 200) + (content.length > 200 ? '...' : '')
-}
-
-function formatDate(date: string): string {
-  return new Date(date).toLocaleDateString('zh-CN')
-}
+watch(() => route.query.q, (q) => {
+  if (q) {
+    searchQuery.value = q as string
+  }
+})
 </script>
 
 <style scoped lang="scss">
 .search-page {
-  padding: 24px;
   min-height: 100%;
+  background: var(--bg-primary);
 }
 
 .search-header {
-  margin-bottom: 24px;
-  
-  .header-left {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
-  
-  h2 {
-    font-size: 20px;
-    font-weight: 600;
-  }
+  padding: 24px 32px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.header-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
 }
 
 .back-btn {
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  background: rgba(0, 212, 255, 0.1);
-  border: 1px solid rgba(0, 212, 255, 0.2);
-  border-radius: 10px;
-  color: #00d4ff;
-  font-size: 13px;
+  justify-content: center;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.3s;
-  
+  color: var(--text-secondary);
+  transition: all 0.2s;
+
   &:hover {
-    background: rgba(0, 212, 255, 0.2);
-    border-color: rgba(0, 212, 255, 0.4);
-    transform: translateX(-2px);
+    background: var(--bg-active);
+    color: var(--text-primary);
+  }
+}
+
+.page-title {
+  font-size: 24px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-primary);
+  
+  .title-icon {
+    color: var(--tech-blue);
+  }
+}
+
+.search-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  transition: all 0.2s;
+  
+  &:focus-within {
+    border-color: var(--tech-blue);
+    box-shadow: 0 0 0 3px var(--tech-blue-muted);
+  }
+  
+  .search-icon {
+    color: var(--text-muted);
+  }
+  
+  .search-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    font-size: 16px;
+    color: var(--text-primary);
     
-    .back-icon {
-      transform: translateX(-3px);
+    &:focus {
+      outline: none;
+    }
+    
+    &::placeholder {
+      color: var(--text-muted);
     }
   }
   
-  .back-icon {
-    font-size: 16px;
-    transition: transform 0.3s;
-  }
-  
-  .back-text {
-    font-weight: 500;
+  .search-shortcut {
+    padding: 4px 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
   }
 }
 
-.search-results {
+.search-content {
+  padding: 24px 32px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.results-section {
+  .results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  
+  .results-count {
+    font-size: 14px;
+    color: var(--text-muted);
+  }
+}
+
+.filter-tabs {
+  display: flex;
+  gap: 8px;
+  
+  button {
+    padding: 6px 14px;
+    background: var(--bg-hover);
+    border: 1px solid var(--border-subtle);
+    border-radius: 16px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+    
+    &:hover {
+      background: var(--bg-active);
+    }
+    
+    &.active {
+      background: var(--tech-blue-muted);
+      border-color: var(--tech-blue);
+      color: var(--tech-blue);
+    }
+  }
+}
+
+.results-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
 }
 
-.result-card {
-  background: linear-gradient(135deg, rgba(18, 18, 31, 0.9) 0%, rgba(26, 26, 46, 0.9) 100%);
-  border: 1px solid rgba(0, 212, 255, 0.1);
-  border-radius: 16px;
+.result-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
   padding: 20px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.2s;
   
   &:hover {
-    border-color: rgba(0, 212, 255, 0.3);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+    background: var(--bg-hover);
+    border-color: var(--border-default);
+    transform: translateX(4px);
+    
+    .result-arrow {
+      opacity: 1;
+      transform: translateX(4px);
+    }
   }
   
-  h3 {
-    font-size: 18px;
+  .result-icon {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--tech-blue-muted);
+    border-radius: var(--radius-lg);
+    color: var(--tech-blue);
+    flex-shrink: 0;
+  }
+  
+  .result-content {
+    flex: 1;
+    min-width: 0;
+  }
+  
+  .result-title {
+    font-size: 16px;
     font-weight: 600;
-    margin-bottom: 8px;
-    color: #fff;
+    margin-bottom: 6px;
+    color: var(--text-primary);
+    
+    :deep(mark) {
+      background: var(--primary-muted);
+      color: var(--primary-color);
+      padding: 0 2px;
+      border-radius: 2px;
+    }
   }
   
-  .result-preview {
-    color: rgba(255, 255, 255, 0.5);
-    font-size: 14px;
-    line-height: 1.6;
-    margin-bottom: 12px;
+  .result-excerpt {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    line-height: 1.5;
+    
+    :deep(mark) {
+      background: var(--primary-muted);
+      color: var(--primary-color);
+      padding: 0 2px;
+      border-radius: 2px;
+    }
   }
   
   .result-meta {
+    display: flex;
+    gap: 16px;
+  }
+  
+  .meta-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
     font-size: 12px;
-    color: rgba(255, 255, 255, 0.3);
+    color: var(--text-muted);
+  }
+  
+  .result-arrow {
+    color: var(--text-muted);
+    opacity: 0;
+    transition: all 0.2s;
+    margin-top: 12px;
   }
 }
 
-.no-results {
+.empty-results {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px 20px;
+  padding: 60px;
   text-align: center;
   
   .empty-icon {
-    font-size: 48px;
+    color: var(--text-muted);
     margin-bottom: 16px;
     opacity: 0.5;
   }
@@ -192,33 +498,67 @@ function formatDate(date: string): string {
     font-size: 18px;
     font-weight: 600;
     margin-bottom: 8px;
-    color: rgba(255, 255, 255, 0.6);
+    color: var(--text-secondary);
   }
   
   p {
     font-size: 14px;
-    color: rgba(255, 255, 255, 0.3);
-    margin-bottom: 20px;
+    color: var(--text-muted);
   }
 }
 
-.back-home-btn {
+.empty-state {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 12px 24px;
-  background: linear-gradient(135deg, #00d4ff 0%, #7b2cbf 100%);
-  border: none;
-  border-radius: 10px;
-  color: white;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s;
+  justify-content: center;
+  padding: 80px 20px;
+  text-align: center;
   
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(0, 212, 255, 0.3);
+  .empty-icon {
+    color: var(--text-muted);
+    margin-bottom: 24px;
+    opacity: 0.3;
+  }
+  
+  h2 {
+    font-size: 24px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+  }
+  
+  p {
+    font-size: 15px;
+    color: var(--text-muted);
+    margin-bottom: 32px;
+  }
+}
+
+.quick-tips {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  
+  .tip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 20px;
+    background: var(--bg-hover);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    font-size: 13px;
+    color: var(--text-secondary);
+    
+    code {
+      padding: 2px 8px;
+      background: var(--tech-blue-muted);
+      color: var(--tech-blue);
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+    }
   }
 }
 </style>

@@ -58,6 +58,8 @@ async def create_folder(
     db: Session = Depends(get_db)
 ):
     level = 0
+    category_id = folder_data.category_id
+    
     if folder_data.parent_id:
         parent = db.query(Folder).filter(Folder.id == folder_data.parent_id).first()
         if not parent:
@@ -65,9 +67,11 @@ async def create_folder(
         if parent.level >= 3:
             raise HTTPException(status_code=400, detail="最多支持4层文件夹")
         level = parent.level + 1
+        if not category_id and parent.category_id:
+            category_id = parent.category_id
 
-    if folder_data.category_id:
-        category = db.query(Category).filter(Category.id == folder_data.category_id).first()
+    if category_id:
+        category = db.query(Category).filter(Category.id == category_id).first()
         if not category:
             raise HTTPException(status_code=404, detail="分类不存在")
 
@@ -75,7 +79,7 @@ async def create_folder(
         name=folder_data.name,
         parent_id=folder_data.parent_id,
         level=level,
-        category_id=folder_data.category_id
+        category_id=category_id
     )
     db.add(folder)
     db.commit()

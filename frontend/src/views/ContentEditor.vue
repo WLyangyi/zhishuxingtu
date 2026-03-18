@@ -4,7 +4,7 @@
       <div class="editor-header">
         <div class="header-left">
           <button @click="goBack" class="back-btn">
-            <span class="back-icon">←</span>
+            <ArrowLeft :size="16" />
             <span class="back-text">返回</span>
           </button>
           <input 
@@ -20,11 +20,11 @@
         </div>
         <div class="editor-actions">
           <button @click="saveContent" class="btn-save" :disabled="saving">
-            <span class="btn-icon">💾</span>
+            <Save :size="16" />
             {{ saving ? '保存中' : '保存' }}
           </button>
           <button @click="deleteContent" class="btn-delete" v-if="contentId">
-            <span class="btn-icon">🗑️</span>
+            <Trash2 :size="16" />
             删除
           </button>
         </div>
@@ -43,40 +43,42 @@
     
     <div class="editor-sidebar" :class="{ collapsed: !showSidebar }">
       <button @click="showSidebar = !showSidebar" class="toggle-btn">
-        <span v-if="showSidebar">◀</span>
-        <span v-else>▶</span>
+        <ChevronLeft v-if="showSidebar" :size="16" />
+        <ChevronRight v-else :size="16" />
       </button>
       
       <div v-if="showSidebar" class="sidebar-content">
         <div class="sidebar-section">
           <h4 class="section-title">
-            <span class="section-icon">📁</span>
+            <Folder :size="14" />
             分类
           </h4>
           <select v-model="categoryId" class="category-select">
             <option v-for="cat in categoryStore.categories" :key="cat.id" :value="cat.id">
-              {{ cat.icon }} {{ cat.name }}
+              {{ cat.name }}
             </option>
           </select>
         </div>
         
         <div class="sidebar-section">
           <h4 class="section-title">
-            <span class="section-icon">📝</span>
+            <FileText :size="14" />
             内容类型
           </h4>
           <select v-model="typeId" class="type-select">
             <option v-for="type in availableTypes" :key="type.id" :value="type.id">
-              {{ type.icon }} {{ type.name }}
+              {{ type.name }}
             </option>
           </select>
         </div>
         
         <div class="sidebar-section">
           <h4 class="section-title">
-            <span class="section-icon">🏷️</span>
+            <Tag :size="14" />
             标签
-            <button class="add-tag-btn" @click="showNewTagInput = true" title="新建标签">+</button>
+            <button class="add-tag-btn" @click="showNewTagInput = true" title="新建标签">
+              <Plus :size="12" />
+            </button>
           </h4>
           <div class="tag-selector">
             <label 
@@ -123,7 +125,7 @@
         
         <div class="sidebar-section">
           <h4 class="section-title">
-            <span class="section-icon">🔗</span>
+            <Link :size="14" />
             反向链接
             <span class="count-badge" v-if="backlinks.length > 0">{{ backlinks.length }}</span>
           </h4>
@@ -134,7 +136,7 @@
               class="backlink-item"
               @click="openContent(link.id)"
             >
-              <span class="link-icon">→</span>
+              <ArrowRight :size="12" />
               {{ link.title }}
             </div>
           </div>
@@ -154,6 +156,10 @@ import { useCategoryStore } from '@/stores/category'
 import { useTagsStore } from '@/stores/tags'
 import { useNotificationStore } from '@/stores/notification'
 import { contentsApi } from '@/api/categories'
+import { 
+  ArrowLeft, Save, Trash2, Folder, FileText, Tag, Link,
+  Plus, ChevronLeft, ChevronRight, ArrowRight
+} from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
@@ -174,12 +180,12 @@ const showSidebar = ref(true)
 const backlinks = ref<{ id: string; title: string }[]>([])
 const showNewTagInput = ref(false)
 const newTagName = ref('')
-const newTagColor = ref('#00d4ff')
+const newTagColor = ref('#0066FF')
 const newTagInputRef = ref<HTMLInputElement | null>(null)
 
 const tagColors = [
-  '#00d4ff', '#7b2cbf', '#10b981', '#f59e0b', 
-  '#ef4444', '#ec4899', '#8b5cf6', '#06b6d4'
+  '#0066FF', '#f59e0b', '#10b981', '#ef4444', 
+  '#ec4899', '#8b5cf6', '#06b6d4', '#3b82f6'
 ]
 
 const availableTypes = computed(() => {
@@ -312,7 +318,7 @@ async function createNewTag() {
 function cancelNewTag() {
   showNewTagInput.value = false
   newTagName.value = ''
-  newTagColor.value = '#00d4ff'
+  newTagColor.value = '#0066FF'
 }
 
 watch(showNewTagInput, (val) => {
@@ -328,7 +334,7 @@ watch(showNewTagInput, (val) => {
 .content-editor-page {
   display: flex;
   height: calc(100vh - 0px);
-  background: linear-gradient(135deg, #0a0a14 0%, #0d0d1a 100%);
+  background: var(--bg-primary);
 }
 
 .editor-main {
@@ -343,8 +349,8 @@ watch(showNewTagInput, (val) => {
   justify-content: space-between;
   align-items: center;
   padding: 16px 24px;
-  background: rgba(18, 18, 31, 0.8);
-  border-bottom: 1px solid rgba(0, 212, 255, 0.1);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .header-left {
@@ -360,16 +366,17 @@ watch(showNewTagInput, (val) => {
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  background: rgba(0, 212, 255, 0.1);
-  border: 1px solid rgba(0, 212, 255, 0.2);
-  border-radius: 10px;
-  color: #00d4ff;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
   font-size: 13px;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.2s;
   
   &:hover {
-    background: rgba(0, 212, 255, 0.2);
+    background: var(--bg-active);
+    color: var(--text-primary);
   }
 }
 
@@ -379,7 +386,7 @@ watch(showNewTagInput, (val) => {
   font-weight: 600;
   border: none;
   background: transparent;
-  color: #fff;
+  color: var(--text-primary);
   padding: 8px 0;
   
   &:focus {
@@ -387,7 +394,7 @@ watch(showNewTagInput, (val) => {
   }
   
   &::placeholder {
-    color: rgba(255, 255, 255, 0.3);
+    color: var(--text-muted);
   }
 }
 
@@ -396,13 +403,13 @@ watch(showNewTagInput, (val) => {
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-muted);
   
   .status-dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: #00d4ff;
+    background: var(--tech-blue);
     animation: pulse 1s infinite;
   }
 }
@@ -422,27 +429,27 @@ watch(showNewTagInput, (val) => {
   align-items: center;
   gap: 8px;
   padding: 10px 20px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   font-size: 14px;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.2s;
 }
 
 .btn-save {
-  background: linear-gradient(135deg, #00d4ff 0%, #7b2cbf 100%);
+  background: var(--primary-color);
   border: none;
-  color: white;
+  color: #000;
   
   &:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(0, 212, 255, 0.3);
+    background: var(--primary-hover);
+    transform: translateY(-1px);
   }
 }
 
 .btn-delete {
   background: transparent;
   border: 1px solid rgba(239, 68, 68, 0.5);
-  color: #ef4444;
+  color: var(--accent-red);
   
   &:hover {
     background: rgba(239, 68, 68, 0.1);
@@ -466,7 +473,7 @@ watch(showNewTagInput, (val) => {
   padding: 32px;
   border: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--text-primary);
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 15px;
   line-height: 1.9;
@@ -477,14 +484,14 @@ watch(showNewTagInput, (val) => {
   }
   
   &::placeholder {
-    color: rgba(255, 255, 255, 0.25);
+    color: var(--text-muted);
   }
 }
 
 .editor-sidebar {
   width: 280px;
-  background: rgba(18, 18, 31, 0.95);
-  border-left: 1px solid rgba(0, 212, 255, 0.1);
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border-subtle);
   position: relative;
   transition: width 0.3s;
   
@@ -500,15 +507,15 @@ watch(showNewTagInput, (val) => {
   transform: translateY(-50%);
   width: 24px;
   height: 48px;
-  background: rgba(0, 212, 255, 0.1);
+  background: var(--bg-hover);
   border: none;
   border-radius: 0 8px 8px 0;
   cursor: pointer;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-muted);
   
   &:hover {
-    background: rgba(0, 212, 255, 0.2);
-    color: #00d4ff;
+    background: var(--bg-active);
+    color: var(--text-primary);
   }
 }
 
@@ -527,7 +534,7 @@ watch(showNewTagInput, (val) => {
   gap: 8px;
   font-size: 12px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-muted);
   text-transform: uppercase;
   margin-bottom: 12px;
 }
@@ -540,20 +547,20 @@ watch(showNewTagInput, (val) => {
   align-items: center;
   justify-content: center;
   background: transparent;
-  border: 1px solid rgba(0, 212, 255, 0.3);
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
-  color: #00d4ff;
+  color: var(--tech-blue);
   cursor: pointer;
   
   &:hover {
-    background: rgba(0, 212, 255, 0.1);
+    background: var(--tech-blue-muted);
   }
 }
 
 .count-badge {
   margin-left: auto;
-  background: rgba(0, 212, 255, 0.2);
-  color: #00d4ff;
+  background: var(--tech-blue-muted);
+  color: var(--tech-blue);
   padding: 2px 8px;
   border-radius: 10px;
   font-size: 11px;
@@ -562,20 +569,20 @@ watch(showNewTagInput, (val) => {
 .category-select, .type-select {
   width: 100%;
   padding: 10px 14px;
-  border: 1px solid rgba(0, 212, 255, 0.2);
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.2);
-  color: #fff;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-hover);
+  color: var(--text-primary);
   font-size: 14px;
   cursor: pointer;
   
   &:focus {
     outline: none;
-    border-color: #00d4ff;
+    border-color: var(--tech-blue);
   }
   
   option {
-    background: #1a1a2e;
+    background: var(--bg-elevated);
   }
 }
 
@@ -611,23 +618,23 @@ watch(showNewTagInput, (val) => {
   flex-direction: column;
   gap: 10px;
   padding: 12px;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(0, 212, 255, 0.2);
-  border-radius: 10px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   margin-bottom: 8px;
   
   input {
     width: 100%;
     padding: 8px 12px;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(0, 212, 255, 0.3);
+    background: var(--bg-primary);
+    border: 1px solid var(--border-default);
     border-radius: 6px;
-    color: #fff;
+    color: var(--text-primary);
     font-size: 13px;
     
     &:focus {
       outline: none;
-      border-color: #00d4ff;
+      border-color: var(--tech-blue);
     }
   }
 }
@@ -650,8 +657,7 @@ watch(showNewTagInput, (val) => {
   }
   
   &.active {
-    border-color: #fff;
-    box-shadow: 0 0 8px currentColor;
+    border-color: var(--text-primary);
   }
 }
 
@@ -666,22 +672,22 @@ watch(showNewTagInput, (val) => {
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 8px;
+  background: var(--bg-hover);
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text-secondary);
   
   &:hover {
-    background: rgba(0, 212, 255, 0.1);
-    color: #fff;
+    background: var(--bg-active);
+    color: var(--text-primary);
   }
 }
 
 .empty-tip {
   padding: 12px;
   text-align: center;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--text-muted);
   font-size: 13px;
 }
 </style>

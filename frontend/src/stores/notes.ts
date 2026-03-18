@@ -22,18 +22,18 @@ export const useNotesStore = defineStore('notes', () => {
     return map
   })
 
-  async function fetchNotes(params?: { folder_id?: string; tag_id?: string }) {
-    loading.value = true
-    try {
-      const response = await notesApi.list(params)
-      notes.value = response.data.items
-    } catch (error: any) {
-      const notification = useNotificationStore()
-      notification.error('获取笔记列表失败', error.response?.data?.detail || '网络错误，请稍后重试')
-    } finally {
-      loading.value = false
-    }
+  async function fetchNotes(params?: { folder_id?: string; tag_id?: string; category_id?: string }) {
+  loading.value = true
+  try {
+    const response = await notesApi.list(params)
+    notes.value = response.data.items
+  } catch (error: any) {
+    const notification = useNotificationStore()
+    notification.error('获取笔记列表失败', error.response?.data?.detail || '网络错误，请稍后重试')
+  } finally {
+    loading.value = false
   }
+}
 
   async function getNote(id: string) {
     loading.value = true

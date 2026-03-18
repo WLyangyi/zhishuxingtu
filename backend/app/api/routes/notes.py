@@ -37,6 +37,7 @@ def resolve_links(db: Session, content: str) -> list:
 async def list_notes(
     folder_id: Optional[str] = None,
     tag_id: Optional[str] = None,
+    category_id: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
@@ -48,6 +49,10 @@ async def list_notes(
         query = query.filter(Note.folder_id == folder_id)
     if tag_id:
         query = query.join(Note.tags).filter(Tag.id == tag_id)
+    if category_id:
+        from app.models.folder import Folder
+        folder_ids = [f.id for f in db.query(Folder).filter(Folder.category_id == category_id).all()]
+        query = query.filter(Note.folder_id.in_(folder_ids) | Note.folder_id.is_(None))
     
     total = query.count()
     notes = query.order_by(Note.updated_at.desc()).offset((page - 1) * page_size).limit(page_size).all()

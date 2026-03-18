@@ -35,12 +35,7 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: linear-gradient(135deg, #0a0a14 0%, #0d0d1a 50%, #0a0a14 100%);
-  transition: background 0.3s ease;
-}
-
-:global(body.light) .main-layout {
-  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #f8fafc 100%);
+  background: var(--bg-primary);
 }
 
 .main-content {

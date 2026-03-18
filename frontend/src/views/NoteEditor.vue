@@ -4,7 +4,7 @@
       <div class="editor-header">
         <div class="header-left">
           <button @click="goHome" class="back-btn" title="返回主页">
-            <span class="back-icon">←</span>
+            <ArrowLeft :size="16" />
             <span class="back-text">主页</span>
           </button>
           <input 
@@ -19,15 +19,15 @@
           </div>
           <div class="word-stats" v-if="content">
             <span class="stat-item">
-              <span class="stat-icon">📝</span>
+              <FileText :size="14" />
               <span class="stat-value">{{ wordCount }}</span>
               <span class="stat-label">字</span>
             </span>
-            <span class="stat-divider">|</span>
+            <span class="stat-divider"></span>
             <span class="stat-item">
-              <span class="stat-icon">⏱️</span>
+              <Clock :size="14" />
               <span class="stat-value">{{ readTime }}</span>
-              <span class="stat-label">分钟阅读</span>
+              <span class="stat-label">分钟</span>
             </span>
           </div>
         </div>
@@ -39,7 +39,7 @@
               @click="viewMode = 'edit'"
               title="编辑模式"
             >
-              ✏️
+              <Edit3 :size="16" />
             </button>
             <button 
               class="toggle-btn-item" 
@@ -47,7 +47,7 @@
               @click="viewMode = 'preview'"
               title="预览模式"
             >
-              👁️
+              <Eye :size="16" />
             </button>
             <div class="link-hint" :class="{ show: showLinkHint }">
               <div class="hint-header">双向链接语法</div>
@@ -62,15 +62,15 @@
               @mouseleave="showLinkHint = false"
               title="查看语法帮助"
             >
-              ?
+              <HelpCircle :size="14" />
             </button>
           </div>
           <button @click="saveNote" class="btn-save" :disabled="saving">
-            <span class="btn-icon">💾</span>
+            <Save :size="16" />
             {{ saving ? '保存中' : '保存' }}
           </button>
           <button @click="deleteNote" class="btn-delete" v-if="noteId">
-            <span class="btn-icon">🗑️</span>
+            <Trash2 :size="16" />
             删除
           </button>
         </div>
@@ -92,14 +92,14 @@
     
     <div class="editor-sidebar" :class="{ collapsed: !showSidebar }">
       <button @click="showSidebar = !showSidebar" class="toggle-btn">
-        <span v-if="showSidebar">◀</span>
-        <span v-else>▶</span>
+        <ChevronLeft v-if="showSidebar" :size="16" />
+        <ChevronRight v-else :size="16" />
       </button>
       
       <div v-if="showSidebar" class="sidebar-content">
         <div class="sidebar-section">
           <h4 class="section-title">
-            <span class="section-icon">📁</span>
+            <Folder :size="14" class="section-icon" />
             文件夹
           </h4>
           <select v-model="folderId" class="folder-select">
@@ -114,9 +114,11 @@
         
         <div class="sidebar-section">
           <h4 class="section-title">
-            <span class="section-icon">🏷️</span>
+            <Tag :size="14" class="section-icon" />
             标签
-            <button class="add-tag-btn" @click="showNewTagInput = true" title="新建标签">+</button>
+            <button class="add-tag-btn" @click="showNewTagInput = true" title="新建标签">
+              <Plus :size="12" />
+            </button>
           </h4>
           <div class="tag-selector">
             <label 
@@ -129,7 +131,7 @@
               <span 
                 class="tag-label"
                 :style="{ 
-                  backgroundColor: selectedTagIds.includes(tag.id) ? tag.color + '30' : 'transparent',
+                  backgroundColor: selectedTagIds.includes(tag.id) ? tag.color + '20' : 'transparent',
                   borderColor: tag.color,
                   color: tag.color
                 }"
@@ -159,7 +161,7 @@
               </div>
             </div>
             <div v-if="tagsStore.tags.length === 0 && !showNewTagInput" class="empty-tags" @click="showNewTagInput = true">
-              <span class="empty-icon">+</span>
+              <Plus :size="14" />
               点击创建标签
             </div>
           </div>
@@ -167,9 +169,11 @@
         
         <div class="sidebar-section">
           <h4 class="section-title">
-            <span class="section-icon">🔗</span>
+            <Link :size="14" class="section-icon" />
             反向链接
-            <span class="help-icon" title="反向链接是指向当前笔记的其他笔记。点击链接即可跳转到对应笔记。">?</span>
+            <span class="help-icon" title="反向链接是指向当前笔记的其他笔记。点击链接即可跳转到对应笔记。">
+              <HelpCircle :size="12" />
+            </span>
             <span class="count-badge" v-if="backlinks.length > 0">{{ backlinks.length }}</span>
           </h4>
           <div class="backlinks-list" v-if="backlinks.length > 0">
@@ -179,14 +183,13 @@
               class="backlink-item"
               @click="openNote(link.id)"
             >
-              <span class="link-icon">→</span>
+              <ArrowRight :size="14" class="link-icon" />
               {{ link.title }}
             </div>
           </div>
           <div class="empty-tip" v-else>
             <p>暂无反向链接</p>
-            <p class="tip-text">反向链接是指向当前笔记的其他笔记</p>
-            <p class="tip-text">在其他笔记中使用 [[笔记标题]] 链接到当前笔记即可显示在此处</p>
+            <p class="tip-text">在其他笔记中使用 [[笔记标题]] 链接到当前笔记</p>
           </div>
         </div>
       </div>
@@ -203,6 +206,11 @@ import { useFoldersStore } from '@/stores/folders'
 import { useTagsStore } from '@/stores/tags'
 import { useNotificationStore } from '@/stores/notification'
 import type { Backlink } from '@/types'
+import { 
+  ArrowLeft, Edit3, Eye, HelpCircle, Save, Trash2,
+  Folder, Tag, Plus, Link, ArrowRight, FileText, Clock,
+  ChevronLeft, ChevronRight
+} from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
@@ -235,14 +243,14 @@ const showSidebar = ref(true)
 const backlinks = ref<Backlink[]>([])
 const showNewTagInput = ref(false)
 const newTagName = ref('')
-const newTagColor = ref('#00d4ff')
+const newTagColor = ref('#f59e0b')
 const newTagInputRef = ref<HTMLInputElement | null>(null)
 const viewMode = ref<'edit' | 'preview'>('edit')
 const showLinkHint = ref(false)
 
 const tagColors = [
-  '#00d4ff', '#7b2cbf', '#10b981', '#f59e0b', 
-  '#ef4444', '#ec4899', '#8b5cf6', '#06b6d4'
+  '#f59e0b', '#3b82f6', '#10b981', '#ef4444',
+  '#8b5cf6', '#ec4899', '#06b6d4', '#6366f1'
 ]
 
 interface FlatFolder {
@@ -357,7 +365,6 @@ async function saveNote() {
       await notesStore.updateNote(noteId.value, data)
     }
   } catch (error) {
-    // 错误已在 store 中处理
   } finally {
     saving.value = false
   }
@@ -370,7 +377,6 @@ async function deleteNote() {
     await notesStore.deleteNote(noteId.value)
     router.push('/')
   } catch (error) {
-    // 错误已在 store 中处理
   }
 }
 
@@ -402,7 +408,7 @@ async function createNewTag() {
 function cancelNewTag() {
   showNewTagInput.value = false
   newTagName.value = ''
-  newTagColor.value = '#00d4ff'
+  newTagColor.value = '#f59e0b'
 }
 
 watch(showNewTagInput, (val) => {
@@ -418,7 +424,7 @@ watch(showNewTagInput, (val) => {
 .note-editor-page {
   display: flex;
   height: calc(100vh - 0px);
-  background: linear-gradient(135deg, #0a0a14 0%, #0d0d1a 100%);
+  background: var(--bg-primary);
 }
 
 .editor-main {
@@ -432,10 +438,10 @@ watch(showNewTagInput, (val) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
-  background: rgba(18, 18, 31, 0.8);
-  border-bottom: 1px solid rgba(0, 212, 255, 0.1);
-  backdrop-filter: blur(10px);
+  padding: 12px 20px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
 }
 
 .header-left {
@@ -451,27 +457,23 @@ watch(showNewTagInput, (val) => {
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  background: rgba(0, 212, 255, 0.1);
-  border: 1px solid rgba(0, 212, 255, 0.2);
-  border-radius: 10px;
-  color: #00d4ff;
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
   font-size: 13px;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all var(--transition-fast);
   
   &:hover {
-    background: rgba(0, 212, 255, 0.2);
-    border-color: rgba(0, 212, 255, 0.4);
+    background: var(--bg-hover);
+    border-color: var(--border-strong);
+    color: var(--text-primary);
     transform: translateX(-2px);
-    
-    .back-icon {
-      transform: translateX(-3px);
-    }
   }
   
-  .back-icon {
-    font-size: 16px;
-    transition: transform 0.3s;
+  &:active {
+    transform: translateX(0);
   }
   
   .back-text {
@@ -481,11 +483,11 @@ watch(showNewTagInput, (val) => {
 
 .title-input {
   flex: 1;
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 600;
   border: none;
   background: transparent;
-  color: #fff;
+  color: var(--text-primary);
   padding: 8px 0;
   
   &:focus {
@@ -493,7 +495,7 @@ watch(showNewTagInput, (val) => {
   }
   
   &::placeholder {
-    color: rgba(255, 255, 255, 0.3);
+    color: var(--text-muted);
   }
 }
 
@@ -501,14 +503,14 @@ watch(showNewTagInput, (val) => {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  color: var(--text-tertiary);
   
   .status-dot {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
-    background: #00d4ff;
+    background: var(--primary-color);
     animation: pulse 1s infinite;
   }
 }
@@ -518,11 +520,11 @@ watch(showNewTagInput, (val) => {
   align-items: center;
   gap: 12px;
   padding: 6px 12px;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(0, 212, 255, 0.1);
-  border-radius: 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-tertiary);
   
   .stat-item {
     display: flex;
@@ -530,35 +532,19 @@ watch(showNewTagInput, (val) => {
     gap: 4px;
   }
   
-  .stat-icon {
-    font-size: 12px;
-  }
-  
   .stat-value {
     font-weight: 600;
-    color: #00d4ff;
+    color: var(--text-primary);
   }
   
   .stat-label {
-    color: rgba(255, 255, 255, 0.4);
+    color: var(--text-muted);
   }
   
   .stat-divider {
-    color: rgba(255, 255, 255, 0.2);
-  }
-}
-
-:global(body.light) .word-stats {
-  background: rgba(255, 255, 255, 0.6);
-  border-color: rgba(8, 145, 178, 0.2);
-  color: #64748b;
-  
-  .stat-value {
-    color: #0891b2;
-  }
-  
-  .stat-label {
-    color: #94a3b8;
+    width: 1px;
+    height: 12px;
+    background: var(--border-default);
   }
 }
 
@@ -569,80 +555,79 @@ watch(showNewTagInput, (val) => {
 
 .editor-actions {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
 }
 
 .view-toggle {
   display: flex;
   align-items: center;
-  gap: 4px;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 10px;
+  gap: 2px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   padding: 4px;
   position: relative;
 }
 
 .toggle-btn-item {
-  width: 36px;
-  height: 32px;
+  width: 32px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 16px;
-  transition: all 0.2s;
+  color: var(--text-muted);
+  transition: all var(--transition-fast);
   
   &:hover {
-    background: rgba(0, 212, 255, 0.1);
+    color: var(--text-primary);
+    background: var(--bg-hover);
   }
   
   &.active {
-    background: rgba(0, 212, 255, 0.2);
-    box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+    background: var(--bg-active);
+    color: var(--primary-color);
   }
 }
 
 .help-btn {
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
-  border: 1px solid rgba(0, 212, 255, 0.3);
-  border-radius: 50%;
+  border: none;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  color: #00d4ff;
-  font-size: 14px;
-  font-weight: 600;
+  color: var(--text-muted);
   margin-left: 4px;
-  transition: all 0.2s;
+  transition: all var(--transition-fast);
   
   &:hover {
-    background: rgba(0, 212, 255, 0.1);
-    border-color: #00d4ff;
+    background: var(--bg-hover);
+    color: var(--text-primary);
   }
 }
 
 .link-hint {
   position: absolute;
-  top: calc(100% + 12px);
+  top: calc(100% + 8px);
   right: 0;
   width: 260px;
-  background: rgba(18, 18, 31, 0.98);
-  border: 1px solid rgba(0, 212, 255, 0.3);
-  border-radius: 12px;
-  padding: 16px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 14px;
   opacity: 0;
   visibility: hidden;
-  transform: translateY(-8px);
-  transition: all 0.3s;
+  transform: translateY(-4px);
+  transition: all var(--transition-base);
   z-index: 100;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
   
   &.show {
     opacity: 1;
@@ -651,32 +636,33 @@ watch(showNewTagInput, (val) => {
   }
   
   .hint-header {
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
-    color: #00d4ff;
-    margin-bottom: 12px;
+    color: var(--primary-color);
+    margin-bottom: 10px;
     padding-bottom: 8px;
-    border-bottom: 1px solid rgba(0, 212, 255, 0.2);
+    border-bottom: 1px solid var(--border-subtle);
   }
   
   .hint-content {
     font-size: 13px;
-    color: rgba(255, 255, 255, 0.8);
-    line-height: 1.8;
+    color: var(--text-secondary);
+    line-height: 1.7;
     
     code {
-      background: rgba(0, 212, 255, 0.15);
-      padding: 2px 8px;
-      border-radius: 4px;
-      color: #00d4ff;
+      background: var(--primary-muted);
+      padding: 2px 6px;
+      border-radius: var(--radius-sm);
+      color: var(--primary-color);
       font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
     }
   }
   
   .hint-example {
     display: block;
     margin-top: 8px;
-    color: rgba(255, 255, 255, 0.5);
+    color: var(--text-muted);
     font-size: 12px;
   }
 }
@@ -684,27 +670,27 @@ watch(showNewTagInput, (val) => {
 .btn-save, .btn-delete {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  border-radius: 10px;
-  font-size: 14px;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.3s;
-  
-  .btn-icon {
-    font-size: 16px;
-  }
+  transition: all var(--transition-fast);
 }
 
 .btn-save {
-  background: linear-gradient(135deg, #00d4ff 0%, #7b2cbf 100%);
+  background: var(--primary-color);
   border: none;
-  color: white;
+  color: #000;
   
   &:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(0, 212, 255, 0.3);
+    background: var(--primary-hover);
+    transform: translateY(-1px);
+  }
+  
+  &:active:not(:disabled) {
+    transform: translateY(0);
   }
   
   &:disabled {
@@ -715,12 +701,13 @@ watch(showNewTagInput, (val) => {
 
 .btn-delete {
   background: transparent;
-  border: 1px solid rgba(239, 68, 68, 0.5);
-  color: #ef4444;
+  border: 1px solid var(--border-default);
+  color: var(--text-tertiary);
   
   &:hover {
     background: rgba(239, 68, 68, 0.1);
-    border-color: #ef4444;
+    border-color: var(--accent-red);
+    color: var(--accent-red);
   }
 }
 
@@ -739,13 +726,13 @@ watch(showNewTagInput, (val) => {
 
 .editor-textarea {
   flex: 1;
-  padding: 32px;
+  padding: 24px 32px;
   border: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--text-primary);
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  font-size: 15px;
-  line-height: 1.9;
+  font-size: 14px;
+  line-height: 1.8;
   resize: none;
   
   &:focus {
@@ -753,94 +740,95 @@ watch(showNewTagInput, (val) => {
   }
   
   &::placeholder {
-    color: rgba(255, 255, 255, 0.25);
+    color: var(--text-muted);
     line-height: 1.6;
   }
 }
 
 .preview-pane {
-  background: rgba(12, 12, 20, 0.5);
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border-subtle);
 }
 
 .preview-content {
   flex: 1;
-  padding: 24px;
+  padding: 24px 32px;
   overflow-y: auto;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--text-primary);
   line-height: 1.8;
   
   :deep(h1), :deep(h2), :deep(h3) {
-    color: #fff;
-    margin-bottom: 16px;
+    color: var(--text-primary);
+    margin-bottom: 12px;
     margin-top: 24px;
+    font-weight: 600;
     
     &:first-child {
       margin-top: 0;
     }
   }
   
-  :deep(h1) { font-size: 28px; }
+  :deep(h1) { font-size: 26px; }
   :deep(h2) { font-size: 22px; }
   :deep(h3) { font-size: 18px; }
   
   :deep(p) {
-    margin-bottom: 16px;
+    margin-bottom: 14px;
   }
   
   :deep(code) {
-    background: rgba(0, 212, 255, 0.1);
-    padding: 2px 8px;
-    border-radius: 4px;
+    background: var(--primary-muted);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
     font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
-    color: #00d4ff;
+    color: var(--primary-color);
   }
   
   :deep(pre) {
-    background: rgba(0, 0, 0, 0.3);
+    background: var(--bg-tertiary);
     padding: 16px;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     overflow-x: auto;
-    margin-bottom: 16px;
-    border: 1px solid rgba(0, 212, 255, 0.1);
+    margin-bottom: 14px;
+    border: 1px solid var(--border-subtle);
     
     code {
       background: transparent;
       padding: 0;
-      color: rgba(255, 255, 255, 0.85);
+      color: var(--text-primary);
     }
   }
   
   :deep(ul), :deep(ol) {
-    margin-bottom: 16px;
+    margin-bottom: 14px;
     padding-left: 24px;
   }
   
   :deep(li) {
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
   
   :deep(blockquote) {
-    border-left: 3px solid #00d4ff;
+    border-left: 3px solid var(--primary-color);
     padding-left: 16px;
     margin: 16px 0;
-    color: rgba(255, 255, 255, 0.6);
+    color: var(--text-tertiary);
   }
   
   :deep(.internal-link) {
-    color: #00d4ff;
+    color: var(--primary-color);
     cursor: pointer;
     border-bottom: 1px dashed transparent;
-    transition: all 0.2s;
+    transition: all var(--transition-fast);
     
     &:hover {
-      border-bottom-color: #00d4ff;
-      text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+      border-bottom-color: var(--primary-color);
     }
   }
   
   :deep(.broken-link) {
-    color: #ff4757;
+    color: var(--accent-red);
     text-decoration: line-through;
     opacity: 0.7;
   }
@@ -848,13 +836,13 @@ watch(showNewTagInput, (val) => {
 
 .editor-sidebar {
   width: 280px;
-  background: linear-gradient(180deg, rgba(18, 18, 31, 0.95) 0%, rgba(12, 12, 20, 0.95) 100%);
-  border-left: 1px solid rgba(0, 212, 255, 0.1);
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border-subtle);
   position: relative;
-  transition: width 0.3s;
+  transition: width var(--transition-base);
   
   &.collapsed {
-    width: 40px;
+    width: 36px;
   }
 }
 
@@ -865,16 +853,20 @@ watch(showNewTagInput, (val) => {
   transform: translateY(-50%);
   width: 24px;
   height: 48px;
-  background: rgba(0, 212, 255, 0.1);
-  border: none;
-  border-radius: 0 8px 8px 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-left: none;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
   cursor: pointer;
-  color: rgba(255, 255, 255, 0.5);
-  transition: all 0.2s;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
   
   &:hover {
-    background: rgba(0, 212, 255, 0.2);
-    color: #00d4ff;
+    background: var(--bg-hover);
+    color: var(--text-primary);
   }
 }
 
@@ -891,16 +883,16 @@ watch(showNewTagInput, (val) => {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 12px;
 }
 
 .section-icon {
-  font-size: 14px;
+  color: var(--text-tertiary);
 }
 
 .add-tag-btn {
@@ -911,54 +903,55 @@ watch(showNewTagInput, (val) => {
   align-items: center;
   justify-content: center;
   background: transparent;
-  border: 1px solid rgba(0, 212, 255, 0.3);
-  border-radius: 6px;
-  color: #00d4ff;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
   cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s;
+  transition: all var(--transition-fast);
   
   &:hover {
-    background: rgba(0, 212, 255, 0.1);
-    border-color: #00d4ff;
+    background: var(--bg-hover);
+    border-color: var(--primary-color);
+    color: var(--primary-color);
   }
 }
 
 .count-badge {
   margin-left: auto;
-  background: rgba(0, 212, 255, 0.2);
-  color: #00d4ff;
+  background: var(--primary-muted);
+  color: var(--primary-color);
   padding: 2px 8px;
   border-radius: 10px;
   font-size: 11px;
+  font-weight: 500;
 }
 
 .folder-select {
   width: 100%;
-  padding: 10px 14px;
-  border: 1px solid rgba(0, 212, 255, 0.2);
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.2);
-  color: #fff;
-  font-size: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 13px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--transition-fast);
   
   &:hover, &:focus {
-    border-color: rgba(0, 212, 255, 0.4);
+    border-color: var(--border-default);
     outline: none;
   }
   
   option {
-    background: #1a1a2e;
-    color: #fff;
+    background: var(--bg-elevated);
+    color: var(--text-primary);
   }
 }
 
 .tag-selector {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .tag-checkbox {
@@ -970,16 +963,16 @@ watch(showNewTagInput, (val) => {
   
   .tag-label {
     display: block;
-    padding: 6px 12px;
-    border-radius: 16px;
+    padding: 5px 10px;
+    border-radius: var(--radius-lg);
     font-size: 12px;
     font-weight: 500;
     border: 1px solid;
-    transition: all 0.2s;
+    transition: all var(--transition-fast);
   }
   
   &.checked .tag-label {
-    box-shadow: 0 0 10px currentColor;
+    box-shadow: 0 0 0 1px currentColor;
   }
   
   &:hover .tag-label {
@@ -988,57 +981,52 @@ watch(showNewTagInput, (val) => {
 }
 
 .empty-tags {
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--text-muted);
   font-size: 12px;
-  padding: 12px 16px;
+  padding: 12px 14px;
   text-align: center;
-  border: 1px dashed rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--transition-fast);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   
   &:hover {
-    border-color: rgba(0, 212, 255, 0.4);
-    color: rgba(255, 255, 255, 0.6);
-    background: rgba(0, 212, 255, 0.05);
-  }
-  
-  .empty-icon {
-    font-size: 16px;
-    font-weight: 600;
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    background: var(--primary-muted);
   }
 }
 
 .new-tag-input {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   padding: 12px;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(0, 212, 255, 0.2);
-  border-radius: 10px;
-  margin-bottom: 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-bottom: 6px;
   
   input {
     width: 100%;
-    padding: 8px 12px;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(0, 212, 255, 0.3);
-    border-radius: 6px;
-    color: #fff;
+    padding: 8px 10px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
     font-size: 13px;
     
     &:focus {
       outline: none;
-      border-color: #00d4ff;
+      border-color: var(--primary-color);
     }
     
     &::placeholder {
-      color: rgba(255, 255, 255, 0.3);
+      color: var(--text-muted);
     }
   }
   
@@ -1054,7 +1042,7 @@ watch(showNewTagInput, (val) => {
     height: 20px;
     border-radius: 50%;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all var(--transition-fast);
     border: 2px solid transparent;
     
     &:hover {
@@ -1062,8 +1050,7 @@ watch(showNewTagInput, (val) => {
     }
     
     &.active {
-      border-color: #fff;
-      box-shadow: 0 0 8px currentColor;
+      border-color: var(--text-primary);
     }
   }
 }
@@ -1078,19 +1065,12 @@ watch(showNewTagInput, (val) => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
-  margin-left: 6px;
-  font-size: 11px;
-  font-weight: bold;
-  color: rgba(255, 255, 255, 0.5);
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 50%;
+  margin-left: 4px;
+  color: var(--text-muted);
   cursor: help;
   
   &:hover {
-    color: #fff;
-    background: rgba(0, 212, 255, 0.3);
+    color: var(--text-primary);
   }
 }
 
@@ -1099,15 +1079,14 @@ watch(showNewTagInput, (val) => {
   text-align: center;
   
   p {
-    color: rgba(255, 255, 255, 0.6);
-    font-size: 13px;
+    color: var(--text-tertiary);
+    font-size: 12px;
     margin: 0;
   }
   
   .tip-text {
-    color: rgba(255, 255, 255, 0.4);
-    font-size: 12px;
-    margin-top: 6px;
+    color: var(--text-muted);
+    margin-top: 4px;
   }
 }
 
@@ -1115,26 +1094,61 @@ watch(showNewTagInput, (val) => {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.7);
-  transition: all 0.2s;
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
   
   &:hover {
-    background: rgba(0, 212, 255, 0.1);
-    color: #fff;
+    background: var(--bg-hover);
+    color: var(--text-primary);
     
     .link-icon {
-      color: #00d4ff;
+      color: var(--primary-color);
     }
   }
   
   .link-icon {
-    color: rgba(255, 255, 255, 0.3);
-    transition: color 0.2s;
+    color: var(--text-muted);
+    transition: color var(--transition-fast);
+  }
+}
+
+@media (max-width: 900px) {
+  .editor-sidebar {
+    display: none;
+  }
+  
+  .word-stats {
+    display: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .editor-header {
+    padding: 10px 16px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  
+  .header-left {
+    width: 100%;
+  }
+  
+  .editor-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  
+  .editor-textarea {
+    padding: 16px;
+  }
+  
+  .preview-content {
+    padding: 16px;
   }
 }
 </style>
