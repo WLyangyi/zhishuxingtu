@@ -132,6 +132,22 @@
           </div>
         </div>
 
+        <div class="ai-section animate-fade-in-up stagger-4">
+          <div class="section-header">
+            <h2 class="section-title">AI 助手</h2>
+          </div>
+          <div class="ai-card" @click="goToAI">
+            <div class="ai-icon">
+              <Bot :size="24" />
+            </div>
+            <div class="ai-info">
+              <h3 class="ai-title">智能对话</h3>
+              <p class="ai-desc">基于知识库进行智能问答</p>
+            </div>
+            <div class="ai-arrow">→</div>
+          </div>
+        </div>
+
         <div class="quick-actions animate-fade-in-up stagger-5">
           <button class="action-btn" @click="goToSearch">
             <Search :size="18" />
@@ -156,7 +172,7 @@ import { useNotesStore } from '@/stores/notes'
 import { useTagsStore } from '@/stores/tags'
 import { useAuthStore } from '@/stores/auth'
 import { 
-  Search, FileText, Folder, Clock, Zap, Expand,
+  Search, FileText, Folder, Clock, Zap, Expand, Bot,
   User, Briefcase, TrendingUp, BookOpen, Code, Lightbulb
 } from 'lucide-vue-next'
 
@@ -336,6 +352,10 @@ function goToGraph() {
 
 function goToSkills() {
   router.push('/skills')
+}
+
+function goToAI() {
+  router.push('/personal/ai')
 }
 
 function initParticles() {
@@ -1044,6 +1064,70 @@ onUnmounted(() => {
       background: rgba(255, 255, 255, 0.06);
       border-color: rgba(255, 255, 255, 0.1);
       color: var(--text-primary);
+    }
+  }
+}
+
+.ai-section {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-xl);
+  padding: 20px;
+  
+  .ai-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    background: linear-gradient(135deg, rgba(0, 102, 255, 0.1) 0%, rgba(0, 102, 255, 0.05) 100%);
+    border: 1px solid rgba(0, 102, 255, 0.2);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-top: 12px;
+    
+    &:hover {
+      background: linear-gradient(135deg, rgba(0, 102, 255, 0.15) 0%, rgba(0, 102, 255, 0.08) 100%);
+      border-color: rgba(0, 102, 255, 0.4);
+      transform: translateY(-2px);
+      
+      .ai-arrow {
+        transform: translateX(4px);
+      }
+    }
+    
+    .ai-icon {
+      width: 48px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 102, 255, 0.2);
+      border-radius: var(--radius-md);
+      color: var(--tech-blue);
+    }
+    
+    .ai-info {
+      flex: 1;
+      
+      .ai-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0 0 4px;
+      }
+      
+      .ai-desc {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin: 0;
+      }
+    }
+    
+    .ai-arrow {
+      font-size: 18px;
+      color: var(--tech-blue);
+      transition: transform 0.2s;
     }
   }
 }

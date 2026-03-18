@@ -64,6 +64,11 @@ const routes = [
         component: () => import('@/views/GraphView.vue')
       },
       {
+        path: 'personal/ai',
+        name: 'PersonalAI',
+        component: () => import('@/views/AIAssistant.vue')
+      },
+      {
         path: 'work',
         name: 'Work',
         component: () => import('@/views/Home.vue')

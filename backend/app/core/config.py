@@ -13,7 +13,8 @@ class Settings(BaseSettings):
     JWT_EXPIRATION_DAYS: int = 7
     
     OPENAI_API_KEY: str = ""
-    OPENAI_MODEL: str = "gpt-3.5-turbo"
+    OPENAI_BASE_URL: str = "https://api.openai.com/v1"
+    OPENAI_MODEL: str = "qwen-turbo"
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     
     FAISS_INDEX_PATH: str = "./data/faiss_index"
