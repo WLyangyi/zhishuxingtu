@@ -7,6 +7,7 @@ from app.services.vector_store_adapter import VectorStoreAdapter, get_vector_sto
 from app.services.rag_chain import RAGChain, get_rag_chain
 from app.services.prompt_service import PromptService, get_prompt_service, render_prompt_langchain
 from app.services.chat_chain import ChatChain, get_chat_chain
+from app.services.skill_chain import SkillChain, get_skill_chain
 
 embedding_service = EmbeddingService()
 vector_store = None

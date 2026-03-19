@@ -15,6 +15,7 @@ from app.schemas.skill import (
 )
 from app.core.config import settings
 from app.api.routes.prompts import check_sensitive_words, apply_disclaimer
+from app.services.skill_chain import get_skill_chain
 
 router = APIRouter(prefix="/skills", tags=["skills"])
 
@@ -409,6 +410,104 @@ async def delete_skill(
 
 @router.post("/{skill_id}/execute", response_model=SkillExecutionInDB)
 async def execute_skill(
+    skill_id: str,
+    data: SkillExecutionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if settings.USE_LANGCHAIN_SKILL:
+        return await execute_skill_langchain(skill_id, data, db, current_user)
+    return await execute_skill_original(skill_id, data, db, current_user)
+
+
+async def execute_skill_langchain(
+    skill_id: str,
+    data: SkillExecutionCreate,
+    db: Session,
+    current_user: User
+):
+    skill = db.query(Skill).filter(
+        Skill.id == skill_id,
+        Skill.user_id == current_user.id
+    ).first()
+
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill不存在")
+
+    if not skill.is_active:
+        raise HTTPException(status_code=400, detail="Skill未激活")
+
+    execution = SkillExecution(
+        skill_id=skill_id,
+        user_id=current_user.id,
+        input_data=json.dumps(data.input_data) if data.input_data else None,
+        status="running"
+    )
+    db.add(execution)
+    db.commit()
+    db.refresh(execution)
+
+    execution_logic = json.loads(skill.execution_logic)
+    skill_type = execution_logic.get("type", "unknown")
+
+    input_data = data.input_data or {}
+
+    input_str = json.dumps(input_data, ensure_ascii=False)
+    if check_sensitive_words(input_str)[0]:
+        execution.status = "failed"
+        execution.error_message = "输入包含不当内容"
+        db.commit()
+        raise HTTPException(status_code=400, detail="输入包含不当内容，请调整后重试")
+
+    skill_chain = get_skill_chain()
+    output_data = skill_chain.execute(skill_type, input_data)
+    
+    if output_data.get("status") == "success":
+        output_data["result"] = apply_disclaimer(output_data.get("result", ""))
+
+    execution.status = output_data.get("status", "success")
+    execution.output_data = json.dumps(output_data, ensure_ascii=False)
+
+    if skill.output_category_id and skill.output_type_id:
+        content = Content(
+            type_id=skill.output_type_id,
+            category_id=skill.output_category_id,
+            user_id=current_user.id,
+            title=f"[Skill] {skill.name} - {execution.started_at.strftime('%Y-%m-%d %H:%M')}",
+            content=output_data.get("result", json.dumps(output_data, ensure_ascii=False))
+        )
+        db.add(content)
+        db.flush()
+
+        execution.output_content_id = content.id
+
+        tag_ids = json.loads(skill.output_tag_ids) if skill.output_tag_ids else []
+        for tag_id in tag_ids:
+            tag = db.query(Tag).filter(Tag.id == tag_id).first()
+            if tag:
+                content.tags.append(tag)
+
+    from datetime import datetime
+    execution.completed_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(execution)
+
+    return {
+        "id": execution.id,
+        "skill_id": execution.skill_id,
+        "user_id": execution.user_id,
+        "input_data": json.loads(execution.input_data) if execution.input_data else None,
+        "output_data": json.loads(execution.output_data) if execution.output_data else None,
+        "output_content_id": execution.output_content_id,
+        "status": execution.status,
+        "error_message": execution.error_message,
+        "started_at": execution.started_at,
+        "completed_at": execution.completed_at
+    }
+
+
+async def execute_skill_original(
     skill_id: str,
     data: SkillExecutionCreate,
     db: Session = Depends(get_db),
