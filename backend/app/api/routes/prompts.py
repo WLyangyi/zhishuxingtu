@@ -1,6 +1,6 @@
 import json
 import re
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -18,8 +18,26 @@ router = APIRouter(prefix="/prompts", tags=["提示词管理"])
 
 SENSITIVE_WORDS = [
     "暴力", "色情", "赌博", "毒品", "犯罪", "欺诈",
-    " hacking", "hack", "virus", "malware"
+    " hacking", "hack", "virus", "malware",
+    "枪", "刀", "杀", "死", "恐怖", "炸弹", "核",
+    "赌博", "彩票", "赌", "麻将", "扑克",
+    "毒品", "大麻", "海洛因", "可卡因", "冰毒",
+    "诈骗", "钓鱼", "木马", "黑产", "跑分",
+    "色情", "裸", "黄色", "成人", "性感",
+    "分裂", "颠覆", "暴动", "示威", "抗议"
 ]
+
+SENSITIVE_PATTERNS = [
+    r'\b(http|ftp)://[^\s]+\.(xyz|tk|ml|ga|cf|gq)\b',
+    r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+\b',
+    r'eval\s*\(',
+    r'exec\s*\(',
+    r'system\s*\(',
+    r'shell_exec\s*\(',
+]
+
+INPUT_MAX_LENGTH = 2000
+MIN_MESSAGE_INTERVAL = 1
 
 DISCLAIMER = """
 ---
@@ -33,6 +51,39 @@ def check_sensitive_words(text: str) -> tuple[bool, str]:
         if word.lower() in text_lower:
             return True, word
     return False, ""
+
+def check_sensitive_patterns(text: str) -> tuple[bool, str]:
+    for pattern in SENSITIVE_PATTERNS:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return True, match.group()
+    return False, ""
+
+def multi_layer_content_check(text: str) -> Dict[str, Any]:
+    if len(text) > INPUT_MAX_LENGTH:
+        return {
+            "passed": False,
+            "reason": "内容超出最大长度限制",
+            "layer": "length_check"
+        }
+
+    has_sensitive_word, matched_word = check_sensitive_words(text)
+    if has_sensitive_word:
+        return {
+            "passed": False,
+            "reason": f"内容包含敏感词: {matched_word}",
+            "layer": "word_filter"
+        }
+
+    has_sensitive_pattern, matched_pattern = check_sensitive_patterns(text)
+    if has_sensitive_pattern:
+        return {
+            "passed": False,
+            "reason": "内容包含可疑模式",
+            "layer": "pattern_filter"
+        }
+
+    return {"passed": True, "reason": None, "layer": None}
 
 def filter_sensitive_content(text: str) -> str:
     for word in SENSITIVE_WORDS:

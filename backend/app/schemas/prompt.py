@@ -56,6 +56,65 @@ class PromptTemplate(BaseModel):
     user_prompt_template: str
     output_format: str
     variables: List[str]
+    role_config: Optional[dict] = None
+
+class RoleConfig(BaseModel):
+    name: str
+    personality: str
+    speaking_style: str
+    expertise: List[str]
+    temperature: float = 0.7
+    avatar: Optional[str] = None
+
+class OutputSchema(BaseModel):
+    type: str
+    fields: List[dict]
+    strict: bool = True
+
+ROLE_PRESETS = {
+    "知识问答助手": {
+        "name": "知识问答助手",
+        "personality": "友善、专业、乐于助人",
+        "speaking_style": "亲切、专业、简洁",
+        "expertise": ["知识库问答", "笔记整理", "学习建议"],
+        "temperature": 0.7
+    },
+    "技术专家": {
+        "name": "技术专家",
+        "personality": "严谨、精确、逻辑性强",
+        "speaking_style": "技术性强、使用专业术语、注重原理",
+        "expertise": ["编程", "系统设计", "技术方案"],
+        "temperature": 0.3
+    },
+    "创意写作助手": {
+        "name": "创意写作助手",
+        "personality": "富有创意、想象力丰富",
+        "speaking_style": "生动、富有感染力、多样化",
+        "expertise": ["写作", "文案", "创意"],
+        "temperature": 0.9
+    },
+    "学习教练": {
+        "name": "学习教练",
+        "personality": "激励、耐心、循循善诱",
+        "speaking_style": "鼓励性、启发式、耐心",
+        "expertise": ["学习方法", "知识理解", "记忆技巧"],
+        "temperature": 0.8
+    },
+    "翻译助手": {
+        "name": "翻译助手",
+        "personality": "准确、忠实原文",
+        "speaking_style": "准确、通顺、符合目标语言习惯",
+        "expertise": ["翻译", "语言转换", "文化适配"],
+        "temperature": 0.5
+    },
+    "分析顾问": {
+        "name": "分析顾问",
+        "personality": "理性、客观、善于分析",
+        "speaking_style": "条理清晰、数据支撑、逻辑严密",
+        "expertise": ["数据分析", "趋势判断", "决策支持"],
+        "temperature": 0.4
+    }
+}
 
 DEFAULT_PROMPT_TEMPLATES = [
     {
@@ -194,8 +253,14 @@ DEFAULT_PROMPT_TEMPLATES = [
 3. 提取教育背景
 4. 识别关键优势和亮点
 
-## 输出格式
-请按以下JSON格式输出：
+## 强制JSON输出要求
+重要：你必须严格遵循以下规则输出JSON：
+1. 仅输出JSON格式，不要包含任何其他文字说明
+2. JSON必须完全合法，所有字符串必须用双引号
+3. 不要在JSON后添加任何解释性文字
+4. 如果某个字段无值，使用null而非空字符串
+
+JSON格式：
 {
   "name": "姓名",
   "contact": "联系方式",

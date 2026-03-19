@@ -38,10 +38,17 @@
             <p class="header-desc">基于你的知识库进行智能对话</p>
           </div>
         </div>
-        <button class="clear-btn" @click="clearChat" :disabled="messages.length === 0">
-          <Trash2 :size="16" />
-          清空对话
-        </button>
+        <div class="header-actions">
+          <select v-model="selectedRole" class="role-select" @change="onRoleChange">
+            <option v-for="role in roles" :key="role.key" :value="role.key">
+              {{ role.name }}
+            </option>
+          </select>
+          <button class="clear-btn" @click="clearChat" :disabled="messages.length === 0">
+            <Trash2 :size="16" />
+            清空对话
+          </button>
+        </div>
       </div>
 
     <div class="chat-container" ref="chatContainer">
@@ -49,7 +56,7 @@
         <div class="welcome-icon">
           <Sparkles :size="48" />
         </div>
-        <h2>你好！我是 AI 助手</h2>
+        <h2>你好！我是 {{ selectedRole }}</h2>
         <p>我可以帮助你：</p>
         <ul>
           <li>回答关于知识库内容的问题</li>
@@ -57,6 +64,9 @@
           <li>提供学习和知识管理的建议</li>
           <li>进行一般性的对话交流</li>
         </ul>
+        <div class="current-role-info">
+          当前角色：{{ roles.find(r => r.key === selectedRole)?.desc }}
+        </div>
         <div class="quick-actions">
           <button 
             v-for="action in quickActions" 
@@ -172,6 +182,15 @@ const quickActions = [
   { text: '帮我总结一下知识库' },
   { text: '如何更好地管理知识？' }
 ]
+
+const roles = [
+  { key: '知识问答助手', name: '知识问答助手', desc: '友善、专业、乐于助人' },
+  { key: '技术专家', name: '技术专家', desc: '严谨、精确、逻辑性强' },
+  { key: '创意写作助手', name: '创意写作助手', desc: '富有创意、想象力丰富' },
+  { key: '学习教练', name: '学习教练', desc: '激励、耐心、循循善诱' }
+]
+
+const selectedRole = ref('知识问答助手')
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substr(2)
@@ -309,9 +328,17 @@ function clearChat() {
   messages.value = []
 }
 
+function onRoleChange() {
+  localStorage.setItem('ai_role', selectedRole.value)
+}
+
 onMounted(() => {
   inputRef.value?.focus()
   loadChatList()
+  const savedRole = localStorage.getItem('ai_role')
+  if (savedRole) {
+    selectedRole.value = savedRole
+  }
   if (chatList.value.length === 0) {
     createNewChat()
   } else {
@@ -475,6 +502,27 @@ onMounted(() => {
   }
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.role-select {
+  padding: 8px 12px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+
+  &:focus {
+    outline: none;
+    border-color: var(--primary-color);
+  }
+}
+
 .clear-btn {
   display: flex;
   align-items: center;
@@ -556,6 +604,12 @@ onMounted(() => {
         color: var(--primary-color);
       }
     }
+  }
+
+  .current-role-info {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 24px;
   }
 
   .quick-actions {

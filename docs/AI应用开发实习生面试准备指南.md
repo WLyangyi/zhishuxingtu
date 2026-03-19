@@ -66,7 +66,8 @@ AI层：阿里云Embedding(text-embedding-v3) + FAISS + OpenAI GPT
 | 数据库 | SQLite | - | 结构化数据存储 |
 | 向量数据库 | FAISS | IndexFlatIP | 向量相似度检索 |
 | Embedding | 阿里云 text-embedding-v3 | 1024维 | 文本向量化 |
-| LLM | OpenAI GPT | gpt-3.5-turbo | 文本生成 |
+| LLM | 通义千问 qwen-turbo | - | 文本生成 |
+| **AI框架** | **LangChain** | **0.3.x** | **RAG流程编排** |
 
 ---
 

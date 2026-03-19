@@ -9,6 +9,37 @@ from app.services.langchain_embeddings import get_langchain_embeddings
 from app.services.langchain_vectorstore import get_langchain_vectorstore
 from app.core.config import settings
 from datetime import datetime
+import tiktoken
+
+MAX_CONTEXT_MESSAGES = 10
+MAX_CONTEXT_TOKENS = 3000
+
+ROLE_PRESETS = {
+    "知识问答助手": {
+        "personality": "友善、专业、乐于助人",
+        "speaking_style": "亲切、专业、简洁",
+        "expertise": ["知识库问答", "笔记整理", "学习建议"],
+        "temperature": 0.7
+    },
+    "技术专家": {
+        "personality": "严谨、精确、逻辑性强",
+        "speaking_style": "技术性强、使用专业术语、注重原理",
+        "expertise": ["编程", "系统设计", "技术方案"],
+        "temperature": 0.3
+    },
+    "创意写作助手": {
+        "personality": "富有创意、想象力丰富",
+        "speaking_style": "生动、富有感染力、多样化",
+        "expertise": ["写作", "文案", "创意"],
+        "temperature": 0.9
+    },
+    "学习教练": {
+        "personality": "激励、耐心、循循善诱",
+        "speaking_style": "鼓励性、启发式、耐心",
+        "expertise": ["学习方法", "知识理解", "记忆技巧"],
+        "temperature": 0.8
+    }
+}
 
 
 DEFAULT_CHAT_SYSTEM_PROMPT = """你是一个友善、专业的智能知识助手，名为"知枢星图AI助手"。
@@ -47,12 +78,14 @@ DEFAULT_CHAT_USER_PROMPT_NO_CONTEXT = "{question}"
 
 
 class ChatChain:
-    def __init__(self, system_prompt: str = None):
+    def __init__(self, system_prompt: str = None, role_name: str = None):
         self.llm = get_llm_service().client
         self.embeddings = get_langchain_embeddings()
         self.vectorstore = get_langchain_vectorstore()
         self.system_prompt = system_prompt or DEFAULT_CHAT_SYSTEM_PROMPT
+        self.role_name = role_name or "知识问答助手"
         self._histories: Dict[str, InMemoryChatMessageHistory] = {}
+        self._token_counts: Dict[str, Dict[str, int]] = {}
 
     def _get_weekday_cn(self) -> str:
         weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
@@ -82,19 +115,60 @@ class ChatChain:
                 messages.append(AIMessage(content=content))
         return messages
 
+    def _estimate_tokens(self, text: str) -> int:
+        try:
+            encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
+            return len(encoding.encode(text))
+        except:
+            return len(text) // 4
+
+    def _truncate_history_by_tokens(self, messages: List[BaseMessage], max_tokens: int = MAX_CONTEXT_TOKENS) -> List[BaseMessage]:
+        total_tokens = 0
+        truncated = []
+        for msg in reversed(messages):
+            msg_tokens = self._estimate_tokens(msg.content)
+            if total_tokens + msg_tokens <= max_tokens:
+                truncated.insert(0, msg)
+                total_tokens += msg_tokens
+            else:
+                break
+        return truncated
+
+    def _apply_role_config(self, base_prompt: str, role_name: str) -> str:
+        if role_name not in ROLE_PRESETS:
+            return base_prompt
+
+        role = ROLE_PRESETS[role_name]
+        role_section = f"""
+
+## 角色配置
+- 角色名称：{role['name']}
+- 性格特点：{role['personality']}
+- 说话风格：{role['speaking_style']}
+- 专业领域：{', '.join(role['expertise'])}
+- 温度参数：{role['temperature']}
+
+请根据以上角色配置调整你的回答方式和专业程度。"""
+
+        if "## 角色配置" not in base_prompt:
+            return base_prompt + role_section
+        return base_prompt
+
     def invoke(
         self,
         question: str,
         history: Optional[List[Dict]] = None,
         context_docs: Optional[List[Tuple[Any, float]]] = None,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
+        role_name: Optional[str] = None
     ) -> Dict[str, Any]:
         current_date = datetime.now().strftime("%Y年%m月%d日")
         current_weekday = self._get_weekday_cn()
-        
+        effective_role = role_name or self.role_name
+
         context = ""
         source_notes = []
-        
+
         if context_docs:
             docs = []
             for note, score in context_docs:
@@ -109,18 +183,20 @@ class ChatChain:
                 docs.append(doc)
             context = self._format_docs(docs)
             source_notes = [{"id": n.id, "title": n.title} for n, _ in context_docs]
-        
+
         messages = []
-        
+
         system_content = self.system_prompt.format(
             current_date=current_date,
             current_weekday=current_weekday
         )
+        system_content = self._apply_role_config(system_content, effective_role)
         messages.append(SystemMessage(content=system_content))
-        
+
         if history:
             history_messages = self._parse_history_from_json(history)
-            messages.extend(history_messages[-6:])
+            history_messages = self._truncate_history_by_tokens(history_messages, MAX_CONTEXT_TOKENS)
+            messages.extend(history_messages[-MAX_CONTEXT_MESSAGES:])
         
         if context:
             user_content = DEFAULT_CHAT_USER_PROMPT_WITH_CONTEXT.format(

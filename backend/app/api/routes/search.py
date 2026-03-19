@@ -16,7 +16,7 @@ from app.core.config import settings
 from app.services import get_vector_store
 from app.services.embedding_service import embedding_service
 from app.services.vector_store import VectorStoreError
-from app.api.routes.prompts import get_prompt_by_category, render_prompt, check_sensitive_words, filter_sensitive_content, apply_disclaimer, DISCLAIMER, EMPTY_RESULT_RESPONSE
+from app.api.routes.prompts import get_prompt_by_category, render_prompt, check_sensitive_words, filter_sensitive_content, apply_disclaimer, DISCLAIMER, EMPTY_RESULT_RESPONSE, multi_layer_content_check
 from app.services.rag_chain import get_rag_chain
 from app.services.chat_chain import get_chat_chain
 
@@ -145,9 +145,10 @@ async def ai_search_langchain(
     current_user: User,
     db: Session
 ):
-    if check_sensitive_words(question)[0]:
+    check_result = multi_layer_content_check(question)
+    if not check_result["passed"]:
         return Response(data={
-            "answer": "抱歉，您的问题可能包含不当内容，请调整后重试。",
+            "answer": f"抱歉，您的问题无法处理：{check_result['reason']}",
             "context": "",
             "notes": []
         })
@@ -178,9 +179,10 @@ async def ai_search_original(
     current_user: User,
     db: Session
 ):
-    if check_sensitive_words(question)[0]:
+    check_result = multi_layer_content_check(question)
+    if not check_result["passed"]:
         return Response(data={
-            "answer": "抱歉，您的问题可能包含不当内容，请调整后重试。",
+            "answer": f"抱歉，您的问题无法处理：{check_result['reason']}",
             "context": "",
             "notes": []
         })
@@ -287,9 +289,10 @@ async def ai_chat_langchain(
     current_user: User,
     db: Session
 ):
-    if check_sensitive_words(message)[0]:
+    check_result = multi_layer_content_check(message)
+    if not check_result["passed"]:
         return Response(data={
-            "answer": "抱歉，您的消息可能包含不当内容，请调整后重试。",
+            "answer": f"抱歉，您的消息无法处理：{check_result['reason']}",
             "notes": []
         })
 
@@ -323,9 +326,10 @@ async def ai_chat_original(
     current_user: User,
     db: Session
 ):
-    if check_sensitive_words(message)[0]:
+    check_result = multi_layer_content_check(message)
+    if not check_result["passed"]:
         return Response(data={
-            "answer": "抱歉，您的消息可能包含不当内容，请调整后重试。",
+            "answer": f"抱歉，您的消息无法处理：{check_result['reason']}",
             "notes": []
         })
 

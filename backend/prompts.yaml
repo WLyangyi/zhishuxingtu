@@ -226,12 +226,99 @@ prompts:
 
 # 敏感词过滤配置
 sensitive_words:
+  # 基础敏感词
   - "暴力"
   - "色情"
   - "赌博"
   - "毒品"
   - "犯罪"
   - "欺诈"
+  # 暴力相关
+  - "枪"
+  - "刀"
+  - "杀"
+  - "死"
+  - "恐怖"
+  - "炸弹"
+  - "核"
+  # 赌博相关
+  - "彩票"
+  - "赌"
+  - "麻将"
+  - "扑克"
+  # 毒品相关
+  - "大麻"
+  - "海洛因"
+  - "可卡因"
+  - "冰毒"
+  # 安全相关
+  - "诈骗"
+  - "钓鱼"
+  - "木马"
+  - "黑产"
+  - "跑分"
+  # 其他
+  - "色情"
+  - "裸"
+  - "黄色"
+  - "成人"
+  - "性感"
+  - "分裂"
+  - "颠覆"
+  - "暴动"
+  - "示威"
+  - "抗议"
+
+# 可疑模式检测（正则）
+sensitive_patterns:
+  - '\b(http|ftp)://[^\s]+\.(xyz|tk|ml|ga|cf|gq)\b'
+  - '\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+\b'
+  - 'eval\s*\('
+  - 'exec\s*\('
+  - 'system\s*\('
+  - 'shell_exec\s*\('
+
+# 输入限制
+input_max_length: 2000
+min_message_interval: 1
+
+# 角色预设配置
+role_presets:
+  - name: "知识问答助手"
+    personality: "友善、专业、乐于助人"
+    speaking_style: "亲切、专业、简洁"
+    expertise: ["知识库问答", "笔记整理", "学习建议"]
+    temperature: 0.7
+  - name: "技术专家"
+    personality: "严谨、精确、逻辑性强"
+    speaking_style: "技术性强、使用专业术语、注重原理"
+    expertise: ["编程", "系统设计", "技术方案"]
+    temperature: 0.3
+  - name: "创意写作助手"
+    personality: "富有创意、想象力丰富"
+    speaking_style: "生动、富有感染力、多样化"
+    expertise: ["写作", "文案", "创意"]
+    temperature: 0.9
+  - name: "学习教练"
+    personality: "激励、耐心、循循善诱"
+    speaking_style: "鼓励性、启发式、耐心"
+    expertise: ["学习方法", "知识理解", "记忆技巧"]
+    temperature: 0.8
+  - name: "翻译助手"
+    personality: "准确、忠实原文"
+    speaking_style: "准确、通顺、符合目标语言习惯"
+    expertise: ["翻译", "语言转换", "文化适配"]
+    temperature: 0.5
+  - name: "分析顾问"
+    personality: "理性、客观、善于分析"
+    speaking_style: "条理清晰、数据支撑、逻辑严密"
+    expertise: ["数据分析", "趋势判断", "决策支持"]
+    temperature: 0.4
+
+# 上下文窗口配置
+context_window:
+  max_messages: 10
+  max_tokens: 3000
 
 # 免责声明模板
 disclaimer: |
