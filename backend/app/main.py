@@ -1,16 +1,31 @@
 import sys
 sys.path.insert(0, r"C:\Users\流离\AppData\Roaming\Python\Python313\Lib\site-packages")
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api.routes import auth_router, notes_router, folders_router, tags_router, search_router, graph_router, categories_router, contents_router, skills_router
+from app.api.routes import auth_router, notes_router, folders_router, tags_router, search_router, graph_router, categories_router, contents_router, skills_router, prompts_router
 from app.db.session import init_db
+from app.services import init_vector_store, get_vector_store
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_db()
+    faiss_path = settings.FAISS_INDEX_PATH
+    init_vector_store(faiss_path)
+    print(f"Vector store initialized at {faiss_path}")
+    yield
+    vector_store = get_vector_store()
+    if vector_store:
+        vector_store.save()
+        print("Vector store saved")
 
 app = FastAPI(
     title=settings.APP_NAME,
     description="个人知识库系统 API",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 app.add_middleware(
@@ -30,10 +45,7 @@ app.include_router(graph_router, prefix="/api")
 app.include_router(categories_router, prefix="/api")
 app.include_router(contents_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")
-
-@app.on_event("startup")
-async def startup():
-    await init_db()
+app.include_router(prompts_router, prefix="/api")
 
 @app.get("/")
 async def root():

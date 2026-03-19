@@ -47,8 +47,7 @@ def init_test_data(force: bool = False):
         if not user:
             user = User(
                 username="admin",
-                email="admin@example.com",
-                hashed_password=get_password_hash("admin123")
+                password_hash=get_password_hash("admin123")
             )
             db.add(user)
             db.commit()

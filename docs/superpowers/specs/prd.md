@@ -5,7 +5,7 @@
 | 项目 | 内容 |
 |------|------|
 | 产品名称 | 知枢星图 |
-| 版本 | v1.4.1 |
+| 版本 | v1.5.3 |
 | 文档状态 | 已确认 |
 | 创建日期 | 2026-03-17 |
 | 最后更新 | 2026-03-19 |
@@ -136,16 +136,25 @@
 | 每日资讯 Skill | 定时汇总资讯并归档 | P2 |
 | 简历管理 Skill | 简历解析、面试题生成等 | P2 |
 
-#### V4 功能（暂缓）
+#### V3.1 功能（提示词工程）✅ 新增
 
 | 功能模块 | 功能描述 | 优先级 |
 |---------|---------|--------|
-| 语义搜索 | 基于向量的语义搜索 | P1 |
-| 数据导入导出 | Markdown/JSON 格式导入导出 | P1 |
-| 批量导入 | 批量导入现有知识库 | P1 |
-| 网页内容提取 | 自动提取网页正文 | P1 |
-| 视频字幕分析 | 提取视频字幕进行内容分析 | P1 |
-| 浏览器插件 | 一键保存网页内容 | P2 |
+| 提示词管理 | 提示词的 CRUD 操作，支持系统预设和用户自定义 | P1 |
+| 敏感词过滤 | 自动检测并过滤输入内容中的敏感词 | P1 |
+| 免责声明 | AI 回复自动追加免责声明 | P1 |
+| 提示词模板 | 系统预设 6 个常用提示词模板 | P1 |
+
+#### V4 功能（部分完成）
+
+| 功能模块 | 功能描述 | 优先级 | 状态 |
+|---------|---------|--------|------|
+| 语义搜索 | 基于向量的语义搜索 | P1 | ✅ 已完成 |
+| 数据导入导出 | Markdown/JSON 格式导入导出 | P1 | ⏳ 待实现 |
+| 批量导入 | 批量导入现有知识库 | P1 | ⏳ 待实现 |
+| 网页内容提取 | 自动提取网页正文 | P1 | ⏳ 待实现 |
+| 视频字幕分析 | 提取视频字幕进行内容分析 | P1 | ⏳ 待实现 |
+| 浏览器插件 | 一键保存网页内容 | P2 | ⏳ 待实现 |
 
 ### 2.2 用户故事
 
@@ -400,9 +409,11 @@
 ### 4.9 AI 集成模块
 
 **FR-AI-001：向量化**
-- 使用 sentence-transformers 模型
+- 使用阿里云通义千问 text-embedding-v3 API
+- 云端服务，无需下载模型
 - 笔记创建/更新时自动生成向量
 - 存储到 FAISS 向量索引
+- 向量维度：1024（支持长文本 up to 8192 tokens）
 
 **FR-AI-002：RAG 检索**
 - 用户问题向量化
@@ -414,6 +425,13 @@
 - 支持配置第三方 LLM API
 - 支持配置 API Key
 - 支持选择模型（GPT-4、Claude 等）
+
+**FR-AI-004：向量语义搜索** ✅ 已实现
+- 支持单条向量搜索：GET /api/search/vector?q=xxx
+- 支持批量向量搜索：POST /api/search/vector/batch
+- 支持查询向量服务状态：GET /api/search/vector/status
+- 支持重建向量索引：POST /api/search/vector/rebuild
+- 优雅降级：模型不可用时自动回退到关键词搜索
 
 ### 4.10 内容分类体系（V2）
 
@@ -469,6 +487,38 @@
 - Skill 执行结果自动存入指定分类
 - 支持设置输出内容的标签和链接
 
+### 4.12 提示词工程模块 (V3.1) ✅ 新增
+
+**FR-PROMPT-001：提示词管理**
+- 支持提示词的 CRUD 操作
+- 提示词分为系统预设和用户自定义两类
+- 系统预设提示词不可修改/删除
+- 用户可创建自定义提示词覆盖系统预设
+
+**FR-PROMPT-002：提示词数据结构**
+- 名称、描述、分类（ai_chat/ai_search/skill/custom）
+- 系统提示词（支持变量替换 `{variable_name}`）
+- 用户提示词模板（可选）
+- 输出格式说明
+- 启用/禁用状态
+
+**FR-PROMPT-003：敏感词过滤**
+- 自动检测输入内容中的敏感词
+- 支持的敏感词类别：暴力、色情、赌博、毒品、犯罪、欺诈
+- 检测到敏感词时拒绝处理并提示用户
+
+**FR-PROMPT-004：免责声明**
+- AI 回复自动追加免责声明
+- 免责声明内容：「以上内容仅供参考，不构成任何专业意见。如有医疗、法律、金融等领域的具体问题，请咨询相关专业人士。」
+
+**FR-PROMPT-005：预设提示词模板**
+- 知识问答（ai_chat）：基于知识库的智能问答助手
+- AI搜索问答（ai_search）：用于全局搜索的 AI 问答提示词
+- 对话总结（skill）：总结对话内容并归档
+- 每日资讯（skill）：定时汇总资讯并归档
+- 简历解析（skill）：解析简历内容，提取关键信息
+- 知识卡片（skill）：自动生成知识点卡片
+
 ---
 
 ## 5. 非功能需求
@@ -494,10 +544,17 @@
 - 数据库文件存储在本地
 - 敏感配置通过环境变量管理
 - API Key 不记录在日志中
+- **前后端分离架构**：API Key 存储在后端，通过环境变量加载，前端不接触任何 API Key
 
 **SEC-003：输入验证**
 - 所有用户输入进行验证和清理
 - 防止 SQL 注入和 XSS 攻击
+
+**SEC-004：API Key 安全配置**
+- API Key 存储在后端 `.env` 文件中
+- `.env` 文件已加入 `.gitignore`，不会提交到 Git 仓库
+- 前端通过调用后端 API 使用 AI 功能，不直接调用第三方服务
+- 生产环境建议使用系统环境变量替代 `.env` 文件
 
 ### 5.3 可用性要求
 
@@ -722,6 +779,27 @@ CREATE TABLE skill_executions (
 );
 ```
 
+**prompts 表（提示词模板）：** ✅ 新增
+```sql
+CREATE TABLE prompts (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36),                          -- 用户ID，NULL表示系统预设
+    name VARCHAR(100) NOT NULL,                    -- 提示词名称
+    description TEXT,                              -- 描述
+    category VARCHAR(50) NOT NULL,                 -- 分类：ai_chat/ai_search/skill/custom
+    system_prompt TEXT NOT NULL,                  -- 系统提示词（支持变量替换）
+    user_prompt_template TEXT,                     -- 用户提示词模板
+    output_format TEXT,                            -- 输出格式说明
+    variables TEXT DEFAULT '[]',                   -- 变量列表 JSON
+    is_system BOOLEAN DEFAULT FALSE,               -- 是否系统预设
+    is_active BOOLEAN DEFAULT TRUE,                -- 是否启用
+    is_default BOOLEAN DEFAULT FALSE,              -- 是否默认
+    priority VARCHAR(20) DEFAULT 'normal',         -- 优先级
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
 ### 6.4 扩展实体关系图
 
 ```
@@ -802,6 +880,17 @@ GET    /api/graph/global        # 全局图谱数据
 GET    /api/graph/local/:id     # 局部图谱数据
 ```
 
+**提示词 API：** ✅ 新增
+```
+GET    /api/prompts             # 获取提示词列表
+POST   /api/prompts             # 创建提示词
+GET    /api/prompts/:id         # 获取提示词详情
+PUT    /api/prompts/:id         # 更新提示词
+DELETE /api/prompts/:id         # 删除提示词
+GET    /api/prompts/templates   # 获取提示词模板
+POST   /api/prompts/initialize  # 初始化默认提示词
+```
+
 ### 7.2 API 响应格式
 
 **成功响应：**
@@ -847,8 +936,8 @@ GET    /api/graph/local/:id     # 局部图谱数据
 - SQLAlchemy 2.x（ORM）
 - SQLite 3.x（数据库）
 - FAISS（向量索引）
+- 通义千问 text-embedding-v3（文本向量化）
 - LangChain（RAG 流程）
-- sentence-transformers（文本向量化）
 - python-jose（JWT 认证）
 
 ### 8.2 项目结构
@@ -1163,6 +1252,7 @@ V1 MVP          V2 分类升级       V3 Skill         V4 扩展
 | Skill | 可执行的智能模块，类似 AI Agent 技能包 |
 | 内容分类 | 知识内容的顶层分类（个人/工作/素材等） |
 | 内容类型 | 分类下的具体内容类型（笔记/日记/简历等） |
+| 提示词工程 | Prompt Engineering，优化 AI 模型输入以获得更好输出的实践 |
 
 ### 13.2 参考资源
 
@@ -1181,3 +1271,7 @@ V1 MVP          V2 分类升级       V3 Skill         V4 扩展
 | v1.0.0 | 2026-03-17 | 产品团队 | 初始版本，MVP 需求定义 |
 | v1.1.0 | 2026-03-18 | 产品团队 | 增加升级版愿景：内容分类体系 + Skill 智能模块 |
 | v1.4.1 | 2026-03-19 | 产品团队 | 更新 AI 问答功能：支持多轮对话和历史记录保存 |
+| v1.5.0 | 2026-03-19 | 产品团队 | 向量语义搜索功能完成，V4 部分功能实现 |
+| v1.5.1 | 2026-03-19 | 产品团队 | API Key 安全配置说明添加 |
+| v1.5.2 | 2026-03-19 | 产品团队 | 向量模型从 MiniLM 升级为通义千问 text-embedding-v3 |
+| v1.5.3 | 2026-03-19 | 产品团队 | 提示词工程完善：提示词管理、敏感词过滤、免责声明、6个预设模板 |

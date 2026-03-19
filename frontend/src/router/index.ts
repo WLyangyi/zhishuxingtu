@@ -89,6 +89,11 @@ const routes = [
         component: () => import('@/views/SkillsView.vue')
       },
       {
+        path: 'prompts',
+        name: 'Prompts',
+        component: () => import('@/views/PromptsView.vue')
+      },
+      {
         path: 'search',
         name: 'Search',
         component: () => import('@/views/SearchResults.vue')

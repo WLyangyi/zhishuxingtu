@@ -9,6 +9,8 @@ from app.models.tag import Tag
 from app.models.user import User
 from app.schemas import Response, NoteCreate, NoteUpdate, NoteResponse, NoteListResponse, BacklinkResponse
 from app.api.deps import get_current_user
+from app.services import get_vector_store
+from app.services.embedding_service import embedding_service
 
 router = APIRouter(prefix="/notes", tags=["笔记"])
 
@@ -114,6 +116,15 @@ async def create_note(
     db.commit()
     db.refresh(note)
     
+    vector_store = get_vector_store()
+    if vector_store and embedding_service.available and note.content:
+        try:
+            text = embedding_service.prepare_note_text(note.title, note.content)
+            vector = embedding_service.embed_text(text)
+            vector_store.add_vector(note.id, vector)
+        except Exception as e:
+            print(f"Failed to add vector for note {note.id}: {e}")
+    
     note_dict = {
         "id": note.id,
         "title": note.title,
@@ -176,6 +187,15 @@ async def update_note(
     db.commit()
     db.refresh(note)
     
+    vector_store = get_vector_store()
+    if vector_store and embedding_service.available and note.content:
+        try:
+            text = embedding_service.prepare_note_text(note.title, note.content)
+            vector = embedding_service.embed_text(text)
+            vector_store.update_vector(note.id, vector)
+        except Exception as e:
+            print(f"Failed to update vector for note {note.id}: {e}")
+    
     note_tags = [{"id": t.id, "name": t.name, "color": t.color} for t in note.tags]
     note_dict = {
         "id": note.id,
@@ -198,6 +218,13 @@ async def delete_note(
     note = db.query(Note).filter(Note.id == note_id).first()
     if not note:
         raise HTTPException(status_code=404, detail="笔记不存在")
+    
+    vector_store = get_vector_store()
+    if vector_store:
+        try:
+            vector_store.remove_vector(note_id)
+        except Exception as e:
+            print(f"Failed to remove vector for note {note_id}: {e}")
     
     db.delete(note)
     db.commit()
