@@ -1,8 +1,11 @@
 from app.services.embedding_service import EmbeddingService
 from app.services.vector_store import VectorStore
+from app.services.llm_service import DashScopeLLM, get_llm_service
+from app.services.langchain_embeddings import LangChainEmbeddings, get_langchain_embeddings
 
 embedding_service = EmbeddingService()
 vector_store = None
+llm_service = None
 
 def init_vector_store(index_path: str):
     global vector_store

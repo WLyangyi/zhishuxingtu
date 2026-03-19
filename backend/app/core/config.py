@@ -42,7 +42,14 @@ class Settings(BaseSettings):
     HF_CACHE_DIR: str = "C:/temp/huggingface_cache"
     
     FAISS_INDEX_PATH: str = get_faiss_path()
-    
+
+    USE_LANGCHAIN_EMBEDDINGS: bool = False
+    USE_LANGCHAIN_VECTORSTORE: bool = False
+    USE_LANGCHAIN_PROMPT: bool = False
+    USE_LANGCHAIN_RAG: bool = False
+    USE_LANGCHAIN_CHAT: bool = False
+    USE_LANGCHAIN_SKILL: bool = False
+
     class Config:
         env_file = ".env"
         case_sensitive = True
