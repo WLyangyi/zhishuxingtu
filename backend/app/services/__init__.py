@@ -5,6 +5,7 @@ from app.services.langchain_embeddings import LangChainEmbeddings, get_langchain
 from app.services.langchain_vectorstore import LangChainVectorStore, get_langchain_vectorstore
 from app.services.vector_store_adapter import VectorStoreAdapter, get_vector_store_adapter
 from app.services.rag_chain import RAGChain, get_rag_chain
+from app.services.prompt_service import PromptService, get_prompt_service, render_prompt_langchain
 
 embedding_service = EmbeddingService()
 vector_store = None

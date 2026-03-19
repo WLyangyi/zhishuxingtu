@@ -12,6 +12,7 @@ from app.schemas.prompt import (
     PromptCreate, PromptUpdate, PromptInDB, PromptListResponse, PromptTemplate, DEFAULT_PROMPT_TEMPLATES
 )
 from app.schemas.response import Response
+from app.core.config import settings
 
 router = APIRouter(prefix="/prompts", tags=["提示词管理"])
 
@@ -272,6 +273,12 @@ def get_prompt_by_category(category: str, user_id: str, db: Session) -> Optional
     return prompt
 
 def render_prompt(prompt: Prompt, **kwargs) -> tuple[str, str]:
+    if settings.USE_LANGCHAIN_PROMPT:
+        return render_prompt_langchain_impl(prompt, **kwargs)
+    return render_prompt_original(prompt, **kwargs)
+
+
+def render_prompt_original(prompt: Prompt, **kwargs) -> tuple[str, str]:
     system_prompt = prompt.system_prompt
     user_prompt = prompt.user_prompt_template
 
@@ -281,6 +288,17 @@ def render_prompt(prompt: Prompt, **kwargs) -> tuple[str, str]:
         user_prompt = user_prompt.replace(placeholder, str(value))
 
     return system_prompt, user_prompt
+
+
+def render_prompt_langchain_impl(prompt: Prompt, **kwargs) -> tuple[str, str]:
+    from app.services.prompt_service import get_prompt_service
+    
+    service = get_prompt_service()
+    return service.render(
+        prompt.system_prompt,
+        prompt.user_prompt_template,
+        **kwargs
+    )
 
 def prompt_to_dict(prompt: Prompt) -> dict:
     variables = []
