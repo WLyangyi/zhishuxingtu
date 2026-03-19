@@ -18,6 +18,7 @@ from app.services.embedding_service import embedding_service
 from app.services.vector_store import VectorStoreError
 from app.api.routes.prompts import get_prompt_by_category, render_prompt, check_sensitive_words, filter_sensitive_content, apply_disclaimer, DISCLAIMER, EMPTY_RESULT_RESPONSE
 from app.services.rag_chain import get_rag_chain
+from app.services.chat_chain import get_chat_chain
 
 
 def vector_search_notes(query: str, db: Session, k: int = 5, threshold: float = 0.3) -> List[tuple]:
@@ -274,6 +275,53 @@ async def ai_chat(
     history: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
+):
+    if settings.USE_LANGCHAIN_CHAT:
+        return await ai_chat_langchain(message, history, current_user, db)
+    return await ai_chat_original(message, history, current_user, db)
+
+
+async def ai_chat_langchain(
+    message: str,
+    history: Optional[str],
+    current_user: User,
+    db: Session
+):
+    if check_sensitive_words(message)[0]:
+        return Response(data={
+            "answer": "抱歉，您的消息可能包含不当内容，请调整后重试。",
+            "notes": []
+        })
+
+    vector_results = vector_search_notes(message, db, k=3, threshold=0.3)
+
+    history_list = None
+    if history:
+        try:
+            history_list = json.loads(history)
+        except:
+            pass
+
+    chat_chain = get_chat_chain()
+    result = chat_chain.invoke(
+        question=message,
+        history=history_list,
+        context_docs=vector_results
+    )
+    
+    answer = apply_disclaimer(result["answer"])
+
+    return Response(data={
+        "answer": answer,
+        "notes": result["source_documents"]
+    })
+
+
+async def ai_chat_original(
+    message: str,
+    history: Optional[str],
+    current_user: User,
+    db: Session
 ):
     if check_sensitive_words(message)[0]:
         return Response(data={

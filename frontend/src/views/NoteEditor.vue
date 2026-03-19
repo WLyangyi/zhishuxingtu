@@ -3,9 +3,12 @@
     <div class="editor-main">
       <div class="editor-header">
         <div class="header-left">
-          <button @click="goHome" class="back-btn" title="返回主页">
+          <button @click="goBack" class="back-btn" title="返回上一页">
             <ArrowLeft :size="16" />
-            <span class="back-text">主页</span>
+            <span class="back-text">返回</span>
+          </button>
+          <button @click="goHome" class="home-btn" title="返回主页">
+            <Home :size="16" />
           </button>
           <input 
             v-model="title"
@@ -206,10 +209,10 @@ import { useFoldersStore } from '@/stores/folders'
 import { useTagsStore } from '@/stores/tags'
 import { useNotificationStore } from '@/stores/notification'
 import type { Backlink } from '@/types'
-import { 
+import {
   ArrowLeft, Edit3, Eye, HelpCircle, Save, Trash2,
   Folder, Tag, Plus, Link, ArrowRight, FileText, Clock,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, Home
 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -384,6 +387,10 @@ function openNote(id: string) {
   router.push(`/notes/${id}`)
 }
 
+function goBack() {
+  router.back()
+}
+
 function goHome() {
   router.push('/')
 }
@@ -464,20 +471,45 @@ watch(showNewTagInput, (val) => {
   font-size: 13px;
   cursor: pointer;
   transition: all var(--transition-fast);
-  
+
   &:hover {
     background: var(--bg-hover);
     border-color: var(--border-strong);
     color: var(--text-primary);
     transform: translateX(-2px);
   }
-  
+
   &:active {
     transform: translateX(0);
   }
-  
+
   .back-text {
     font-weight: 500;
+  }
+}
+
+.home-btn {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+
+  &:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-strong);
+    color: var(--text-primary);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
   }
 }
 

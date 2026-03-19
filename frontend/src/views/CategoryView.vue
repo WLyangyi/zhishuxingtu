@@ -329,23 +329,37 @@ const currentLevelFolders = computed(() => {
 
 const currentLevelNotes = computed(() => {
   if (!selectedCategoryId.value) return []
-  
+
+  const categoryFolderIds = allFoldersFlat.value
+    .filter(f => f.category_id === selectedCategoryId.value)
+    .map(f => f.id)
+
+  const allCategoryHasNoFolders = categoryStore.categories.every(
+    cat => !allFoldersFlat.value.some(f => f.category_id === cat.id)
+  )
+
   let notes = notesStore.notes
-  
+
   if (currentFolderId.value) {
     notes = notes.filter(n => n.folder_id === currentFolderId.value)
   } else {
-    notes = notes.filter(n => !n.folder_id)
+    if (categoryFolderIds.length > 0) {
+      notes = notes.filter(n => categoryFolderIds.includes(n.folder_id || ''))
+    } else if (allCategoryHasNoFolders) {
+      notes = notes.filter(n => !n.folder_id)
+    } else {
+      notes = []
+    }
   }
-  
+
   if (searchKeyword.value) {
     const keyword = searchKeyword.value.toLowerCase()
-    notes = notes.filter(n => 
-      n.title.toLowerCase().includes(keyword) || 
+    notes = notes.filter(n =>
+      n.title.toLowerCase().includes(keyword) ||
       (n.content && n.content.toLowerCase().includes(keyword))
     )
   }
-  
+
   return notes
 })
 
