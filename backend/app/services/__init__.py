@@ -2,6 +2,8 @@ from app.services.embedding_service import EmbeddingService
 from app.services.vector_store import VectorStore
 from app.services.llm_service import DashScopeLLM, get_llm_service
 from app.services.langchain_embeddings import LangChainEmbeddings, get_langchain_embeddings
+from app.services.langchain_vectorstore import LangChainVectorStore, get_langchain_vectorstore
+from app.services.vector_store_adapter import VectorStoreAdapter, get_vector_store_adapter
 
 embedding_service = EmbeddingService()
 vector_store = None
