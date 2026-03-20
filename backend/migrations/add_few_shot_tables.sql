@@ -63,6 +63,28 @@ CREATE TABLE IF NOT EXISTS ab_test_results (
     FOREIGN KEY (version_id) REFERENCES prompt_versions(id)
 );
 
+-- 提示词评估表
+CREATE TABLE IF NOT EXISTS prompt_evaluations (
+    id VARCHAR(36) PRIMARY KEY,
+    prompt_version_id VARCHAR(36),
+    session_id VARCHAR(36),
+    question TEXT NOT NULL,
+    response TEXT NOT NULL,
+    context TEXT,
+    relevance_score REAL,
+    accuracy_score REAL,
+    completeness_score REAL,
+    clarity_score REAL,
+    overall_score REAL,
+    response_time_ms VARCHAR(20),
+    token_count VARCHAR(20),
+    cost_usd REAL DEFAULT 0.0,
+    user_rating VARCHAR(10),
+    user_feedback TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (prompt_version_id) REFERENCES prompt_versions(id)
+);
+
 -- 创建索引
 CREATE INDEX IF NOT EXISTS idx_few_shot_scenario ON few_shot_examples(scenario);
 CREATE INDEX IF NOT EXISTS idx_few_shot_prompt ON few_shot_examples(prompt_id);
@@ -70,3 +92,5 @@ CREATE INDEX IF NOT EXISTS idx_prompt_versions_prompt ON prompt_versions(prompt_
 CREATE INDEX IF NOT EXISTS idx_ab_experiments_prompt ON ab_experiments(prompt_id);
 CREATE INDEX IF NOT EXISTS idx_ab_experiments_status ON ab_experiments(status);
 CREATE INDEX IF NOT EXISTS idx_ab_test_results_experiment ON ab_test_results(experiment_id);
+CREATE INDEX IF NOT EXISTS idx_prompt_evaluations_version ON prompt_evaluations(prompt_version_id);
+CREATE INDEX IF NOT EXISTS idx_prompt_evaluations_score ON prompt_evaluations(overall_score);

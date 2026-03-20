@@ -69,3 +69,30 @@ class ABTestResult(Base):
     
     experiment = relationship("ABExperiment", back_populates="results")
     version = relationship("PromptVersion")
+
+class PromptEvaluation(Base):
+    __tablename__ = "prompt_evaluations"
+    
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    prompt_version_id = Column(String(36), ForeignKey("prompt_versions.id"), nullable=True)
+    session_id = Column(String(36))
+    question = Column(Text, nullable=False)
+    response = Column(Text, nullable=False)
+    context = Column(Text)
+    
+    relevance_score = Column(Float)
+    accuracy_score = Column(Float)
+    completeness_score = Column(Float)
+    clarity_score = Column(Float)
+    overall_score = Column(Float)
+    
+    response_time_ms = Column(String(20))
+    token_count = Column(String(20))
+    cost_usd = Column(Float, default=0.0)
+    
+    user_rating = Column(String(10))
+    user_feedback = Column(Text)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    version = relationship("PromptVersion")
