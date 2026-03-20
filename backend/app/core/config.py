@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     CHAT_MEMORY_TOP_K: int = 5
     CHAT_MEMORY_MIN_SCORE: float = 0.3
 
+    USE_RERANKER: bool = True
+    RERANKER_TOP_K: int = 5
+    RERANKER_CANDIDATES: int = 15
+
     class Config:
         env_file = ".env"
         case_sensitive = True

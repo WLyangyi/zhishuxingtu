@@ -44,6 +44,12 @@
               {{ role.name }}
             </option>
           </select>
+          <select v-model="selectedCotType" class="cot-select" title="思维链模板">
+            <option :value="null">不使用思维链</option>
+            <option v-for="t in COT_TEMPLATES" :key="t.type" :value="t.type">
+              {{ t.name }}
+            </option>
+          </select>
           <button class="clear-btn" @click="clearChat" :disabled="messages.length === 0">
             <Trash2 :size="16" />
             清空对话
@@ -152,6 +158,7 @@
 import { ref, nextTick, onMounted, watch } from 'vue'
 import { searchApi } from '@/api/search'
 import { Bot, User, Send, Sparkles, FileText, Trash2, Plus, MessageSquare, X } from 'lucide-vue-next'
+import { COT_TEMPLATES } from '@/types/promptLab'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -176,6 +183,7 @@ const chatContainer = ref<HTMLElement | null>(null)
 const inputRef = ref<HTMLTextAreaElement | null>(null)
 const chatList = ref<ChatHistory[]>([])
 const currentChatId = ref<string>('')
+const selectedCotType = ref<string | null>(null)
 
 const quickActions = [
   { text: '我有哪些笔记？' },
@@ -268,6 +276,10 @@ watch(messages, () => {
   updateCurrentChat()
 }, { deep: true })
 
+watch(selectedCotType, () => {
+  localStorage.setItem('ai_cot_type', selectedCotType.value || 'null')
+})
+
 function formatMessage(content: string): string {
   return content
     .replace(/\n/g, '<br>')
@@ -338,6 +350,10 @@ onMounted(() => {
   const savedRole = localStorage.getItem('ai_role')
   if (savedRole) {
     selectedRole.value = savedRole
+  }
+  const savedCot = localStorage.getItem('ai_cot_type')
+  if (savedCot) {
+    selectedCotType.value = savedCot === 'null' ? null : savedCot
   }
   if (chatList.value.length === 0) {
     createNewChat()
@@ -524,6 +540,32 @@ onMounted(() => {
 
   option {
     background: var(--bg-primary);
+    color: var(--text-primary);
+    padding: 8px;
+  }
+}
+
+.cot-select {
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--border-default);
+    color: var(--text-primary);
+  }
+
+  &:focus {
+    outline: none;
+    border-color: var(--primary-color);
+  }
+
+  option {
+    background: var(--bg-elevated);
     color: var(--text-primary);
     padding: 8px;
   }

@@ -19,9 +19,29 @@ from app.services.vector_store import VectorStoreError
 from app.api.routes.prompts import get_prompt_by_category, render_prompt, check_sensitive_words, filter_sensitive_content, apply_disclaimer, DISCLAIMER, EMPTY_RESULT_RESPONSE, multi_layer_content_check
 from app.services.rag_chain import get_rag_chain
 from app.services.chat_chain import get_chat_chain
+from app.services.reranker_service import get_reranker
 
 
-def vector_search_notes(query: str, db: Session, k: int = 5, threshold: float = 0.3) -> List[tuple]:
+def vector_search_notes(
+    query: str, 
+    db: Session, 
+    k: int = 5, 
+    threshold: float = 0.3,
+    use_reranker: bool = True
+) -> List[tuple]:
+    """
+    向量搜索笔记，可选使用 Reranker 重排序
+    
+    Args:
+        query: 搜索查询
+        db: 数据库会话
+        k: 返回结果数量
+        threshold: 相似度阈值
+        use_reranker: 是否使用 Reranker 重排序
+    
+    Returns:
+        笔记列表，格式为 [(Note对象, score), ...]
+    """
     if not embedding_service.available:
         return []
 
@@ -31,15 +51,38 @@ def vector_search_notes(query: str, db: Session, k: int = 5, threshold: float = 
 
     try:
         query_vector = embedding_service.embed_text(query)
-        results = vector_store.search(query_vector, k=k, threshold=threshold)
+        
+        if use_reranker and settings.USE_RERANKER:
+            candidates_k = settings.RERANKER_CANDIDATES
+            results = vector_store.search(query_vector, k=candidates_k, threshold=threshold)
+            
+            notes = []
+            for note_id, score in results:
+                note = db.query(Note).filter(Note.id == note_id).first()
+                if note:
+                    notes.append((note, score))
+            
+            if notes:
+                reranker = get_reranker()
+                if reranker.available:
+                    reranked_notes = reranker.rerank_with_notes(
+                        query, 
+                        notes, 
+                        top_k=k
+                    )
+                    return reranked_notes
+            
+            return notes[:k]
+        else:
+            results = vector_store.search(query_vector, k=k, threshold=threshold)
 
-        notes = []
-        for note_id, score in results:
-            note = db.query(Note).filter(Note.id == note_id).first()
-            if note:
-                notes.append((note, score))
+            notes = []
+            for note_id, score in results:
+                note = db.query(Note).filter(Note.id == note_id).first()
+                if note:
+                    notes.append((note, score))
 
-        return notes
+            return notes
     except VectorStoreError as e:
         print(f"Vector search error: {e}")
         return []
@@ -661,3 +704,101 @@ async def rebuild_vector_index(
             message=f"重建索引失败: {str(e)}",
             data={}
         )
+
+
+@router.get("/reranker/test")
+async def test_reranker(
+    q: str = Query(..., min_length=1, description="搜索查询文本"),
+    k: int = Query(5, ge=1, le=20, description="返回结果数量"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    测试 Reranker 效果，对比重排序前后的结果差异
+    
+    返回：
+    - before: 重排序前的结果（按向量相似度排序）
+    - after: 重排序后的结果（按 Reranker 分数排序）
+    - reranker_available: Reranker 服务是否可用
+    """
+    reranker = get_reranker()
+    
+    if not embedding_service.available:
+        return Response(
+            code=503,
+            message="向量搜索服务不可用",
+            data={"before": [], "after": [], "reranker_available": False}
+        )
+    
+    vector_store = get_vector_store()
+    if not vector_store or vector_store.total_vectors == 0:
+        return Response(
+            data={
+                "before": [],
+                "after": [],
+                "reranker_available": reranker.available,
+                "message": "向量索引为空"
+            }
+        )
+    
+    try:
+        candidates_k = max(k * 3, 15)
+        before_results = vector_search_notes(q, db, k=candidates_k, threshold=0.2, use_reranker=False)
+        
+        before_data = []
+        for i, (note, score) in enumerate(before_results[:k]):
+            before_data.append({
+                "rank": i + 1,
+                "id": note.id,
+                "title": note.title,
+                "score": round(score, 4),
+                "content_preview": note.content[:100] + "..." if note.content and len(note.content) > 100 else note.content
+            })
+        
+        after_data = []
+        if reranker.available and before_results:
+            reranked = reranker.rerank_with_notes(q, before_results, top_k=k)
+            
+            for i, (note, score) in enumerate(reranked):
+                after_data.append({
+                    "rank": i + 1,
+                    "id": note.id,
+                    "title": note.title,
+                    "rerank_score": round(score, 4),
+                    "content_preview": note.content[:100] + "..." if note.content and len(note.content) > 100 else note.content
+                })
+        
+        return Response(data={
+            "query": q,
+            "before": before_data,
+            "after": after_data,
+            "reranker_available": reranker.available,
+            "use_reranker": settings.USE_RERANKER,
+            "candidates_count": len(before_results)
+        })
+        
+    except Exception as e:
+        return Response(
+            code=500,
+            message=f"测试失败: {str(e)}",
+            data={"before": [], "after": [], "reranker_available": reranker.available}
+        )
+
+
+@router.get("/reranker/status")
+async def reranker_status(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    获取 Reranker 服务状态
+    """
+    reranker = get_reranker()
+    
+    return Response(data={
+        "available": reranker.available,
+        "model": reranker.model if reranker.available else None,
+        "use_reranker": settings.USE_RERANKER,
+        "top_k": settings.RERANKER_TOP_K,
+        "candidates": settings.RERANKER_CANDIDATES,
+        "api_configured": bool(settings.DASHSCOPE_API_KEY)
+    })

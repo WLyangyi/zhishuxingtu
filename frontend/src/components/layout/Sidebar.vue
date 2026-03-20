@@ -144,6 +144,14 @@
           <Bot :size="16" />
           <span>AI 助手</span>
         </div>
+        <div
+          class="tool-item"
+          :class="{ active: isCurrentRoute('/prompt-lab') }"
+          @click="goToPromptLab"
+        >
+          <FlaskConical :size="16" />
+          <span>提示词实验室</span>
+        </div>
       </div>
     </div>
 
@@ -335,7 +343,7 @@ import { useNotesStore } from '@/stores/notes'
 import { useCategoryStore } from '@/stores/category'
 import { useNotificationStore } from '@/stores/notification'
 import type { FolderTree, Tag } from '@/types'
-import { FileText, Folder, Plus, Edit2, FolderPlus, Trash2, User, Briefcase, TrendingUp, Search, GitBranch, Bot } from 'lucide-vue-next'
+import { FileText, Folder, Plus, Edit2, FolderPlus, Trash2, User, Briefcase, TrendingUp, Search, GitBranch, Bot, FlaskConical } from 'lucide-vue-next'
 
 const router = useRouter()
 const foldersStore = useFoldersStore()
@@ -579,6 +587,10 @@ function goToSearch() {
 
 function goToAI() {
   router.push('/personal/ai')
+}
+
+function goToPromptLab() {
+  router.push('/prompt-lab')
 }
 
 function isCurrentRoute(path: string): boolean {
