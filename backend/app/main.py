@@ -6,6 +6,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.routes import auth_router, notes_router, folders_router, tags_router, search_router, graph_router, categories_router, contents_router, skills_router, prompts_router
+from app.api.routes.few_shot import router as few_shot_router
+from app.api.routes.ab_test import router as ab_test_router
 from app.db.session import init_db
 from app.services import init_vector_store, get_vector_store
 
@@ -46,6 +48,8 @@ app.include_router(categories_router, prefix="/api")
 app.include_router(contents_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")
 app.include_router(prompts_router, prefix="/api")
+app.include_router(few_shot_router, prefix="/api/prompts/few-shot", tags=["few-shot"])
+app.include_router(ab_test_router, prefix="/api/ab-experiments", tags=["ab-test"])
 
 @app.get("/")
 async def root():

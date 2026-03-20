@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from sqlalchemy import Column, String, Boolean, Text, DateTime
+from sqlalchemy.orm import relationship
 from app.db.base import Base
 
 class Prompt(Base):
@@ -21,6 +22,10 @@ class Prompt(Base):
     priority = Column(String(20), default="normal")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    few_shot_examples = relationship("FewShotExample", back_populates="prompt")
+    versions = relationship("PromptVersion", back_populates="prompt")
+    experiments = relationship("ABExperiment", back_populates="prompt")
 
     @property
     def variables_list(self):
