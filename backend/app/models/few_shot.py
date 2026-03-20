@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Boolean, Text, DateTime, Float, ForeignKey
+from sqlalchemy import Column, String, Boolean, Text, DateTime, Float, ForeignKey, Integer
 from sqlalchemy.orm import relationship
 from app.db.base import Base
 
@@ -69,6 +69,47 @@ class ABTestResult(Base):
     
     experiment = relationship("ABExperiment", back_populates="results")
     version = relationship("PromptVersion")
+
+class PromptChain(Base):
+    __tablename__ = "prompt_chains"
+    
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String(200), nullable=False)
+    description = Column(Text)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    steps = relationship("ChainStep", back_populates="chain", order_by="ChainStep.step_order")
+    executions = relationship("ChainExecution", back_populates="chain")
+
+class ChainStep(Base):
+    __tablename__ = "chain_steps"
+    
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    chain_id = Column(String(36), ForeignKey("prompt_chains.id"), nullable=False)
+    step_order = Column(Integer, nullable=False)
+    step_name = Column(String(100), nullable=False)
+    prompt_template = Column(Text, nullable=False)
+    input_mapping = Column(Text)
+    output_mapping = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    chain = relationship("PromptChain", back_populates="steps")
+
+class ChainExecution(Base):
+    __tablename__ = "chain_executions"
+    
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    chain_id = Column(String(36), ForeignKey("prompt_chains.id"), nullable=False)
+    session_id = Column(String(36))
+    input_data = Column(Text)
+    output_data = Column(Text)
+    status = Column(String(20), default="pending")
+    error_message = Column(Text)
+    started_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime)
+    
+    chain = relationship("PromptChain", back_populates="executions")
 
 class PromptEvaluation(Base):
     __tablename__ = "prompt_evaluations"

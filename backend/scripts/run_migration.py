@@ -27,7 +27,7 @@ def run_migration():
         conn.commit()
         print("数据库迁移成功！")
         
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('few_shot_examples', 'prompt_versions', 'ab_experiments', 'ab_test_results')")
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('few_shot_examples', 'prompt_versions', 'ab_experiments', 'ab_test_results', 'prompt_evaluations', 'prompt_chains', 'chain_steps', 'chain_executions')")
         tables = cursor.fetchall()
         print(f"创建的表: {[t[0] for t in tables]}")
         

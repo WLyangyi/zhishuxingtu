@@ -94,3 +94,45 @@ CREATE INDEX IF NOT EXISTS idx_ab_experiments_status ON ab_experiments(status);
 CREATE INDEX IF NOT EXISTS idx_ab_test_results_experiment ON ab_test_results(experiment_id);
 CREATE INDEX IF NOT EXISTS idx_prompt_evaluations_version ON prompt_evaluations(prompt_version_id);
 CREATE INDEX IF NOT EXISTS idx_prompt_evaluations_score ON prompt_evaluations(overall_score);
+
+-- 提示词链表
+CREATE TABLE IF NOT EXISTS prompt_chains (
+    id VARCHAR(36) PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    description TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 链步骤表
+CREATE TABLE IF NOT EXISTS chain_steps (
+    id VARCHAR(36) PRIMARY KEY,
+    chain_id VARCHAR(36) NOT NULL,
+    step_order INTEGER NOT NULL,
+    step_name VARCHAR(100) NOT NULL,
+    prompt_template TEXT NOT NULL,
+    input_mapping TEXT,
+    output_mapping TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (chain_id) REFERENCES prompt_chains(id)
+);
+
+-- 链执行记录表
+CREATE TABLE IF NOT EXISTS chain_executions (
+    id VARCHAR(36) PRIMARY KEY,
+    chain_id VARCHAR(36) NOT NULL,
+    session_id VARCHAR(36),
+    input_data TEXT,
+    output_data TEXT,
+    status VARCHAR(20) DEFAULT 'pending',
+    error_message TEXT,
+    started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    completed_at DATETIME,
+    FOREIGN KEY (chain_id) REFERENCES prompt_chains(id)
+);
+
+-- 创建链相关索引
+CREATE INDEX IF NOT EXISTS idx_prompt_chains_active ON prompt_chains(is_active);
+CREATE INDEX IF NOT EXISTS idx_chain_steps_chain ON chain_steps(chain_id);
+CREATE INDEX IF NOT EXISTS idx_chain_executions_chain ON chain_executions(chain_id);
+CREATE INDEX IF NOT EXISTS idx_chain_executions_status ON chain_executions(status);

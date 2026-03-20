@@ -112,3 +112,61 @@ class ABExperimentStats(BaseModel):
     version_b_avg_feedback: Optional[float]
     version_a_avg_response_time: Optional[float]
     version_b_avg_response_time: Optional[float]
+
+class ChainStepBase(BaseModel):
+    step_order: int
+    step_name: str
+    prompt_template: str
+    input_mapping: Optional[str] = None
+    output_mapping: Optional[str] = None
+
+class ChainStepCreate(ChainStepBase):
+    pass
+
+class ChainStepInDB(ChainStepBase):
+    id: str
+    chain_id: str
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class PromptChainBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+class PromptChainCreate(PromptChainBase):
+    steps: Optional[List[ChainStepCreate]] = None
+
+class PromptChainUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class PromptChainInDB(PromptChainBase):
+    id: str
+    is_active: bool
+    created_at: datetime
+    steps: Optional[List[ChainStepInDB]] = None
+    
+    class Config:
+        from_attributes = True
+
+class ChainExecutionBase(BaseModel):
+    chain_id: str
+    session_id: Optional[str] = None
+    input_data: Optional[str] = None
+
+class ChainExecutionCreate(ChainExecutionBase):
+    pass
+
+class ChainExecutionInDB(ChainExecutionBase):
+    id: str
+    output_data: Optional[str]
+    status: str
+    error_message: Optional[str]
+    started_at: datetime
+    completed_at: Optional[datetime]
+    
+    class Config:
+        from_attributes = True

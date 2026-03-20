@@ -9,6 +9,7 @@ from app.api.routes import auth_router, notes_router, folders_router, tags_route
 from app.api.routes.few_shot import router as few_shot_router
 from app.api.routes.ab_test import router as ab_test_router
 from app.api.routes.prompt_eval import router as prompt_eval_router
+from app.api.routes.prompt_chain import router as prompt_chain_router
 from app.db.session import init_db
 from app.services import init_vector_store, get_vector_store
 
@@ -52,6 +53,7 @@ app.include_router(prompts_router, prefix="/api")
 app.include_router(few_shot_router, prefix="/api/prompts/few-shot", tags=["few-shot"])
 app.include_router(ab_test_router, prefix="/api/ab-experiments", tags=["ab-test"])
 app.include_router(prompt_eval_router, prefix="/api/prompt-evaluations", tags=["prompt-eval"])
+app.include_router(prompt_chain_router, prefix="/api/prompt-chains", tags=["prompt-chain"])
 
 @app.get("/")
 async def root():
