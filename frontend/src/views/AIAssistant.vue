@@ -301,7 +301,7 @@ async function sendMessage() {
       content: m.content
     }))
 
-    const response = await searchApi.aiChat(message, history)
+    const response = await searchApi.aiChat(message, history, currentChatId.value)
     
     messages.value.push({
       role: 'assistant',

@@ -275,17 +275,19 @@ async def ai_search_original(
 async def ai_chat(
     message: str,
     history: Optional[str] = None,
+    session_id: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     if settings.USE_LANGCHAIN_CHAT:
-        return await ai_chat_langchain(message, history, current_user, db)
+        return await ai_chat_langchain(message, history, session_id, current_user, db)
     return await ai_chat_original(message, history, current_user, db)
 
 
 async def ai_chat_langchain(
     message: str,
     history: Optional[str],
+    session_id: Optional[str],
     current_user: User,
     db: Session
 ):
@@ -309,7 +311,8 @@ async def ai_chat_langchain(
     result = chat_chain.invoke(
         question=message,
         history=history_list,
-        context_docs=vector_results
+        context_docs=vector_results,
+        session_id=session_id or current_user.id
     )
     
     answer = apply_disclaimer(result["answer"])

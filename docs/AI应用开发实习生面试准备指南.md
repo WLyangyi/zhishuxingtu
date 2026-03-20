@@ -37,18 +37,19 @@
 【技术架构】
 前端：Vue3 + TypeScript + Vite + TailwindCSS
 后端：FastAPI + SQLAlchemy + SQLite
-AI层：阿里云Embedding(text-embedding-v3) + FAISS + OpenAI GPT
+AI层：阿里云Embedding(text-embedding-v3) + FAISS + 通义千问 + LangChain
 
 【核心功能】
 1. 笔记管理：创建、编辑、分类、标签、双向链接
 2. 知识图谱：可视化笔记之间的关联关系
 3. AI问答：基于用户知识库的智能问答（RAG模式）
 4. 语义搜索：向量检索 + 关键词检索混合模式
+5. Skill模块：对话总结、简历解析等智能任务
 
 【我的职责】
 - 独立完成从0到1的开发，包括架构设计、前后端实现、AI集成
 - 实现RAG核心流程：笔记向量化 → FAISS索引 → 语义检索 → Prompt构建 → LLM生成
-- 优化检索质量：向量检索与关键词检索结合，提高召回率
+- 完成LangChain框架集成，实现渐进式迁移架构
 - 设计对话历史管理，支持多轮对话上下文
 ```
 
@@ -262,6 +263,36 @@ async def ai_search(
 >
 > 我项目限制max_tokens=1000，大约能生成750个中文字。Token影响API计费和响应速度。
 
+**Q: 你项目里 LangChain 是怎么用的？**
+
+> 我用 LangChain 重构了整个 AI 流程，主要用到这些组件：
+>
+> **Embeddings 层**：用 LangChain 的 Embeddings 接口封装阿里云的 text-embedding-v3，统一了 `embed_query()` 和 `embed_documents()` 方法。
+>
+> **VectorStore 层**：用 LangChain 的 FAISS 集成，支持 `add_texts()` 添加向量和 `similarity_search_with_score()` 检索。
+>
+> **Chain 层**：核心是 RAGChain 和 ChatChain：
+> - RAGChain 用 `ChatPromptTemplate` 构建提示词，`StrOutputParser` 解析输出
+> - ChatChain 用 `MessagesPlaceholder` 管理多轮对话历史
+>
+> **渐进式迁移**：我设计了功能开关（USE_LANGCHAIN_*），可以随时切换新旧实现，降低迁移风险。
+
+**Q: LangChain 的 Chain 是什么？你用了哪些？**
+
+> Chain 是 LangChain 的核心概念，把多个组件串联起来完成一个任务。
+>
+> 我项目中用了：
+> - **RAGChain**：检索 → 构建Prompt → 调用LLM → 返回答案
+> - **ChatChain**：处理多轮对话，管理历史消息
+> - **SkillChain**：执行特定任务，如对话总结、简历解析
+>
+> 核心代码模式是：
+> ```python
+> chain = prompt | llm | output_parser
+> result = chain.invoke({"question": question, "context": context})
+> ```
+> 这是 LangChain 的 LCEL（表达式语言），像管道一样组合组件。
+
 ---
 
 ### 4.3 项目细节类
@@ -382,25 +413,81 @@ Prompt工程这些AI应用开发的核心概念有实际项目经验。
 
 ## 六、技术深度加分项
 
-### 6.1 了解但不一定要深入的概念
+### 6.1 LangChain 框架应用 ✅ 项目已集成
+
+**面试官问："项目里的 LangChain 用到哪里了？"**
+
+> 我在项目中完成了 LangChain 框架的全面集成，主要用在以下几个方面：
+>
+> **1. Embeddings 封装（langchain_embeddings.py）**
+> - 使用 LangChain 的 Embeddings 接口封装阿里云通义千问 text-embedding-v3
+> - 统一了 `embed_query()` 和 `embed_documents()` 接口
+> - 好处：可以无缝切换不同的 Embedding 模型
+>
+> **2. VectorStore 封装（langchain_vectorstore.py）**
+> - 使用 LangChain 的 FAISS 集成，支持 `add_texts()` 和 `similarity_search()`
+> - 自动处理向量归一化和索引持久化
+> - 好处：符合 LangChain 生态，可以和其他组件无缝配合
+>
+> **3. RAG 问答链（rag_chain.py）**
+> - 使用 `ChatPromptTemplate` 构建提示词模板
+> - 使用 `StrOutputParser` 解析 LLM 输出
+> - 实现 `invoke()` 方法，一键完成：检索 → 构建Prompt → 调用LLM → 返回答案
+>
+> **4. 多轮对话链（chat_chain.py）**
+> - 使用 `InMemoryChatMessageHistory` 管理对话历史
+> - 使用 `MessagesPlaceholder` 动态插入历史消息
+> - 支持 Token 截断，避免超出上下文窗口
+>
+> **5. Skill 执行链（skill_chain.py）**
+> - 预定义 4 种 Skill 模板：对话总结、每日资讯、简历解析、知识卡片
+> - 使用 LLMChain 模式执行特定任务
+>
+> **6. 渐进式迁移设计**
+> - 通过环境变量 `USE_LANGCHAIN_*` 控制新旧实现切换
+> - 保留原有实现，降低迁移风险
+> - 这是工程实践中的重要能力：渐进式重构
+
+**面试官问："为什么选择 LangChain？有什么好处？"**
+
+> 选择 LangChain 主要有几个原因：
+>
+> 1. **标准化接口**：Embeddings、VectorStore、LLM 都有统一接口，换模型只需改配置
+> 2. **组件复用**：PromptTemplate、OutputParser、Memory 等组件开箱即用
+> 3. **生态丰富**：可以快速集成新的模型和工具
+> 4. **社区活跃**：问题容易找到解决方案
+>
+> 比如我之前用的是手工封装的 Embedding 服务，换成 LangChain 后，如果以后想用 OpenAI 的 Embedding，只需要改一行配置。
+
+**面试官问："LangChain 有什么缺点？"**
+
+> 我在实际使用中也发现了一些问题：
+>
+> 1. **抽象层开销**：多一层封装，调试时需要追踪更多代码
+> 2. **版本迭代快**：API 变化频繁，需要锁定版本号
+> 3. **文档分散**：有时候需要看源码才能理解用法
+>
+> 所以我的做法是：核心流程用 LangChain，但保留原有实现作为兜底，通过功能开关可以随时回退。
+
+### 6.2 其他了解的概念
 
 | 概念 | 一句话理解 | 面试提到时的效果 |
 |------|-----------|----------------|
 | **Agent** | 有工具调用能力，能执行多步任务 | "我知道Agent比RAG更进一步，能主动调用工具" |
 | **Function Calling** | 让LLM调用外部函数 | "可以让AI查天气、查数据库" |
-| **LangChain** | AI应用开发框架 | "我知道这个框架，但MVP阶段优先简单实现" |
 | **流式输出(SSE)** | 边生成边返回 | "可以提升用户体验，是后续优化方向" |
 | **Reranker** | 对检索结果重新排序 | "可以提高检索精度，是进阶优化方向" |
+| **LCEL** | LangChain Expression Language | "LangChain的链式调用语法，像管道一样组合组件" |
 
-### 6.2 可以主动提到的技术点
+### 6.3 可以主动提到的技术点
 
 在回答问题时，可以自然地提到：
 
-> "我知道FAISS还有HNSW索引，速度更快，适合大规模数据，但我的场景数据量小，IndexFlatIP够用了。"
+> "我用 LangChain 的 ChatPromptTemplate 构建提示词，支持变量替换和消息角色区分。"
 
-> "检索质量可以用RAGAS框架评估，包括忠实度、答案相关性等指标。"
+> "LangChain 的 MessagesPlaceholder 让我很容易管理多轮对话的历史消息。"
 
-> "如果要支持多模态，可以用CLIP模型做图文联合检索。"
+> "检索质量可以用 RAGAS 框架评估，包括忠实度、答案相关性等指标。"
 
 ---
 
@@ -424,9 +511,11 @@ Prompt工程这些AI应用开发的核心概念有实际项目经验。
 
 ### 7.3 代码熟悉
 
-- [ ] 看过embedding_service.py的核心代码
-- [ ] 看过vector_store.py的核心代码
-- [ ] 看过search.py的AI调用代码
+- [ ] 看过 embedding_service.py 的核心代码
+- [ ] 看过 vector_store.py 的核心代码
+- [ ] 看过 search.py 的 AI 调用代码
+- [ ] **看过 rag_chain.py 的 LangChain RAG 实现**
+- [ ] **看过 chat_chain.py 的多轮对话实现**
 - [ ] 能说出关键函数的作用
 
 ---
@@ -442,16 +531,17 @@ Prompt工程这些AI应用开发的核心概念有实际项目经验。
 ### 卡片2：技术栈一句话
 
 ```
-前端Vue3 + 后端FastAPI + 数据库SQLite + 向量FAISS + Embedding阿里云 + LLM OpenAI
+前端Vue3 + 后端FastAPI + 数据库SQLite + 向量FAISS + Embedding阿里云 + LLM通义千问 + AI框架LangChain
 ```
 
 ### 卡片3：项目亮点
 
 ```
-1. 完整RAG流程实现
-2. 向量检索+关键词检索混合
+1. 完整RAG流程实现（LangChain框架）
+2. 渐进式迁移架构（功能开关设计）
 3. 多轮对话上下文管理
 4. 知识图谱可视化
+5. Skill智能模块执行
 ```
 
 ### 卡片4：改进方向

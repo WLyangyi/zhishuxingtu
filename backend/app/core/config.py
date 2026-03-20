@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     USE_LANGCHAIN_CHAT: bool = False
     USE_LANGCHAIN_SKILL: bool = False
 
+    USE_VECTOR_MEMORY: bool = True
+    CHAT_MEMORY_INDEX_PATH: str = "C:/temp/zhishuxingtu_chat_memory"
+    CHAT_MEMORY_TOP_K: int = 5
+    CHAT_MEMORY_MIN_SCORE: float = 0.3
+
     class Config:
         env_file = ".env"
         case_sensitive = True

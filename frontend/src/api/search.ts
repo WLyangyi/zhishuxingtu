@@ -24,10 +24,13 @@ export const searchApi = {
     return response.data
   },
 
-  aiChat: async (message: string, history?: Array<{ role: string; content: string }>): Promise<Response<AIChatResult>> => {
+  aiChat: async (message: string, history?: Array<{ role: string; content: string }>, sessionId?: string): Promise<Response<AIChatResult>> => {
     const params: any = { message }
     if (history) {
       params.history = JSON.stringify(history)
+    }
+    if (sessionId) {
+      params.session_id = sessionId
     }
     const response = await api.post('/search/chat', null, { params })
     return response.data

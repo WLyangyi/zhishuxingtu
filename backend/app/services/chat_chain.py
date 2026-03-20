@@ -7,6 +7,7 @@ from langchain_core.chat_history import InMemoryChatMessageHistory
 from app.services.llm_service import get_llm_service
 from app.services.langchain_embeddings import get_langchain_embeddings
 from app.services.langchain_vectorstore import get_langchain_vectorstore
+from app.services.chat_memory_store import get_chat_memory_store
 from app.core.config import settings
 from datetime import datetime
 import tiktoken
@@ -82,6 +83,7 @@ class ChatChain:
         self.llm = get_llm_service().client
         self.embeddings = get_langchain_embeddings()
         self.vectorstore = get_langchain_vectorstore()
+        self.memory_store = get_chat_memory_store() if settings.USE_VECTOR_MEMORY else None
         self.system_prompt = system_prompt or DEFAULT_CHAT_SYSTEM_PROMPT
         self.role_name = role_name or "知识问答助手"
         self._histories: Dict[str, InMemoryChatMessageHistory] = {}
@@ -193,10 +195,23 @@ class ChatChain:
         system_content = self._apply_role_config(system_content, effective_role)
         messages.append(SystemMessage(content=system_content))
 
+        vector_memory_context = ""
+        if self.memory_store and session_id:
+            vector_memory_context = self.memory_store.get_context_for_query(
+                question,
+                session_id=session_id
+            )
+        
         if history:
             history_messages = self._parse_history_from_json(history)
             history_messages = self._truncate_history_by_tokens(history_messages, MAX_CONTEXT_TOKENS)
             messages.extend(history_messages[-MAX_CONTEXT_MESSAGES:])
+        
+        if vector_memory_context:
+            memory_message = HumanMessage(
+                content=f"【相关的历史对话记忆】\n{vector_memory_context}\n\n请参考以上历史记忆回答当前问题。"
+            )
+            messages.insert(1, memory_message)
         
         if context:
             user_content = DEFAULT_CHAT_USER_PROMPT_WITH_CONTEXT.format(
@@ -211,6 +226,13 @@ class ChatChain:
         try:
             response = self.llm.invoke(messages)
             answer = response.content
+            
+            if self.memory_store:
+                self.memory_store.add_conversation(
+                    user_message=question,
+                    assistant_message=answer,
+                    session_id=session_id
+                )
             
             return {
                 "answer": answer,
