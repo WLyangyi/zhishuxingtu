@@ -144,11 +144,10 @@ class ChatChain:
         role_section = f"""
 
 ## 角色配置
-- 角色名称：{role['name']}
+- 角色名称：{role_name}
 - 性格特点：{role['personality']}
 - 说话风格：{role['speaking_style']}
 - 专业领域：{', '.join(role['expertise'])}
-- 温度参数：{role['temperature']}
 
 请根据以上角色配置调整你的回答方式和专业程度。"""
 

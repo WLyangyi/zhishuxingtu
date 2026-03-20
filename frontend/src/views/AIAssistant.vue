@@ -510,7 +510,7 @@ onMounted(() => {
 
 .role-select {
   padding: 8px 12px;
-  background: var(--bg-hover);
+  background: var(--bg-primary);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   color: var(--text-primary);
@@ -520,6 +520,12 @@ onMounted(() => {
   &:focus {
     outline: none;
     border-color: var(--primary-color);
+  }
+
+  option {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    padding: 8px;
   }
 }
 
