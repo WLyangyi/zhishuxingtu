@@ -177,7 +177,7 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import * as d3 from 'd3'
 import { graphApi } from '@/api/graph'
-import type { GraphData, GraphNode, GraphEdge } from '@/types'
+import type { GraphData, GraphNode } from '@/types'
 import { 
   ArrowLeft, Search, Circle, Target, Plus, Minus, Maximize2,
   ExternalLink, MousePointer, Move, ZoomIn, Network
@@ -204,7 +204,7 @@ const nodeTypes = [
 
 const activeTypes = ref<string[]>(['note', 'tag', 'folder'])
 
-let simulation: d3.Simulation<d3.SimulationNodeDatum, undefined> | null = null
+let simulation: d3.Simulation<SimNode, undefined> | null = null
 let svg: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null
 let zoom: d3.ZoomBehavior<SVGSVGElement, unknown> | null = null
 
@@ -307,7 +307,7 @@ function renderGraph() {
   edgesLayer.selectAll('*').remove()
   nodesLayer.selectAll('*').remove()
 
-  const edges = edgesLayer.selectAll('line')
+  edgesLayer.selectAll('line')
     .data(simEdges)
     .enter()
     .append('line')
@@ -316,7 +316,7 @@ function renderGraph() {
     .attr('stroke-width', 1.5)
     .attr('marker-end', 'url(#arrow)')
 
-  const nodes = nodesLayer.selectAll('g.node-group')
+  nodesLayer.selectAll<SVGGElement, SimNode>('g.node-group')
     .data(simNodes)
     .enter()
     .append('g')
@@ -327,20 +327,21 @@ function renderGraph() {
       .on('drag', dragged)
       .on('end', dragEnded))
     .on('click', (_, d) => selectNode(d))
-
-  nodes.append('circle')
+    .append('circle')
     .attr('class', 'node-bg')
     .attr('r', d => getNodeRadius(d))
     .attr('fill', d => getNodeColor(d))
     .attr('stroke', 'rgba(255, 255, 255, 0.2)')
     .attr('stroke-width', 2)
 
-  nodes.append('circle')
+  nodesLayer.selectAll<SVGGElement, SimNode>('g.node-group')
+    .append('circle')
     .attr('class', 'node-inner')
     .attr('r', d => getNodeRadius(d) * 0.6)
     .attr('fill', d => d3.color(getNodeColor(d))?.brighter(0.5)?.toString() || getNodeColor(d))
 
-  nodes.append('text')
+  nodesLayer.selectAll<SVGGElement, SimNode>('g.node-group')
+    .append('text')
     .attr('class', 'node-label')
     .attr('dy', d => getNodeRadius(d) + 16)
     .attr('text-anchor', 'middle')

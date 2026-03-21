@@ -148,6 +148,22 @@
           </div>
         </div>
 
+        <div class="prompt-lab-section animate-fade-in-up stagger-4">
+          <div class="section-header">
+            <h2 class="section-title">提示词工程</h2>
+          </div>
+          <div class="prompt-lab-card" @click="goToPromptLab">
+            <div class="prompt-lab-icon">
+              <FlaskConical :size="24" />
+            </div>
+            <div class="prompt-lab-info">
+              <h3 class="prompt-lab-title">提示词实验室</h3>
+              <p class="prompt-lab-desc">Few-Shot示例、A/B测试、思维链</p>
+            </div>
+            <div class="prompt-lab-arrow">→</div>
+          </div>
+        </div>
+
         <div class="quick-actions animate-fade-in-up stagger-5">
           <button class="action-btn" @click="goToSearch">
             <Search :size="18" />
@@ -164,7 +180,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch, nextTick } from 'vue'
+import { computed, onMounted, onUnmounted, ref, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCategoryStore } from '@/stores/category'
 import { useFoldersStore } from '@/stores/folders'
@@ -172,7 +188,7 @@ import { useNotesStore } from '@/stores/notes'
 import { useTagsStore } from '@/stores/tags'
 import { useAuthStore } from '@/stores/auth'
 import { 
-  Search, FileText, Folder, Clock, Zap, Expand, Bot,
+  Search, FileText, Folder, Clock, Zap, Expand, Bot, FlaskConical,
   User, Briefcase, TrendingUp, BookOpen, Code, Lightbulb
 } from 'lucide-vue-next'
 
@@ -231,7 +247,6 @@ const popularTags = computed(() => tagsStore.tags.slice(0, 5))
 const recentNotes = computed(() => notesStore.notes.slice(0, 5))
 
 const totalNotes = computed(() => notesStore.notes.length)
-const totalFolders = computed(() => foldersStore.folders.length)
 
 const totalLinks = computed(() => {
   let count = 0
@@ -356,6 +371,10 @@ function goToSkills() {
 
 function goToAI() {
   router.push('/personal/ai')
+}
+
+function goToPromptLab() {
+  router.push('/prompt-lab')
 }
 
 function initParticles() {
@@ -1127,6 +1146,70 @@ onUnmounted(() => {
     .ai-arrow {
       font-size: 18px;
       color: var(--tech-blue);
+      transition: transform 0.2s;
+    }
+  }
+}
+
+.prompt-lab-section {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-xl);
+  padding: 20px;
+  
+  .prompt-lab-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0.05) 100%);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-top: 12px;
+    
+    &:hover {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(245, 158, 11, 0.08) 100%);
+      border-color: rgba(245, 158, 11, 0.4);
+      transform: translateY(-2px);
+      
+      .prompt-lab-arrow {
+        transform: translateX(4px);
+      }
+    }
+    
+    .prompt-lab-icon {
+      width: 48px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(245, 158, 11, 0.2);
+      border-radius: var(--radius-md);
+      color: var(--primary-color);
+    }
+    
+    .prompt-lab-info {
+      flex: 1;
+      
+      .prompt-lab-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0 0 4px;
+      }
+      
+      .prompt-lab-desc {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin: 0;
+      }
+    }
+    
+    .prompt-lab-arrow {
+      font-size: 18px;
+      color: var(--primary-color);
       transition: transform 0.2s;
     }
   }

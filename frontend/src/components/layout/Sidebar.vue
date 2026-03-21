@@ -149,7 +149,7 @@
           :class="{ active: isCurrentRoute('/prompt-lab') }"
           @click="goToPromptLab"
         >
-          <FlaskConical :size="16" />
+          <Microscope :size="16" />
           <span>提示词实验室</span>
         </div>
       </div>
@@ -335,7 +335,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick, watch, h } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useFoldersStore } from '@/stores/folders'
 import { useTagsStore } from '@/stores/tags'
@@ -343,7 +343,7 @@ import { useNotesStore } from '@/stores/notes'
 import { useCategoryStore } from '@/stores/category'
 import { useNotificationStore } from '@/stores/notification'
 import type { FolderTree, Tag } from '@/types'
-import { FileText, Folder, Plus, Edit2, FolderPlus, Trash2, User, Briefcase, TrendingUp, Search, GitBranch, Bot, FlaskConical } from 'lucide-vue-next'
+import { FileText, Folder, Plus, Edit2, FolderPlus, Trash2, User, Briefcase, TrendingUp, Search, GitBranch, Bot, Microscope } from 'lucide-vue-next'
 
 const router = useRouter()
 const foldersStore = useFoldersStore()
@@ -399,7 +399,6 @@ const categories = computed(() => categoryStore.categories)
 const currentCategoryId = computed(() => categoryStore.currentCategory?.id)
 
 const recentNotes = computed(() => notesStore.notes.slice(0, 5))
-const totalNoteCount = computed(() => notesStore.notes.length)
 
 const parentFolder = computed(() => {
   if (!parentFolderId.value) return null
@@ -569,16 +568,8 @@ function toggleCreateMenu() {
   showCreateDropdown.value = !showCreateDropdown.value
 }
 
-function goToCategories() {
-  router.push('/categories')
-}
-
 function goToGraph() {
   router.push('/graph')
-}
-
-function goToSkills() {
-  router.push('/skills')
 }
 
 function goToSearch() {

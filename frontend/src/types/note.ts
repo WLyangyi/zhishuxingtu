@@ -9,6 +9,7 @@ export interface Note {
   folder_id: string | null
   linked_note_ids: string[]
   tags: Tag[]
+  category_id?: string | null
   created_at: string
   updated_at: string
 }

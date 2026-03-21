@@ -114,7 +114,7 @@
         </div>
       </div>
 
-      <div v-if="loading" class="message assistant loading">
+      <div v-if="loading && !isStreaming" class="message assistant loading">
         <div class="message-avatar">
           <Bot :size="20" />
         </div>
@@ -123,6 +123,31 @@
             <span></span>
             <span></span>
             <span></span>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="isStreaming && streamingContent" class="message assistant streaming">
+        <div class="message-avatar">
+          <Bot :size="20" />
+        </div>
+        <div class="message-content">
+          <div class="message-text">
+            <TypewriterText :content="streamingContent" :isStreaming="true" />
+          </div>
+          <div v-if="streamingNotes.length > 0" class="related-notes">
+            <div class="notes-label">相关笔记：</div>
+            <div class="note-links">
+              <router-link 
+                v-for="note in streamingNotes" 
+                :key="note.id"
+                :to="`/notes/${note.id}`"
+                class="note-link"
+              >
+                <FileText :size="14" />
+                {{ note.title }}
+              </router-link>
+            </div>
           </div>
         </div>
       </div>
@@ -139,11 +164,19 @@
           ref="inputRef"
         ></textarea>
         <button 
+          v-if="!isStreaming"
           class="send-btn" 
           @click="sendMessage" 
           :disabled="!inputMessage.trim() || loading"
         >
           <Send :size="18" />
+        </button>
+        <button 
+          v-else
+          class="stop-btn" 
+          @click="stopStreaming"
+        >
+          <Square :size="18" />
         </button>
       </div>
       <div class="input-hint">
@@ -155,15 +188,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted, watch } from 'vue'
+import { ref, nextTick, onMounted, watch, onUnmounted } from 'vue'
 import { searchApi } from '@/api/search'
-import { Bot, User, Send, Sparkles, FileText, Trash2, Plus, MessageSquare, X } from 'lucide-vue-next'
+import { Bot, User, Send, Sparkles, FileText, Trash2, Plus, MessageSquare, X, Square } from 'lucide-vue-next'
 import { COT_TEMPLATES } from '@/types/promptLab'
+import { SSEClient, type SSEMessage } from '@/utils/sse'
+import TypewriterText from '@/components/common/TypewriterText.vue'
+import { useAuthStore } from '@/stores/auth'
 
 interface Message {
   role: 'user' | 'assistant'
   content: string
   notes?: { id: string; title: string }[]
+  isStreaming?: boolean
 }
 
 interface ChatHistory {
@@ -184,6 +221,11 @@ const inputRef = ref<HTMLTextAreaElement | null>(null)
 const chatList = ref<ChatHistory[]>([])
 const currentChatId = ref<string>('')
 const selectedCotType = ref<string | null>(null)
+const streamingContent = ref('')
+const streamingNotes = ref<{ id: string; title: string }[]>([])
+const isStreaming = ref(false)
+const sseClient = ref<SSEClient | null>(null)
+const authStore = useAuthStore()
 
 const quickActions = [
   { text: '我有哪些笔记？' },
@@ -306,6 +348,9 @@ async function sendMessage() {
   inputMessage.value = ''
   scrollToBottom()
   loading.value = true
+  isStreaming.value = true
+  streamingContent.value = ''
+  streamingNotes.value = []
 
   try {
     const history = messages.value.slice(-6).map(m => ({
@@ -313,20 +358,78 @@ async function sendMessage() {
       content: m.content
     }))
 
-    const response = await searchApi.aiChat(message, history, currentChatId.value)
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+    const token = authStore.token || localStorage.getItem('token')
     
-    messages.value.push({
-      role: 'assistant',
-      content: response.data.answer,
-      notes: response.data.notes
-    })
+    sseClient.value = new SSEClient()
+    
+    await sseClient.value.connect(
+      `${apiUrl}/api/search/chat/stream`,
+      {
+        message,
+        history: JSON.stringify(history),
+        session_id: currentChatId.value
+      },
+      {
+        token: token || undefined,
+        onMessage: (msg: SSEMessage) => {
+          if (msg.type === 'content' && msg.text) {
+            streamingContent.value += msg.text
+            scrollToBottom()
+          } else if (msg.type === 'sources' && msg.notes) {
+            streamingNotes.value = msg.notes
+          } else if (msg.type === 'error' && msg.message) {
+            streamingContent.value = msg.message
+          }
+        },
+        onError: (error: Error) => {
+          streamingContent.value = '抱歉，发生了错误：' + error.message
+          isStreaming.value = false
+          loading.value = false
+        },
+        onComplete: () => {
+          if (streamingContent.value) {
+            messages.value.push({
+              role: 'assistant',
+              content: streamingContent.value,
+              notes: streamingNotes.value.length > 0 ? streamingNotes.value : undefined
+            })
+          }
+          isStreaming.value = false
+          loading.value = false
+          streamingContent.value = ''
+          streamingNotes.value = []
+          scrollToBottom()
+        }
+      }
+    )
   } catch (error: any) {
     messages.value.push({
       role: 'assistant',
       content: '抱歉，发生了错误：' + (error.message || '未知错误')
     })
-  } finally {
+    isStreaming.value = false
     loading.value = false
+    scrollToBottom()
+  }
+}
+
+function stopStreaming() {
+  if (sseClient.value && isStreaming.value) {
+    sseClient.value.abort()
+    isStreaming.value = false
+    loading.value = false
+    
+    if (streamingContent.value) {
+      messages.value.push({
+        role: 'assistant',
+        content: streamingContent.value,
+        notes: streamingNotes.value.length > 0 ? streamingNotes.value : undefined
+      })
+    }
+    
+    streamingContent.value = ''
+    streamingNotes.value = []
     scrollToBottom()
   }
 }
@@ -359,6 +462,12 @@ onMounted(() => {
     createNewChat()
   } else {
     switchChat(chatList.value[0].id)
+  }
+})
+
+onUnmounted(() => {
+  if (sseClient.value && isStreaming.value) {
+    sseClient.value.abort()
   }
 })
 </script>
@@ -870,6 +979,31 @@ onMounted(() => {
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+}
+
+.stop-btn {
+  width: 44px;
+  height: 44px;
+  background: var(--danger-color);
+  border: none;
+  border-radius: var(--radius-md);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+
+  &:hover {
+    opacity: 0.9;
+  }
+}
+
+.message.streaming {
+  .message-content {
+    border: 1px solid var(--primary-color);
+    box-shadow: 0 0 0 1px var(--primary-muted);
   }
 }
 

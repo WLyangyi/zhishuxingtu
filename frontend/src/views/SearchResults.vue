@@ -179,7 +179,7 @@ const filteredResults = computed(() => {
 
 const totalResults = computed(() => results.value.length)
 
-function getExcerpt(content: string | undefined, query: string): string {
+function getExcerpt(content: string | null | undefined, query: string): string {
   if (!content) return ''
   const lowerContent = content.toLowerCase()
   const index = lowerContent.indexOf(query)

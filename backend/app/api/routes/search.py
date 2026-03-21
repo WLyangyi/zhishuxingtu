@@ -2,6 +2,7 @@ import json
 import re
 from datetime import datetime
 from fastapi import APIRouter, Depends, Query, HTTPException, Body
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from openai import OpenAI
@@ -20,6 +21,7 @@ from app.api.routes.prompts import get_prompt_by_category, render_prompt, check_
 from app.services.rag_chain import get_rag_chain
 from app.services.chat_chain import get_chat_chain
 from app.services.reranker_service import get_reranker
+from app.services.stream_service import get_stream_service
 
 
 def vector_search_notes(
@@ -802,3 +804,85 @@ async def reranker_status(
         "candidates": settings.RERANKER_CANDIDATES,
         "api_configured": bool(settings.DASHSCOPE_API_KEY)
     })
+
+
+@router.post("/chat/stream")
+async def ai_chat_stream(
+    message: str,
+    history: Optional[str] = None,
+    session_id: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    AI对话流式输出接口 (SSE)
+    
+    返回格式：
+    - data: {"type": "content", "text": "..."}  内容片段
+    - data: {"type": "sources", "notes": [...]}  相关笔记
+    - data: {"type": "disclaimer", "text": "..."}  免责声明
+    - data: {"type": "error", "message": "..."}  错误信息
+    - data: [DONE]  结束标记
+    """
+    vector_results = vector_search_notes(message, db, k=3, threshold=0.3)
+    
+    history_list = None
+    if history:
+        try:
+            history_list = json.loads(history)
+        except:
+            pass
+    
+    stream_service = get_stream_service()
+    
+    return StreamingResponse(
+        stream_service.stream_chat(
+            message=message,
+            context_docs=vector_results,
+            history=history_list,
+            current_user_id=current_user.id,
+            db=db
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+
+@router.post("/ai/stream")
+async def ai_search_stream(
+    question: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    AI搜索流式输出接口 (SSE)
+    
+    返回格式：
+    - data: {"type": "content", "text": "..."}  内容片段
+    - data: {"type": "sources", "notes": [...]}  相关笔记
+    - data: {"type": "disclaimer", "text": "..."}  免责声明
+    - data: {"type": "error", "message": "..."}  错误信息
+    - data: [DONE]  结束标记
+    """
+    vector_results = vector_search_notes(question, db, k=5, threshold=0.3)
+    
+    stream_service = get_stream_service()
+    
+    return StreamingResponse(
+        stream_service.stream_rag(
+            question=question,
+            context_docs=vector_results,
+            current_user_id=current_user.id,
+            db=db
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
