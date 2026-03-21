@@ -21,8 +21,8 @@ from app.core.config import settings
 class RerankerService:
     def __init__(self):
         self.api_key = settings.DASHSCOPE_API_KEY
-        self.api_url = "https://dashscope.aliyuncs.com/api/v1/services/rerank"
-        self.model = "gte-rerank"
+        self.api_url = "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank"
+        self.model = "gte-rerank-v2"
         self._available = bool(self.api_key)
     
     @property
