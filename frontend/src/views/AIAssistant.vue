@@ -189,7 +189,6 @@
 
 <script setup lang="ts">
 import { ref, nextTick, onMounted, watch, onUnmounted } from 'vue'
-import { searchApi } from '@/api/search'
 import { Bot, User, Send, Sparkles, FileText, Trash2, Plus, MessageSquare, X, Square } from 'lucide-vue-next'
 import { COT_TEMPLATES } from '@/types/promptLab'
 import { SSEClient, type SSEMessage } from '@/utils/sse'
@@ -361,18 +360,29 @@ async function sendMessage() {
     const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
     const token = authStore.token || localStorage.getItem('token')
     
+    const params = new URLSearchParams()
+    params.append('message', message)
+    if (history.length > 0) {
+      params.append('history', JSON.stringify(history))
+    }
+    if (currentChatId.value) {
+      params.append('session_id', currentChatId.value)
+    }
+    
+    const fullUrl = `${apiUrl}/api/search/chat/stream?${params.toString()}`
+    console.log('SSE连接URL:', fullUrl)
+    console.log('Token:', token ? '已设置' : '未设置')
+    
     sseClient.value = new SSEClient()
     
     await sseClient.value.connect(
-      `${apiUrl}/api/search/chat/stream`,
+      fullUrl,
+      {},
       {
-        message,
-        history: JSON.stringify(history),
-        session_id: currentChatId.value
-      },
-      {
+        method: 'POST',
         token: token || undefined,
         onMessage: (msg: SSEMessage) => {
+          console.log('收到SSE消息:', msg)
           if (msg.type === 'content' && msg.text) {
             streamingContent.value += msg.text
             scrollToBottom()
@@ -383,11 +393,13 @@ async function sendMessage() {
           }
         },
         onError: (error: Error) => {
+          console.error('SSE错误:', error)
           streamingContent.value = '抱歉，发生了错误：' + error.message
           isStreaming.value = false
           loading.value = false
         },
         onComplete: () => {
+          console.log('SSE完成')
           if (streamingContent.value) {
             messages.value.push({
               role: 'assistant',
@@ -996,7 +1008,12 @@ onUnmounted(() => {
   transition: all var(--transition-fast);
 
   &:hover {
-    opacity: 0.9;
+    background: var(--danger-hover);
+    transform: scale(1.05);
+  }
+
+  &:active {
+    transform: scale(0.98);
   }
 }
 

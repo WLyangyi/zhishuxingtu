@@ -10,6 +10,7 @@ export interface SSEOptions {
   onError?: (error: Error) => void
   onComplete?: () => void
   token?: string
+  method?: 'GET' | 'POST'
 }
 
 export class SSEClient {
@@ -21,20 +22,26 @@ export class SSEClient {
     this.controller = new AbortController()
 
     try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      }
+      const headers: Record<string, string> = {}
       
       if (options.token) {
         headers['Authorization'] = `Bearer ${options.token}`
       }
 
-      const response = await fetch(url, {
-        method: 'POST',
+      const method = options.method || 'GET'
+      
+      const fetchOptions: RequestInit = {
+        method,
         headers,
-        body: JSON.stringify(body),
         signal: this.controller.signal
-      })
+      }
+      
+      if (method === 'POST' && body && Object.keys(body).length > 0) {
+        headers['Content-Type'] = 'application/json'
+        fetchOptions.body = JSON.stringify(body)
+      }
+
+      const response = await fetch(url, fetchOptions)
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
