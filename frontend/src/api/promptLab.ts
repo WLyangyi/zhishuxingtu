@@ -79,6 +79,15 @@ export const promptLabApi = {
     async getStats(experimentId: string): Promise<ABExperimentStats> {
       const response = await api.get(`/ab-experiments/experiments/${experimentId}/stats`)
       return response.data.data
+    },
+
+    async updateExperiment(id: string, data: { name?: string; description?: string; traffic_split?: number }): Promise<ABExperiment> {
+      const response = await api.put(`/ab-experiments/experiments/${id}`, data)
+      return response.data.data
+    },
+
+    async deleteExperiment(id: string): Promise<void> {
+      await api.delete(`/ab-experiments/experiments/${id}`)
     }
   },
 

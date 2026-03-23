@@ -1,11 +1,12 @@
 import api from './index'
+import type { Response } from '@/types/api'
 import type {
   Prompt, PromptCreate, PromptUpdate, PromptListResponse,
   PromptTemplate, PromptCategory
 } from '@/types/prompt'
 
 export const promptsApi = {
-  async getTemplates(): Promise<PromptTemplate[]> {
+  async getTemplates(): Promise<Response<PromptTemplate[]>> {
     const response = await api.get('/prompts/templates')
     return response.data
   },
@@ -15,41 +16,42 @@ export const promptsApi = {
     is_system?: boolean
     page?: number
     page_size?: number
-  }): Promise<PromptListResponse> {
+  }): Promise<Response<PromptListResponse>> {
     const response = await api.get('/prompts', { params })
     return response.data
   },
 
-  async getCategories(): Promise<PromptCategory[]> {
+  async getCategories(): Promise<Response<PromptCategory[]>> {
     const response = await api.get('/prompts/categories')
     return response.data
   },
 
-  async getPrompt(id: string): Promise<Prompt> {
+  async getPrompt(id: string): Promise<Response<Prompt>> {
     const response = await api.get(`/prompts/${id}`)
     return response.data
   },
 
-  async createPrompt(data: PromptCreate): Promise<Prompt> {
+  async createPrompt(data: PromptCreate): Promise<Response<Prompt>> {
     const response = await api.post('/prompts', data)
     return response.data
   },
 
-  async createFromTemplate(templateIndex: number): Promise<Prompt> {
+  async createFromTemplate(templateIndex: number): Promise<Response<Prompt>> {
     const response = await api.post(`/prompts/from-template/${templateIndex}`)
     return response.data
   },
 
-  async updatePrompt(id: string, data: PromptUpdate): Promise<Prompt> {
+  async updatePrompt(id: string, data: PromptUpdate): Promise<Response<Prompt>> {
     const response = await api.put(`/prompts/${id}`, data)
     return response.data
   },
 
-  async deletePrompt(id: string): Promise<void> {
-    await api.delete(`/prompts/${id}`)
+  async deletePrompt(id: string): Promise<Response<null>> {
+    const response = await api.delete(`/prompts/${id}`)
+    return response.data
   },
 
-  async initializePrompts(): Promise<{ success: boolean; message: string }> {
+  async initializePrompts(): Promise<Response<{ created_count: number }>> {
     const response = await api.post('/prompts/initialize')
     return response.data
   }

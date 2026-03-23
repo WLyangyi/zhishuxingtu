@@ -96,11 +96,11 @@ def apply_disclaimer(text: str) -> str:
         return text + "\n\n" + DISCLAIMER.strip()
     return text
 
-@router.get("/templates", response_model=List[PromptTemplate])
+@router.get("/templates", response_model=Response[List[PromptTemplate]])
 async def get_prompt_templates():
-    return DEFAULT_PROMPT_TEMPLATES
+    return Response(data=DEFAULT_PROMPT_TEMPLATES)
 
-@router.get("", response_model=PromptListResponse)
+@router.get("", response_model=Response[PromptListResponse])
 async def get_prompts(
     category: Optional[str] = Query(None, description="按分类筛选"),
     is_system: Optional[bool] = Query(None, description="筛选系统预设"),
@@ -124,14 +124,14 @@ async def get_prompts(
     total = query.count()
     items = query.order_by(Prompt.is_system.desc(), Prompt.updated_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
 
-    return PromptListResponse(
+    return Response(data=PromptListResponse(
         items=[prompt_to_dict(p) for p in items],
         total=total,
         page=page,
         page_size=page_size
-    )
+    ))
 
-@router.get("/categories", response_model=List[dict])
+@router.get("/categories", response_model=Response[List[dict]])
 async def get_prompt_categories(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -145,9 +145,9 @@ async def get_prompt_categories(
         {"value": c[0], "label": get_category_label(c[0])}
         for c in categories
     ]
-    return category_list
+    return Response(data=category_list)
 
-@router.get("/{prompt_id}", response_model=PromptInDB)
+@router.get("/{prompt_id}", response_model=Response[PromptInDB])
 async def get_prompt(
     prompt_id: str,
     current_user: User = Depends(get_current_user),
@@ -161,9 +161,9 @@ async def get_prompt(
     if not prompt:
         raise HTTPException(status_code=404, detail="提示词不存在")
 
-    return prompt_to_dict(prompt)
+    return Response(data=prompt_to_dict(prompt))
 
-@router.post("", response_model=PromptInDB)
+@router.post("", response_model=Response[PromptInDB])
 async def create_prompt(
     data: PromptCreate,
     current_user: User = Depends(get_current_user),
@@ -187,9 +187,9 @@ async def create_prompt(
     db.commit()
     db.refresh(prompt)
 
-    return prompt_to_dict(prompt)
+    return Response(data=prompt_to_dict(prompt), message="提示词创建成功")
 
-@router.post("/from-template/{template_index}", response_model=PromptInDB)
+@router.post("/from-template/{template_index}", response_model=Response[PromptInDB])
 async def create_prompt_from_template(
     template_index: int,
     current_user: User = Depends(get_current_user),
@@ -218,9 +218,9 @@ async def create_prompt_from_template(
     db.commit()
     db.refresh(prompt)
 
-    return prompt_to_dict(prompt)
+    return Response(data=prompt_to_dict(prompt), message="提示词创建成功")
 
-@router.put("/{prompt_id}", response_model=PromptInDB)
+@router.put("/{prompt_id}", response_model=Response[PromptInDB])
 async def update_prompt(
     prompt_id: str,
     data: PromptUpdate,
@@ -248,7 +248,7 @@ async def update_prompt(
     db.commit()
     db.refresh(prompt)
 
-    return prompt_to_dict(prompt)
+    return Response(data=prompt_to_dict(prompt), message="提示词更新成功")
 
 @router.delete("/{prompt_id}")
 async def delete_prompt(
@@ -270,7 +270,7 @@ async def delete_prompt(
     db.delete(prompt)
     db.commit()
 
-    return {"success": True, "message": "提示词已删除"}
+    return Response(message="提示词已删除")
 
 @router.post("/initialize")
 async def initialize_default_prompts(
@@ -305,7 +305,7 @@ async def initialize_default_prompts(
     if created_count > 0:
         db.commit()
 
-    return {"success": True, "message": f"已创建 {created_count} 个默认提示词"}
+    return Response(data={"created_count": created_count}, message=f"已创建 {created_count} 个默认提示词")
 
 def get_prompt_by_category(category: str, user_id: str, db: Session) -> Optional[Prompt]:
     prompt = db.query(Prompt).filter(

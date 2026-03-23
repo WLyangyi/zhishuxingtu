@@ -54,6 +54,9 @@
               <div class="card-header">
                 <span class="scenario-badge">{{ getScenarioLabel(example.scenario) }}</span>
                 <div class="card-actions">
+                  <button @click="viewExampleDetail(example)" class="action-btn" title="查看详情">
+                    <Eye :size="14" />
+                  </button>
                   <button @click="editExample(example)" class="action-btn" title="编辑">
                     <Edit3 :size="14" />
                   </button>
@@ -121,18 +124,27 @@
                 </div>
               </div>
               <div class="card-footer">
-                <button v-if="exp.status === 'running'" @click="pauseExperiment(exp)" class="action-btn">
-                  <Pause :size="14" />
-                  暂停
-                </button>
-                <button v-else-if="exp.status === 'paused'" @click="startExperiment(exp)" class="action-btn">
-                  <Play :size="14" />
-                  启动
-                </button>
-                <button @click="viewStats(exp)" class="action-btn primary">
-                  <BarChart3 :size="14" />
-                  统计
-                </button>
+                <div class="footer-left">
+                  <button v-if="exp.status === 'running'" @click="pauseExperiment(exp)" class="action-btn">
+                    <Pause :size="14" />
+                    暂停
+                  </button>
+                  <button v-else-if="exp.status === 'paused'" @click="startExperiment(exp)" class="action-btn">
+                    <Play :size="14" />
+                    启动
+                  </button>
+                </div>
+                <div class="footer-right">
+                  <button @click="editExperiment(exp)" class="action-btn" title="编辑">
+                    <Edit3 :size="14" />
+                  </button>
+                  <button @click="viewStats(exp)" class="action-btn primary" title="统计">
+                    <BarChart3 :size="14" />
+                  </button>
+                  <button @click="deleteExperiment(exp)" class="action-btn danger" title="删除">
+                    <Trash2 :size="14" />
+                  </button>
+                </div>
               </div>
             </div>
             <div v-if="filteredExperiments.length === 0" class="empty-state">
@@ -149,6 +161,12 @@
               <Brain :size="18" class="title-icon" />
               思维链模板
             </h2>
+            <div class="section-actions">
+              <button @click="showCotPreviewModal = true" class="create-btn" v-if="selectedCotType">
+                <Eye :size="18" />
+                查看完整模板
+              </button>
+            </div>
           </div>
 
           <div class="cot-grid">
@@ -174,6 +192,7 @@
           <div v-if="selectedCotType" class="cot-active-info">
             <CheckCircle :size="16" />
             当前选择：{{ COT_TEMPLATES.find(t => t.type === selectedCotType)?.name }}
+            <button @click="showCotPreviewModal = true" class="preview-link">查看详情</button>
           </div>
         </div>
 
@@ -226,6 +245,17 @@
                     <Play :size="14" />
                     执行
                   </button>
+                  <div class="footer-right">
+                    <button @click="toggleChainStatus(chain)" class="action-btn" :title="chain.is_active ? '禁用' : '启用'">
+                      <component :is="chain.is_active ? Pause : Play" :size="14" />
+                    </button>
+                    <button @click="editChain(chain)" class="action-btn" title="编辑">
+                      <Edit3 :size="14" />
+                    </button>
+                    <button @click="deleteChain(chain)" class="action-btn danger" title="删除">
+                      <Trash2 :size="14" />
+                    </button>
+                  </div>
                 </div>
               </div>
               <div v-if="chains.length === 0" class="empty-state small">
@@ -255,11 +285,11 @@
           </div>
           <div class="form-group">
             <label>输入示例</label>
-            <textarea v-model="exampleForm.input_example" placeholder="输入示例内容..." rows="4"></textarea>
+            <textarea v-model="exampleForm.input_example" placeholder="输入示例内容..." rows="6"></textarea>
           </div>
           <div class="form-group">
             <label>输出示例</label>
-            <textarea v-model="exampleForm.output_example" placeholder="期望的输出内容..." rows="4"></textarea>
+            <textarea v-model="exampleForm.output_example" placeholder="期望的输出内容..." rows="6"></textarea>
           </div>
           <div class="form-group">
             <label>质量评分 (1-10)</label>
@@ -273,11 +303,46 @@
       </div>
     </div>
 
-    <div v-if="showExperimentModal" class="modal-overlay" @click.self="showExperimentModal = false">
+    <div v-if="showExampleDetailModal" class="modal-overlay" @click.self="showExampleDetailModal = false">
+      <div class="modal modal-large">
+        <div class="modal-header">
+          <h3>示例详情</h3>
+          <button @click="showExampleDetailModal = false" class="close-btn">
+            <X :size="20" />
+          </button>
+        </div>
+        <div class="modal-body" v-if="currentExample">
+          <div class="example-detail-header">
+            <span class="scenario-badge">{{ getScenarioLabel(currentExample.scenario) }}</span>
+            <span class="quality-score">
+              <Star :size="14" />
+              质量评分: {{ currentExample.quality_score.toFixed(1) }}
+            </span>
+          </div>
+          <div class="example-detail-section">
+            <h5>输入示例</h5>
+            <pre class="example-detail-content">{{ currentExample.input_example }}</pre>
+          </div>
+          <div class="example-detail-section">
+            <h5>输出示例</h5>
+            <pre class="example-detail-content">{{ currentExample.output_example }}</pre>
+          </div>
+          <div class="example-detail-meta">
+            <span>创建时间: {{ formatDate(currentExample.created_at) }}</span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button @click="showExampleDetailModal = false" class="btn-cancel">关闭</button>
+          <button @click="editExample(currentExample!); showExampleDetailModal = false" class="btn-confirm">编辑</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="showExperimentModal" class="modal-overlay" @click.self="closeExperimentModal">
       <div class="modal">
         <div class="modal-header">
-          <h3>创建实验</h3>
-          <button @click="showExperimentModal = false" class="close-btn">
+          <h3>{{ editingExperiment ? '编辑实验' : '创建实验' }}</h3>
+          <button @click="closeExperimentModal" class="close-btn">
             <X :size="20" />
           </button>
         </div>
@@ -299,8 +364,8 @@
           </div>
         </div>
         <div class="modal-footer">
-          <button @click="showExperimentModal = false" class="btn-cancel">取消</button>
-          <button @click="handleCreateExperiment" class="btn-confirm">创建</button>
+          <button @click="closeExperimentModal" class="btn-cancel">取消</button>
+          <button @click="handleSaveExperiment" class="btn-confirm">{{ editingExperiment ? '保存' : '创建' }}</button>
         </div>
       </div>
     </div>
@@ -354,6 +419,31 @@
       </div>
     </div>
 
+    <div v-if="showEditChainModal" class="modal-overlay" @click.self="closeEditChainModal">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>编辑链</h3>
+          <button @click="closeEditChainModal" class="close-btn">
+            <X :size="20" />
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>链名称</label>
+            <input v-model="chainForm.name" type="text" placeholder="输入链名称" />
+          </div>
+          <div class="form-group">
+            <label>描述</label>
+            <textarea v-model="chainForm.description" placeholder="描述链的用途..." rows="3"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button @click="closeEditChainModal" class="btn-cancel">取消</button>
+          <button @click="handleSaveChain" class="btn-confirm">保存</button>
+        </div>
+      </div>
+    </div>
+
     <div v-if="showStatsModal" class="modal-overlay" @click.self="showStatsModal = false">
       <div class="modal">
         <div class="modal-header">
@@ -396,6 +486,36 @@
         </div>
       </div>
     </div>
+
+    <div v-if="showCotPreviewModal" class="modal-overlay" @click.self="showCotPreviewModal = false">
+      <div class="modal modal-large">
+        <div class="modal-header">
+          <h3>思维链模板详情</h3>
+          <button @click="showCotPreviewModal = false" class="close-btn">
+            <X :size="20" />
+          </button>
+        </div>
+        <div class="modal-body">
+          <div v-if="selectedCotType" class="cot-detail">
+            <h4 class="cot-detail-title">{{ COT_TEMPLATES.find(t => t.type === selectedCotType)?.name }}</h4>
+            <p class="cot-detail-desc">{{ COT_TEMPLATES.find(t => t.type === selectedCotType)?.description }}</p>
+            <div class="cot-detail-section">
+              <h5>提示词模板</h5>
+              <pre class="cot-full-template">{{ getCotFullTemplate(selectedCotType) }}</pre>
+            </div>
+            <div class="cot-detail-section">
+              <h5>适用场景</h5>
+              <ul class="cot-scenarios">
+                <li v-for="scenario in getCotScenarios(selectedCotType)" :key="scenario">{{ scenario }}</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button @click="showCotPreviewModal = false" class="btn-cancel">关闭</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -416,7 +536,7 @@ import type {
 import {
   Home, FlaskConical, BookOpen, GitCompare, Brain, Workflow,
   Plus, Edit3, Trash2, Star, X, Play, Pause, BarChart3,
-  Lightbulb, CheckCircle, Zap
+  Lightbulb, CheckCircle, Zap, Eye
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -441,12 +561,18 @@ const filterScenario = ref('')
 const filterStatus = ref('')
 
 const showExampleModal = ref(false)
+const showExampleDetailModal = ref(false)
 const showExperimentModal = ref(false)
 const showChainModal = ref(false)
 const showExecuteModal = ref(false)
 const showStatsModal = ref(false)
+const showEditChainModal = ref(false)
+const showCotPreviewModal = ref(false)
 
 const editingExample = ref<FewShotExample | null>(null)
+const editingExperiment = ref<ABExperiment | null>(null)
+const editingChain = ref<PromptChain | null>(null)
+const currentExample = ref<FewShotExample | null>(null)
 const currentExperiment = ref<ABExperiment | null>(null)
 const currentChain = ref<PromptChain | null>(null)
 const stats = ref<ABExperimentStats | null>(null)
@@ -466,6 +592,11 @@ const experimentForm = ref({
   name: '',
   description: '',
   traffic_split: 0.5
+})
+
+const chainForm = ref({
+  name: '',
+  description: ''
 })
 
 const filteredExamples = computed(() => {
@@ -529,6 +660,23 @@ function truncateText(text: string, maxLength: number): string {
   return text.substring(0, maxLength) + '...'
 }
 
+function viewExampleDetail(example: FewShotExample) {
+  currentExample.value = example
+  showExampleDetailModal.value = true
+}
+
+function formatDate(dateStr: string): string {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
 function getCotPreview(type: string): string {
   const previews: Record<string, string> = {
     step_by_step: '步骤1：理解问题\n步骤2：信息检索\n步骤3：推理分析\n步骤4：得出结论',
@@ -536,6 +684,101 @@ function getCotPreview(type: string): string {
     deep_reasoning: '1. 问题分解\n2. 假设生成\n3. 假设验证\n4. 结论推导'
   }
   return previews[type] || ''
+}
+
+function getCotFullTemplate(type: string): string {
+  const templates: Record<string, string> = {
+    step_by_step: `请按以下步骤逐步分析和解决问题：
+
+步骤1：理解问题
+- 识别问题的核心需求
+- 明确问题的边界条件
+- 列出已知信息和未知信息
+
+步骤2：信息检索
+- 从知识库中检索相关信息
+- 整理和归纳检索到的内容
+- 标注信息来源
+
+步骤3：推理分析
+- 基于已知信息进行逻辑推理
+- 分析可能的解决方案
+- 评估各方案的优劣
+
+步骤4：得出结论
+- 综合分析结果
+- 给出明确的答案或建议
+- 说明推理过程和依据`,
+
+    compare_analyze: `请按以下维度进行对比分析：
+
+1. 维度识别
+- 识别需要对比的对象
+- 确定对比的关键维度
+- 设定评估标准
+
+2. 信息提取
+- 从各维度提取对象特征
+- 收集相关数据和信息
+- 标注信息来源
+
+3. 对比分析
+- 逐维度进行对比
+- 分析差异和相似点
+- 评估优劣势
+
+4. 综合评估
+- 汇总对比结果
+- 给出综合评价
+- 提供建议或结论`,
+
+    deep_reasoning: `请按以下步骤进行深度推理：
+
+1. 问题分解
+- 将复杂问题拆解为子问题
+- 识别问题的层次结构
+- 确定优先级
+
+2. 假设生成
+- 基于已知信息提出假设
+- 列出可能的解释或方案
+- 考虑边界情况
+
+3. 假设验证
+- 设计验证方法
+- 收集验证数据
+- 分析验证结果
+
+4. 结论推导
+- 综合验证结果
+- 排除不合理假设
+- 得出可靠结论`
+  }
+  return templates[type] || ''
+}
+
+function getCotScenarios(type: string): string[] {
+  const scenarios: Record<string, string[]> = {
+    step_by_step: [
+      '复杂问题求解',
+      '技术方案设计',
+      '故障排查分析',
+      '学习路径规划'
+    ],
+    compare_analyze: [
+      '技术选型对比',
+      '方案优劣分析',
+      '产品功能对比',
+      '竞品分析'
+    ],
+    deep_reasoning: [
+      '根本原因分析',
+      '决策支持',
+      '风险评估',
+      '战略规划'
+    ]
+  }
+  return scenarios[type] || []
 }
 
 function closeExampleModal() {
@@ -587,26 +830,57 @@ async function deleteExample(example: FewShotExample) {
   }
 }
 
-async function handleCreateExperiment() {
+function closeExperimentModal() {
+  showExperimentModal.value = false
+  editingExperiment.value = null
+  experimentForm.value = { name: '', description: '', traffic_split: 0.5 }
+}
+
+function editExperiment(exp: ABExperiment) {
+  editingExperiment.value = exp
+  experimentForm.value = {
+    name: exp.name,
+    description: exp.description || '',
+    traffic_split: exp.traffic_split
+  }
+  showExperimentModal.value = true
+}
+
+async function handleSaveExperiment() {
   if (!experimentForm.value.name.trim()) {
     notification.warning('请输入实验名称')
     return
   }
   try {
-    await promptLabApi.abTest.createExperiment({
-      name: experimentForm.value.name,
-      description: experimentForm.value.description,
-      prompt_id: '',
-      version_a_id: '',
-      version_b_id: '',
-      traffic_split: experimentForm.value.traffic_split
-    } as any)
-    notification.success('创建成功')
+    if (editingExperiment.value) {
+      await promptLabApi.abTest.updateExperiment(editingExperiment.value.id, experimentForm.value)
+      notification.success('更新成功')
+    } else {
+      await promptLabApi.abTest.createExperiment({
+        name: experimentForm.value.name,
+        description: experimentForm.value.description,
+        prompt_id: '',
+        version_a_id: '',
+        version_b_id: '',
+        traffic_split: experimentForm.value.traffic_split
+      } as any)
+      notification.success('创建成功')
+    }
     experiments.value = await promptLabApi.abTest.listExperiments()
-    showExperimentModal.value = false
-    experimentForm.value = { name: '', description: '', traffic_split: 0.5 }
+    closeExperimentModal()
   } catch (e: any) {
-    notification.error('创建失败', e.response?.data?.detail || '操作失败')
+    notification.error('操作失败', e.response?.data?.detail || '操作失败')
+  }
+}
+
+async function deleteExperiment(exp: ABExperiment) {
+  if (!confirm(`确定要删除实验 "${exp.name}" 吗？`)) return
+  try {
+    await promptLabApi.abTest.deleteExperiment(exp.id)
+    notification.success('删除成功')
+    experiments.value = await promptLabApi.abTest.listExperiments()
+  } catch (e: any) {
+    notification.error('删除失败', e.response?.data?.detail || '操作失败')
   }
 }
 
@@ -686,6 +960,58 @@ async function handleExecuteChain() {
     notification.error('执行失败', e.response?.data?.detail || '操作失败')
   } finally {
     executingChain.value = false
+  }
+}
+
+function editChain(chain: PromptChain) {
+  editingChain.value = chain
+  chainForm.value = {
+    name: chain.name,
+    description: chain.description || ''
+  }
+  showEditChainModal.value = true
+}
+
+function closeEditChainModal() {
+  showEditChainModal.value = false
+  editingChain.value = null
+  chainForm.value = { name: '', description: '' }
+}
+
+async function handleSaveChain() {
+  if (!editingChain.value) return
+  if (!chainForm.value.name.trim()) {
+    notification.warning('请输入链名称')
+    return
+  }
+  try {
+    await promptLabApi.promptChain.update(editingChain.value.id, chainForm.value)
+    notification.success('更新成功')
+    chains.value = await promptLabApi.promptChain.list()
+    closeEditChainModal()
+  } catch (e: any) {
+    notification.error('更新失败', e.response?.data?.detail || '操作失败')
+  }
+}
+
+async function deleteChain(chain: PromptChain) {
+  if (!confirm(`确定要删除链 "${chain.name}" 吗？`)) return
+  try {
+    await promptLabApi.promptChain.delete(chain.id)
+    notification.success('删除成功')
+    chains.value = await promptLabApi.promptChain.list()
+  } catch (e: any) {
+    notification.error('删除失败', e.response?.data?.detail || '操作失败')
+  }
+}
+
+async function toggleChainStatus(chain: PromptChain) {
+  try {
+    await promptLabApi.promptChain.update(chain.id, { is_active: !chain.is_active })
+    notification.success(chain.is_active ? '已禁用' : '已启用')
+    chains.value = await promptLabApi.promptChain.list()
+  } catch (e: any) {
+    notification.error('操作失败', e.response?.data?.detail || '操作失败')
   }
 }
 </script>
@@ -992,10 +1318,55 @@ async function handleExecuteChain() {
   margin-top: 4px;
 }
 
+.example-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.example-detail-section {
+  margin-bottom: 20px;
+
+  h5 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+  }
+}
+
+.example-detail-content {
+  background: var(--bg-hover);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.example-detail-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: right;
+}
+
 .card-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.footer-left,
+.footer-right {
+  display: flex;
+  gap: 6px;
 }
 
 .quality-score {
@@ -1139,6 +1510,76 @@ async function handleExecuteChain() {
   color: var(--primary-color);
   font-size: 13px;
   font-weight: 500;
+}
+
+.preview-link {
+  background: none;
+  border: none;
+  color: var(--primary-color);
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+  margin-left: 8px;
+
+  &:hover {
+    color: var(--primary-hover);
+  }
+}
+
+.cot-detail {
+  .cot-detail-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+  }
+
+  .cot-detail-desc {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin-bottom: 20px;
+  }
+}
+
+.cot-detail-section {
+  margin-bottom: 20px;
+
+  h5 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+  }
+}
+
+.cot-full-template {
+  background: var(--bg-hover);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  line-height: 1.8;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.cot-scenarios {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  li {
+    padding: 6px 12px;
+    background: var(--bg-hover);
+    border-radius: 20px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
 }
 
 .presets-section {

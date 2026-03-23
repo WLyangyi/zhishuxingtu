@@ -263,11 +263,11 @@ def build_skill_prompt(skill_type: str, input_data: dict) -> tuple[str, str]:
 
     return system_prompt, user_prompt
 
-@router.get("/templates", response_model=List[SkillTemplate])
+@router.get("/templates", response_model=Response[List[SkillTemplate]])
 async def get_skill_templates():
-    return SKILL_TEMPLATES
+    return Response(data=SKILL_TEMPLATES)
 
-@router.get("", response_model=SkillListResponse)
+@router.get("", response_model=Response[SkillListResponse])
 async def get_skills(
     is_template: Optional[bool] = Query(None),
     page: int = Query(1, ge=1),
@@ -283,12 +283,14 @@ async def get_skills(
     total = query.count()
     items = query.order_by(Skill.updated_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
 
-    return {
-        "items": [skill_to_dict(item) for item in items],
-        "total": total
-    }
+    return Response(data=SkillListResponse(
+        items=[skill_to_dict(item) for item in items],
+        total=total,
+        page=page,
+        page_size=page_size
+    ))
 
-@router.get("/{skill_id}", response_model=SkillInDB)
+@router.get("/{skill_id}", response_model=Response[SkillInDB])
 async def get_skill(
     skill_id: str,
     db: Session = Depends(get_db),
@@ -302,9 +304,9 @@ async def get_skill(
     if not skill:
         raise HTTPException(status_code=404, detail="Skill不存在")
 
-    return skill_to_dict(skill)
+    return Response(data=skill_to_dict(skill))
 
-@router.post("", response_model=SkillInDB)
+@router.post("", response_model=Response[SkillInDB])
 async def create_skill(
     data: SkillCreate,
     db: Session = Depends(get_db),
@@ -329,9 +331,9 @@ async def create_skill(
     db.commit()
     db.refresh(skill)
 
-    return skill_to_dict(skill)
+    return Response(data=skill_to_dict(skill), message="Skill创建成功")
 
-@router.post("/from-template/{template_index}", response_model=SkillInDB)
+@router.post("/from-template/{template_index}", response_model=Response[SkillInDB])
 async def create_skill_from_template(
     template_index: int,
     db: Session = Depends(get_db),
@@ -359,9 +361,9 @@ async def create_skill_from_template(
     db.commit()
     db.refresh(skill)
 
-    return skill_to_dict(skill)
+    return Response(data=skill_to_dict(skill), message="Skill创建成功")
 
-@router.put("/{skill_id}", response_model=SkillInDB)
+@router.put("/{skill_id}", response_model=Response[SkillInDB])
 async def update_skill(
     skill_id: str,
     data: SkillUpdate,
@@ -387,7 +389,7 @@ async def update_skill(
     db.commit()
     db.refresh(skill)
 
-    return skill_to_dict(skill)
+    return Response(data=skill_to_dict(skill), message="Skill更新成功")
 
 @router.delete("/{skill_id}")
 async def delete_skill(
@@ -406,9 +408,9 @@ async def delete_skill(
     db.delete(skill)
     db.commit()
 
-    return {"success": True, "message": "Skill已删除"}
+    return Response(message="Skill已删除")
 
-@router.post("/{skill_id}/execute", response_model=SkillExecutionInDB)
+@router.post("/{skill_id}/execute", response_model=Response[SkillExecutionInDB])
 async def execute_skill(
     skill_id: str,
     data: SkillExecutionCreate,
@@ -493,7 +495,7 @@ async def execute_skill_langchain(
     db.commit()
     db.refresh(execution)
 
-    return {
+    return Response(data={
         "id": execution.id,
         "skill_id": execution.skill_id,
         "user_id": execution.user_id,
@@ -504,7 +506,7 @@ async def execute_skill_langchain(
         "error_message": execution.error_message,
         "started_at": execution.started_at,
         "completed_at": execution.completed_at
-    }
+    }, message="Skill执行完成")
 
 
 async def execute_skill_original(
@@ -610,7 +612,7 @@ async def execute_skill_original(
     db.commit()
     db.refresh(execution)
 
-    return {
+    return Response(data={
         "id": execution.id,
         "skill_id": execution.skill_id,
         "user_id": execution.user_id,
@@ -621,9 +623,9 @@ async def execute_skill_original(
         "error_message": execution.error_message,
         "started_at": execution.started_at,
         "completed_at": execution.completed_at
-    }
+    }, message="Skill执行完成")
 
-@router.get("/{skill_id}/executions", response_model=List[SkillExecutionInDB])
+@router.get("/{skill_id}/executions", response_model=Response[List[SkillExecutionInDB]])
 async def get_skill_executions(
     skill_id: str,
     limit: int = Query(20, ge=1, le=100),
@@ -642,7 +644,7 @@ async def get_skill_executions(
         SkillExecution.skill_id == skill_id
     ).order_by(SkillExecution.started_at.desc()).limit(limit).all()
 
-    return [{
+    return Response(data=[{
         "id": e.id,
         "skill_id": e.skill_id,
         "user_id": e.user_id,
@@ -653,4 +655,4 @@ async def get_skill_executions(
         "error_message": e.error_message,
         "started_at": e.started_at,
         "completed_at": e.completed_at
-    } for e in executions]
+    } for e in executions])

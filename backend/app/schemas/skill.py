@@ -81,6 +81,8 @@ class SkillInDB(BaseModel):
 class SkillListResponse(BaseModel):
     items: List[SkillInDB]
     total: int
+    page: int
+    page_size: int
 
 class SkillTemplate(BaseModel):
     name: str

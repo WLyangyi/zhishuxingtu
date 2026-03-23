@@ -130,6 +130,40 @@ def submit_test_result(
     db.refresh(db_result)
     return Response(data=ABTestResultInDB.from_orm(db_result).dict(), message="测试结果提交成功")
 
+@router.put("/experiments/{experiment_id}", response_model=Response)
+def update_ab_experiment(
+    experiment_id: str,
+    experiment_update: ABExperimentUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    experiment = db.query(ABExperiment).filter(ABExperiment.id == experiment_id).first()
+    if not experiment:
+        raise HTTPException(status_code=404, detail="实验不存在")
+    
+    update_data = experiment_update.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(experiment, field, value)
+    
+    db.commit()
+    db.refresh(experiment)
+    return Response(data=ABExperimentInDB.from_orm(experiment).dict(), message="实验更新成功")
+
+@router.delete("/experiments/{experiment_id}", response_model=Response)
+def delete_ab_experiment(
+    experiment_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    experiment = db.query(ABExperiment).filter(ABExperiment.id == experiment_id).first()
+    if not experiment:
+        raise HTTPException(status_code=404, detail="实验不存在")
+    
+    experiment.status = "completed"
+    experiment.end_time = datetime.utcnow()
+    db.commit()
+    return Response(message="实验已删除")
+
 @router.get("/experiments/{experiment_id}/stats", response_model=Response)
 def get_experiment_stats(
     experiment_id: str,

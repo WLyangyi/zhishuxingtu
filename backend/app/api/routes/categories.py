@@ -71,16 +71,16 @@ async def init_system_categories(db: Session):
     
     db.commit()
 
-@router.get("", response_model=List[CategoryInDB])
+@router.get("", response_model=Response[List[CategoryInDB]])
 async def get_categories(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     await init_system_categories(db)
     categories = db.query(Category).order_by(Category.sort_order).all()
-    return categories
+    return Response(data=categories)
 
-@router.post("", response_model=CategoryInDB)
+@router.post("", response_model=Response[CategoryInDB])
 async def create_category(
     data: CategoryCreate,
     db: Session = Depends(get_db),
@@ -90,9 +90,9 @@ async def create_category(
     db.add(category)
     db.commit()
     db.refresh(category)
-    return category
+    return Response(data=category, message="分类创建成功")
 
-@router.put("/{category_id}", response_model=CategoryInDB)
+@router.put("/{category_id}", response_model=Response[CategoryInDB])
 async def update_category(
     category_id: str,
     data: CategoryUpdate,
@@ -111,7 +111,7 @@ async def update_category(
     
     db.commit()
     db.refresh(category)
-    return category
+    return Response(data=category, message="分类更新成功")
 
 @router.delete("/{category_id}")
 async def delete_category(
@@ -128,18 +128,18 @@ async def delete_category(
     
     db.delete(category)
     db.commit()
-    return {"success": True, "message": "分类已删除"}
+    return Response(message="分类已删除")
 
-@router.get("/{category_id}/types", response_model=List[ContentTypeInDB])
+@router.get("/{category_id}/types", response_model=Response[List[ContentTypeInDB]])
 async def get_content_types(
     category_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     types = db.query(ContentType).filter(ContentType.category_id == category_id).all()
-    return types
+    return Response(data=types)
 
-@router.post("/types", response_model=ContentTypeInDB)
+@router.post("/types", response_model=Response[ContentTypeInDB])
 async def create_content_type(
     data: ContentTypeCreate,
     db: Session = Depends(get_db),
@@ -159,9 +159,9 @@ async def create_content_type(
     db.add(content_type)
     db.commit()
     db.refresh(content_type)
-    return content_type
+    return Response(data=content_type, message="内容类型创建成功")
 
-@router.put("/types/{type_id}", response_model=ContentTypeInDB)
+@router.put("/types/{type_id}", response_model=Response[ContentTypeInDB])
 async def update_content_type(
     type_id: str,
     data: ContentTypeUpdate,
@@ -182,7 +182,7 @@ async def update_content_type(
     
     db.commit()
     db.refresh(content_type)
-    return content_type
+    return Response(data=content_type, message="内容类型更新成功")
 
 @router.delete("/types/{type_id}")
 async def delete_content_type(
@@ -199,4 +199,4 @@ async def delete_content_type(
     
     db.delete(content_type)
     db.commit()
-    return {"success": True, "message": "内容类型已删除"}
+    return Response(message="内容类型已删除")

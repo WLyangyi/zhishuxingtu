@@ -11,6 +11,7 @@ from app.models.tag import Tag, content_tags
 from app.schemas.category import (
     ContentCreate, ContentUpdate, ContentInDB, ContentListResponse
 )
+from app.schemas import Response
 
 router = APIRouter(prefix="/contents", tags=["contents"])
 
@@ -56,7 +57,7 @@ def content_to_dict(content: Content) -> dict:
         "tags": [{"id": t.id, "name": t.name, "color": t.color} for t in content.tags]
     }
 
-@router.get("", response_model=ContentListResponse)
+@router.get("", response_model=Response[ContentListResponse])
 async def get_contents(
     category_id: Optional[str] = Query(None),
     type_id: Optional[str] = Query(None),
@@ -86,14 +87,14 @@ async def get_contents(
     total = query.count()
     items = query.order_by(Content.updated_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     
-    return {
-        "items": [content_to_dict(item) for item in items],
-        "total": total,
-        "page": page,
-        "page_size": page_size
-    }
+    return Response(data=ContentListResponse(
+        items=[content_to_dict(item) for item in items],
+        total=total,
+        page=page,
+        page_size=page_size
+    ))
 
-@router.get("/{content_id}", response_model=ContentInDB)
+@router.get("/{content_id}", response_model=Response[ContentInDB])
 async def get_content(
     content_id: str,
     db: Session = Depends(get_db),
@@ -107,9 +108,9 @@ async def get_content(
     if not content:
         raise HTTPException(status_code=404, detail="内容不存在")
     
-    return content_to_dict(content)
+    return Response(data=content_to_dict(content))
 
-@router.post("", response_model=ContentInDB)
+@router.post("", response_model=Response[ContentInDB])
 async def create_content(
     data: ContentCreate,
     db: Session = Depends(get_db),
@@ -154,9 +155,9 @@ async def create_content(
     db.commit()
     db.refresh(content)
     
-    return content_to_dict(content)
+    return Response(data=content_to_dict(content), message="内容创建成功")
 
-@router.put("/{content_id}", response_model=ContentInDB)
+@router.put("/{content_id}", response_model=Response[ContentInDB])
 async def update_content(
     content_id: str,
     data: ContentUpdate,
@@ -203,7 +204,7 @@ async def update_content(
     db.commit()
     db.refresh(content)
     
-    return content_to_dict(content)
+    return Response(data=content_to_dict(content), message="内容更新成功")
 
 @router.delete("/{content_id}")
 async def delete_content(
@@ -222,7 +223,7 @@ async def delete_content(
     db.delete(content)
     db.commit()
     
-    return {"success": True, "message": "内容已删除"}
+    return Response(message="内容已删除")
 
 @router.get("/{content_id}/backlinks")
 async def get_content_backlinks(
@@ -243,7 +244,7 @@ async def get_content_backlinks(
         Content.user_id == current_user.id
     ).all()
     
-    return {
+    return Response(data={
         "items": [{"id": c.id, "title": c.title} for c in backlinks],
         "total": len(backlinks)
-    }
+    })
