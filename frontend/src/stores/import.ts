@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { importApi } from '@/api/import'
 import { useNotificationStore } from '@/stores/notification'
+import { handleApiError } from '@/utils/errorHandler'
 import type { ImportTask, ImportHistoryItem, SSEProgressMessage } from '@/types/import'
 
 export const useImportStore = defineStore('import', () => {
@@ -65,6 +66,8 @@ export const useImportStore = defineStore('import', () => {
   }
 
   function handleSSEMessage(msg: SSEProgressMessage) {
+    const notification = useNotificationStore()
+
     if (msg.type === 'progress') {
       if (currentTask.value) {
         currentTask.value.progress = msg.progress || 0
@@ -86,7 +89,6 @@ export const useImportStore = defineStore('import', () => {
     } else if (msg.type === 'error') {
       isImporting.value = false
       stopSSE()
-      const notification = useNotificationStore()
       notification.error('导入失败', msg.message || '处理过程中发生错误')
 
       if (currentTask.value) {
@@ -159,9 +161,9 @@ export const useImportStore = defineStore('import', () => {
 
       _startSSE(taskId)
       notification.success('PDF 上传成功', '正在处理中...')
-    } catch (error: any) {
+    } catch (error) {
       isImporting.value = false
-      notification.error('上传失败', error.response?.data?.detail || '请检查文件格式和大小')
+      handleApiError(error, '上传失败', '请检查文件格式和大小')
     }
   }
 
@@ -187,9 +189,9 @@ export const useImportStore = defineStore('import', () => {
 
       _startSSE(taskId)
       notification.success('URL 提交成功', '正在处理中...')
-    } catch (error: any) {
+    } catch (error) {
       isImporting.value = false
-      notification.error('提交失败', error.response?.data?.detail || '请检查URL是否正确')
+      handleApiError(error, '提交失败', '请检查URL是否正确')
     }
   }
 
@@ -215,9 +217,9 @@ export const useImportStore = defineStore('import', () => {
 
       _startSSE(taskId)
       notification.success('视频上传成功', '正在处理中...')
-    } catch (error: any) {
+    } catch (error) {
       isImporting.value = false
-      notification.error('上传失败', error.response?.data?.detail || '请检查文件格式和大小')
+      handleApiError(error, '上传失败', '请检查文件格式和大小')
     }
   }
 
@@ -243,9 +245,9 @@ export const useImportStore = defineStore('import', () => {
 
       _startSSE(taskId)
       notification.success('视频链接提交成功', '正在处理中...')
-    } catch (error: any) {
+    } catch (error) {
       isImporting.value = false
-      notification.error('提交失败', error.response?.data?.detail || '请检查URL是否正确')
+      handleApiError(error, '提交失败', '请检查URL是否正确')
     }
   }
 
@@ -264,8 +266,8 @@ export const useImportStore = defineStore('import', () => {
       showResultModal.value = false
       currentTask.value = null
       return response.data
-    } catch (error: any) {
-      notification.error('保存失败', error.response?.data?.detail || '请重试')
+    } catch (error) {
+      handleApiError(error, '保存失败', '请重试')
       throw error
     }
   }
@@ -287,9 +289,8 @@ export const useImportStore = defineStore('import', () => {
       const response = await importApi.getHistory(params)
       history.value = response.data.items
       historyTotal.value = response.data.total
-    } catch (error: any) {
-      const notification = useNotificationStore()
-      notification.error('获取历史失败', '请稍后重试')
+    } catch (error) {
+      handleApiError(error, '获取历史失败', '请稍后重试')
     } finally {
       historyLoading.value = false
     }

@@ -1,16 +1,17 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { categoriesApi, contentsApi } from '@/api/categories'
-import type { 
+import { useNotificationStore } from './notification'
+import { handleApiError } from '@/utils/errorHandler'
+import type {
   Category, CategoryCreate, CategoryUpdate,
   ContentType, ContentTypeCreate,
   Content, ContentCreate, ContentUpdate
 } from '@/types/category'
-import { useNotificationStore } from './notification'
 
 export const useCategoryStore = defineStore('category', () => {
   const notification = useNotificationStore()
-  
+
   const categories = ref<Category[]>([])
   const currentCategory = ref<Category | null>(null)
   const contentTypes = ref<ContentType[]>([])
@@ -28,8 +29,8 @@ export const useCategoryStore = defineStore('category', () => {
       loading.value = true
       const response = await categoriesApi.getCategories()
       categories.value = response.data || []
-    } catch (error: any) {
-      notification.error('获取分类失败', error.response?.data?.detail || '操作失败')
+    } catch (error) {
+      handleApiError(error, '获取分类失败', '操作失败')
     } finally {
       loading.value = false
     }
@@ -41,8 +42,8 @@ export const useCategoryStore = defineStore('category', () => {
       categories.value.push(response.data)
       notification.success('分类创建成功')
       return response.data
-    } catch (error: any) {
-      notification.error('创建分类失败', error.response?.data?.detail || '操作失败')
+    } catch (error) {
+      handleApiError(error, '创建分类失败', '操作失败')
       throw error
     }
   }
@@ -56,8 +57,8 @@ export const useCategoryStore = defineStore('category', () => {
       }
       notification.success('分类更新成功')
       return response.data
-    } catch (error: any) {
-      notification.error('更新分类失败', error.response?.data?.detail || '操作失败')
+    } catch (error) {
+      handleApiError(error, '更新分类失败', '操作失败')
       throw error
     }
   }
@@ -67,8 +68,8 @@ export const useCategoryStore = defineStore('category', () => {
       await categoriesApi.deleteCategory(id)
       categories.value = categories.value.filter(c => c.id !== id)
       notification.success('分类删除成功')
-    } catch (error: any) {
-      notification.error('删除分类失败', error.response?.data?.detail || '操作失败')
+    } catch (error) {
+      handleApiError(error, '删除分类失败', '操作失败')
       throw error
     }
   }
@@ -77,8 +78,8 @@ export const useCategoryStore = defineStore('category', () => {
     try {
       const response = await categoriesApi.getContentTypes(categoryId)
       contentTypes.value = response.data || []
-    } catch (error: any) {
-      notification.error('获取内容类型失败', error.response?.data?.detail || '操作失败')
+    } catch (error) {
+      handleApiError(error, '获取内容类型失败', '操作失败')
     }
   }
 
@@ -91,8 +92,8 @@ export const useCategoryStore = defineStore('category', () => {
       }
       notification.success('内容类型创建成功')
       return response.data
-    } catch (error: any) {
-      notification.error('创建内容类型失败', error.response?.data?.detail || '操作失败')
+    } catch (error) {
+      handleApiError(error, '创建内容类型失败', '操作失败')
       throw error
     }
   }
@@ -112,8 +113,8 @@ export const useCategoryStore = defineStore('category', () => {
       })
       contents.value = response.data.items || []
       totalContents.value = response.data.total || 0
-    } catch (error: any) {
-      notification.error('获取内容失败', error.response?.data?.detail || '操作失败')
+    } catch (error) {
+      handleApiError(error, '获取内容失败', '操作失败')
     } finally {
       loading.value = false
     }
@@ -125,8 +126,8 @@ export const useCategoryStore = defineStore('category', () => {
       const response = await contentsApi.getContent(id)
       currentContent.value = response.data
       return response.data
-    } catch (error: any) {
-      notification.error('获取内容详情失败', error.response?.data?.detail || '操作失败')
+    } catch (error) {
+      handleApiError(error, '获取内容详情失败', '操作失败')
       return null
     } finally {
       loading.value = false
@@ -140,8 +141,8 @@ export const useCategoryStore = defineStore('category', () => {
       totalContents.value++
       notification.success('内容创建成功')
       return response.data
-    } catch (error: any) {
-      notification.error('创建内容失败', error.response?.data?.detail || '操作失败')
+    } catch (error) {
+      handleApiError(error, '创建内容失败', '操作失败')
       throw error
     }
   }
@@ -158,8 +159,8 @@ export const useCategoryStore = defineStore('category', () => {
       }
       notification.success('内容更新成功')
       return response.data
-    } catch (error: any) {
-      notification.error('更新内容失败', error.response?.data?.detail || '操作失败')
+    } catch (error) {
+      handleApiError(error, '更新内容失败', '操作失败')
       throw error
     }
   }
@@ -170,8 +171,8 @@ export const useCategoryStore = defineStore('category', () => {
       contents.value = contents.value.filter(c => c.id !== id)
       totalContents.value--
       notification.success('内容删除成功')
-    } catch (error: any) {
-      notification.error('删除内容失败', error.response?.data?.detail || '操作失败')
+    } catch (error) {
+      handleApiError(error, '删除内容失败', '操作失败')
       throw error
     }
   }

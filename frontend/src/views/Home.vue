@@ -177,8 +177,8 @@ import { useTagsStore } from '@/stores/tags'
 import { useAuthStore } from '@/stores/auth'
 import { useImportStore } from '@/stores/import'
 import { 
-  Search, FileText, Folder, Clock, Zap, Expand, Bot, FlaskConical,
-  User, Briefcase, TrendingUp, BookOpen, Code, Lightbulb, Upload, Image
+  Search, FileText, Clock, Zap, Expand, Bot, FlaskConical,
+  User, Briefcase, Upload, Image
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -256,47 +256,6 @@ const timeGreeting = computed(() => {
   if (hour >= 18 && hour < 22) return '傍晚好'
   return '夜深了'
 })
-
-function getCategoryIcon(name: string) {
-  const nameLower = name.toLowerCase()
-  if (nameLower.includes('个人')) return User
-  if (nameLower.includes('工作')) return Briefcase
-  if (nameLower.includes('素材')) return TrendingUp
-  if (nameLower.includes('学习')) return BookOpen
-  if (nameLower.includes('代码')) return Code
-  if (nameLower.includes('灵感')) return Lightbulb
-  return Folder
-}
-
-function getCategoryColor(name: string): string {
-  const nameLower = name.toLowerCase()
-  if (nameLower.includes('个人')) return '#f59e0b'
-  if (nameLower.includes('工作')) return '#3b82f6'
-  if (nameLower.includes('素材')) return '#10b981'
-  if (nameLower.includes('学习')) return '#8b5cf6'
-  if (nameLower.includes('代码')) return '#06b6d4'
-  if (nameLower.includes('灵感')) return '#ec4899'
-  return '#0066FF'
-}
-
-function getCategoryDesc(name: string): string {
-  const nameLower = name.toLowerCase()
-  if (nameLower.includes('个人')) return '笔记、日记、灵感收集'
-  if (nameLower.includes('工作')) return '项目文档、任务管理'
-  if (nameLower.includes('素材')) return '图片、链接、附件'
-  if (nameLower.includes('学习')) return '学习笔记、知识整理'
-  if (nameLower.includes('代码')) return '代码片段、技术文档'
-  if (nameLower.includes('灵感')) return '创意想法、灵感记录'
-  return '内容管理'
-}
-
-function getFolderCount(categoryId: string): number {
-  return foldersStore.folders.filter(f => f.category_id === categoryId).length
-}
-
-function getContentCount(categoryId: string): number {
-  return categoryStore.contents.filter(c => c.category_id === categoryId).length
-}
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return ''

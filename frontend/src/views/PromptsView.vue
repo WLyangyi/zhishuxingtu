@@ -285,9 +285,9 @@ async function loadData() {
       promptsApi.getPrompts(),
       promptsApi.getCategories()
     ])
-    templates.value = templatesRes
-    prompts.value = promptsRes.items
-    categories.value = catsRes
+    templates.value = templatesRes.data
+    prompts.value = promptsRes.data.items
+    categories.value = catsRes.data
   } catch (e) {
     console.error(e)
   }
@@ -308,9 +308,9 @@ async function initializePrompts() {
 
 async function createFromTemplate(index: number) {
   try {
-    const prompt = await promptsApi.createFromTemplate(index)
-    prompts.value.unshift(prompt as any)
-    notification.success('创建成功', `「${prompt.name}」已添加到我的提示词`)
+    const response = await promptsApi.createFromTemplate(index)
+    prompts.value.unshift(response.data as any)
+    notification.success('创建成功', `「${response.data.name}」已添加到我的提示词`)
   } catch (e: any) {
     notification.error('创建失败', e.response?.data?.detail || '操作失败')
   }
@@ -374,12 +374,12 @@ async function handleSavePrompt() {
 
 async function togglePromptStatus(prompt: Prompt) {
   try {
-    const updated = await promptsApi.updatePrompt(prompt.id, { is_active: !prompt.is_active })
+    const response = await promptsApi.updatePrompt(prompt.id, { is_active: !prompt.is_active })
     const index = prompts.value.findIndex(p => p.id === prompt.id)
     if (index !== -1) {
-      prompts.value[index] = updated as any
+      prompts.value[index] = response.data as any
     }
-    notification.success(updated.is_active ? '提示词已启用' : '提示词已停用')
+    notification.success(response.data.is_active ? '提示词已启用' : '提示词已停用')
   } catch (e: any) {
     notification.error('操作失败', e.response?.data?.detail || '操作失败')
   }

@@ -205,16 +205,16 @@ async function regenerateField(field: string) {
     const data = response.data
 
     if (field === 'title' || field === 'all') {
-      editTitle.value = data.title
+      editTitle.value = data.result?.title || ''
     }
     if (field === 'summary' || field === 'all') {
-      editSummary.value = data.summary
+      editSummary.value = data.result?.summary || ''
     }
     if (field === 'key_points' || field === 'all') {
-      editKeyPoints.value = data.key_points
+      editKeyPoints.value = data.result?.key_points || []
     }
     if (field === 'tags' || field === 'all') {
-      editTags.value = data.tags
+      editTags.value = data.result?.tags || []
     }
 
     notification.success('重新生成成功')

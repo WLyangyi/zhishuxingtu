@@ -232,7 +232,7 @@ async function loadContent() {
     
     try {
       const result = await contentsApi.getBacklinks(contentId.value)
-      backlinks.value = result.items
+      backlinks.value = result.data.items
     } catch (e) {
       console.error(e)
     }
