@@ -102,6 +102,11 @@ const routes = [
         path: 'search',
         name: 'Search',
         component: () => import('@/views/SearchResults.vue')
+      },
+      {
+        path: 'import-history',
+        name: 'ImportHistory',
+        component: () => import('@/views/ImportHistory.vue')
       }
     ]
   }

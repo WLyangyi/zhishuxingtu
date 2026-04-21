@@ -26,7 +26,8 @@ export const useCategoryStore = defineStore('category', () => {
   async function fetchCategories() {
     try {
       loading.value = true
-      categories.value = await categoriesApi.getCategories()
+      const response = await categoriesApi.getCategories()
+      categories.value = response.data || []
     } catch (error: any) {
       notification.error('获取分类失败', error.response?.data?.detail || '操作失败')
     } finally {
@@ -36,10 +37,10 @@ export const useCategoryStore = defineStore('category', () => {
 
   async function createCategory(data: CategoryCreate) {
     try {
-      const category = await categoriesApi.createCategory(data)
-      categories.value.push(category)
+      const response = await categoriesApi.createCategory(data)
+      categories.value.push(response.data)
       notification.success('分类创建成功')
-      return category
+      return response.data
     } catch (error: any) {
       notification.error('创建分类失败', error.response?.data?.detail || '操作失败')
       throw error
@@ -48,13 +49,13 @@ export const useCategoryStore = defineStore('category', () => {
 
   async function updateCategory(id: string, data: CategoryUpdate) {
     try {
-      const category = await categoriesApi.updateCategory(id, data)
+      const response = await categoriesApi.updateCategory(id, data)
       const index = categories.value.findIndex(c => c.id === id)
       if (index !== -1) {
-        categories.value[index] = category
+        categories.value[index] = response.data
       }
       notification.success('分类更新成功')
-      return category
+      return response.data
     } catch (error: any) {
       notification.error('更新分类失败', error.response?.data?.detail || '操作失败')
       throw error
@@ -74,7 +75,8 @@ export const useCategoryStore = defineStore('category', () => {
 
   async function fetchContentTypes(categoryId: string) {
     try {
-      contentTypes.value = await categoriesApi.getContentTypes(categoryId)
+      const response = await categoriesApi.getContentTypes(categoryId)
+      contentTypes.value = response.data || []
     } catch (error: any) {
       notification.error('获取内容类型失败', error.response?.data?.detail || '操作失败')
     }
@@ -82,13 +84,13 @@ export const useCategoryStore = defineStore('category', () => {
 
   async function createContentType(data: ContentTypeCreate) {
     try {
-      const contentType = await categoriesApi.createContentType(data)
+      const response = await categoriesApi.createContentType(data)
       const category = categories.value.find(c => c.id === data.category_id)
       if (category) {
-        category.content_types.push(contentType)
+        category.content_types.push(response.data)
       }
       notification.success('内容类型创建成功')
-      return contentType
+      return response.data
     } catch (error: any) {
       notification.error('创建内容类型失败', error.response?.data?.detail || '操作失败')
       throw error
@@ -108,8 +110,8 @@ export const useCategoryStore = defineStore('category', () => {
         page: currentPage.value,
         page_size: pageSize.value
       })
-      contents.value = response.items
-      totalContents.value = response.total
+      contents.value = response.data.items || []
+      totalContents.value = response.data.total || 0
     } catch (error: any) {
       notification.error('获取内容失败', error.response?.data?.detail || '操作失败')
     } finally {
@@ -120,8 +122,9 @@ export const useCategoryStore = defineStore('category', () => {
   async function getContent(id: string) {
     try {
       loading.value = true
-      currentContent.value = await contentsApi.getContent(id)
-      return currentContent.value
+      const response = await contentsApi.getContent(id)
+      currentContent.value = response.data
+      return response.data
     } catch (error: any) {
       notification.error('获取内容详情失败', error.response?.data?.detail || '操作失败')
       return null
@@ -132,11 +135,11 @@ export const useCategoryStore = defineStore('category', () => {
 
   async function createContent(data: ContentCreate) {
     try {
-      const content = await contentsApi.createContent(data)
-      contents.value.unshift(content)
+      const response = await contentsApi.createContent(data)
+      contents.value.unshift(response.data)
       totalContents.value++
       notification.success('内容创建成功')
-      return content
+      return response.data
     } catch (error: any) {
       notification.error('创建内容失败', error.response?.data?.detail || '操作失败')
       throw error
@@ -145,16 +148,16 @@ export const useCategoryStore = defineStore('category', () => {
 
   async function updateContent(id: string, data: ContentUpdate) {
     try {
-      const content = await contentsApi.updateContent(id, data)
+      const response = await contentsApi.updateContent(id, data)
       const index = contents.value.findIndex(c => c.id === id)
       if (index !== -1) {
-        contents.value[index] = content
+        contents.value[index] = response.data
       }
       if (currentContent.value?.id === id) {
-        currentContent.value = content
+        currentContent.value = response.data
       }
       notification.success('内容更新成功')
-      return content
+      return response.data
     } catch (error: any) {
       notification.error('更新内容失败', error.response?.data?.detail || '操作失败')
       throw error

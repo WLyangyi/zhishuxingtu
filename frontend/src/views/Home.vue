@@ -42,46 +42,30 @@
           </Transition>
         </div>
 
-        <div class="categories-section animate-fade-in-up stagger-2">
-          <div class="section-header">
-            <h2 class="section-title">知识分类</h2>
-            <span class="section-count">{{ categories.length }}</span>
-          </div>
-          <div class="category-grid">
-            <div
-              v-for="(category, index) in categories"
-              :key="category.id"
-              class="category-card"
-              :style="{ '--delay': `${index * 0.05}s` }"
-              @click="enterCategory(category)"
-            >
-              <div class="card-glow" :style="{ background: getCategoryColor(category.name) }"></div>
-              <div class="card-content">
-                <div class="card-header">
-                  <div class="card-icon" :style="{ 
-                    backgroundColor: getCategoryColor(category.name) + '20',
-                    color: getCategoryColor(category.name)
-                  }">
-                    <component :is="getCategoryIcon(category.name)" :size="24" />
-                  </div>
-                  <div class="card-stats">
-                    <span class="stat">
-                      <Folder :size="14" />
-                      {{ getFolderCount(category.id) }}
-                    </span>
-                    <span class="stat">
-                      <FileText :size="14" />
-                      {{ getContentCount(category.id) }}
-                    </span>
-                  </div>
-                </div>
-                <h3 class="card-title">{{ category.name }}</h3>
-                <p class="card-desc">{{ getCategoryDesc(category.name) }}</p>
-              </div>
-              <div class="card-hover-content">
-                <p class="hover-text">点击进入 →</p>
-              </div>
+        <div class="main-entries-section animate-fade-in-up stagger-2">
+          <div class="entry-card" @click="enterCategory('personal')">
+            <div class="entry-icon" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b;">
+              <User :size="32" />
             </div>
+            <h3 class="entry-title">个人</h3>
+            <p class="entry-subtitle">Personal</p>
+            <p class="entry-desc">笔记、日记、灵感收集</p>
+          </div>
+          <div class="entry-card" @click="enterCategory('work')">
+            <div class="entry-icon" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6;">
+              <Briefcase :size="32" />
+            </div>
+            <h3 class="entry-title">工作</h3>
+            <p class="entry-subtitle">Work</p>
+            <p class="entry-desc">项目文档、任务管理</p>
+          </div>
+          <div class="entry-card" @click="enterCategory('assets')">
+            <div class="entry-icon" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">
+              <Image :size="32" />
+            </div>
+            <h3 class="entry-title">素材</h3>
+            <p class="entry-subtitle">Assets</p>
+            <p class="entry-desc">图片、链接、附件</p>
           </div>
         </div>
       </div>
@@ -169,6 +153,10 @@
             <Search :size="18" />
             <span>全局搜索</span>
           </button>
+          <button class="action-btn" @click="openImport">
+            <Upload :size="18" />
+            <span>智能导入</span>
+          </button>
           <button class="action-btn" @click="goToSkills">
             <Zap :size="18" />
             <span>智能模块</span>
@@ -187,9 +175,10 @@ import { useFoldersStore } from '@/stores/folders'
 import { useNotesStore } from '@/stores/notes'
 import { useTagsStore } from '@/stores/tags'
 import { useAuthStore } from '@/stores/auth'
+import { useImportStore } from '@/stores/import'
 import { 
   Search, FileText, Folder, Clock, Zap, Expand, Bot, FlaskConical,
-  User, Briefcase, TrendingUp, BookOpen, Code, Lightbulb
+  User, Briefcase, TrendingUp, BookOpen, Code, Lightbulb, Upload, Image
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -198,6 +187,7 @@ const foldersStore = useFoldersStore()
 const notesStore = useNotesStore()
 const tagsStore = useTagsStore()
 const authStore = useAuthStore()
+const importStore = useImportStore()
 
 const homeRef = ref<HTMLElement | null>(null)
 const particleCanvas = ref<HTMLCanvasElement | null>(null)
@@ -348,7 +338,40 @@ function searchByTag(tagName: string) {
   router.push({ path: '/search', query: { q: tagName } })
 }
 
-function enterCategory(category: any) {
+function enterCategory(categoryKey: string) {
+  console.log('enterCategory called with:', categoryKey)
+  console.log('categories:', categories.value)
+  
+  if (!categories.value || categories.value.length === 0) {
+    console.warn('Categories not loaded yet, waiting...')
+    categoryStore.fetchCategories().then(() => {
+      setTimeout(() => enterCategory(categoryKey), 100)
+    })
+    return
+  }
+  
+  const categoryMap: Record<string, any> = {
+    'personal': categories.value.find(c => c.name?.toLowerCase().includes('个人')),
+    'work': categories.value.find(c => c.name?.toLowerCase().includes('工作')),
+    'assets': categories.value.find(c => c.name?.toLowerCase().includes('素材'))
+  }
+  
+  console.log('categoryMap:', categoryMap)
+  
+  const category = categoryMap[categoryKey]
+  
+  if (!category) {
+    console.error('Category not found for key:', categoryKey)
+    const fallback = categories.value[0]
+    if (fallback) {
+      console.log('Using fallback category:', fallback)
+      categoryStore.currentCategory = fallback
+      router.push(`/categories/${fallback.id}`)
+    }
+    return
+  }
+  
+  console.log('Navigating to category:', category)
   categoryStore.currentCategory = category
   router.push(`/categories/${category.id}`)
 }
@@ -375,6 +398,10 @@ function goToAI() {
 
 function goToPromptLab() {
   router.push('/prompt-lab')
+}
+
+function openImport() {
+  importStore.openImportModal()
 }
 
 function initParticles() {
@@ -757,142 +784,68 @@ onUnmounted(() => {
   transform: translateY(-8px);
 }
 
-.categories-section {
-  flex: 1;
-}
-
-.section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.section-title {
-  font-family: 'Exo 2', 'Noto Sans SC', sans-serif;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin: 0;
-}
-
-.section-count {
-  font-size: 12px;
-  color: var(--text-muted);
-  padding: 2px 10px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 20px;
-}
-
-.category-grid {
+.main-entries-section {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px 0;
 }
 
-.category-card {
-  position: relative;
-  padding: 24px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+.entry-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 24px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-xl);
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  overflow: hidden;
-  animation: fade-in-up 0.4s ease-out backwards;
-  animation-delay: var(--delay);
-  
-  .card-glow {
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    opacity: 0;
-    transition: opacity 0.3s;
-    filter: blur(60px);
-    pointer-events: none;
+  text-align: center;
+
+  &:hover {
+    transform: translateY(-6px);
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+
+    .entry-icon {
+      transform: scale(1.1);
+    }
   }
-  
-  .card-content {
-    position: relative;
-    z-index: 1;
-  }
-  
-  .card-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    margin-bottom: 16px;
-  }
-  
-  .card-icon {
-    width: 48px;
-    height: 48px;
+
+  .entry-icon {
+    width: 72px;
+    height: 72px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-xl);
+    margin-bottom: 20px;
+    transition: transform 0.3s ease;
   }
-  
-  .card-stats {
-    display: flex;
-    gap: 12px;
-    
-    .stat {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 12px;
-      color: var(--text-muted);
-    }
-  }
-  
-  .card-title {
-    font-size: 18px;
-    font-weight: 600;
+
+  .entry-title {
+    font-family: 'Exo 2', 'Noto Sans SC', sans-serif;
+    font-size: 24px;
+    font-weight: 700;
     color: var(--text-primary);
-    margin: 0 0 8px;
+    margin: 0 0 4px;
   }
-  
-  .card-desc {
+
+  .entry-subtitle {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin: 0 0 12px;
+    opacity: 0.7;
+  }
+
+  .entry-desc {
     font-size: 13px;
     color: var(--text-muted);
     margin: 0;
     line-height: 1.5;
-  }
-  
-  .card-hover-content {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0, 0, 0, 0.7);
-    opacity: 0;
-    transition: opacity 0.3s;
-    
-    .hover-text {
-      font-size: 14px;
-      font-weight: 500;
-      color: var(--text-primary);
-    }
-  }
-  
-  &:hover {
-    transform: translateY(-4px);
-    border-color: rgba(255, 255, 255, 0.12);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
-    
-    .card-glow {
-      opacity: 0.15;
-    }
-    
-    .card-hover-content {
-      opacity: 1;
-    }
   }
 }
 
