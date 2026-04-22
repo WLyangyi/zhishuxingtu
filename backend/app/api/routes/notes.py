@@ -55,7 +55,7 @@ async def list_notes(
     if category_id:
         from app.models.folder import Folder
         folder_ids = [f.id for f in db.query(Folder).filter(Folder.category_id == category_id).all()]
-        query = query.filter(Note.folder_id.in_(folder_ids) | Note.folder_id.is_(None))
+        query = query.filter(Note.folder_id.in_(folder_ids))
     
     total = query.count()
     notes = query.order_by(Note.updated_at.desc()).offset((page - 1) * page_size).limit(page_size).all()

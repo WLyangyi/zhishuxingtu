@@ -35,7 +35,6 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useFoldersStore } from '@/stores/folders'
-import { useNotesStore } from '@/stores/notes'
 import type { Category } from '@/types/category'
 import { FileText, Folder, Plus, User, Briefcase, TrendingUp } from 'lucide-vue-next'
 
@@ -51,7 +50,6 @@ const emit = defineEmits<{
 
 const router = useRouter()
 const foldersStore = useFoldersStore()
-const notesStore = useNotesStore()
 const showCreateMenu = ref(false)
 
 function getCategoryIcon(name: string) {
@@ -82,11 +80,6 @@ const noteCount = computed(() => {
   for (const folder of categoryFolders) {
     count += folder.note_count || 0
   }
-  const uncategorizedNotes = notesStore.notes.filter(n => {
-    const folder = foldersStore.folders.find(f => f.id === n.folder_id)
-    return !folder || folder.category_id === props.category.id
-  })
-  count += uncategorizedNotes.length
   return count
 })
 

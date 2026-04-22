@@ -54,7 +54,7 @@ async function switchCategory(categoryId: string) {
   if (category) {
     categoryStore.currentCategory = category
     await foldersStore.fetchFolders(categoryId)
-    await notesStore.fetchNotes({ folder_id: undefined })
+    await notesStore.fetchNotes({ category_id: categoryId })
   }
 }
 
@@ -88,6 +88,7 @@ onMounted(async () => {
 watch(() => categoryStore.currentCategory, async (newCat) => {
   if (newCat) {
     await foldersStore.fetchFolders(newCat.id)
+    await notesStore.fetchNotes({ category_id: newCat.id })
   }
 })
 </script>

@@ -330,27 +330,11 @@ const currentLevelFolders = computed(() => {
 const currentLevelNotes = computed(() => {
   if (!selectedCategoryId.value) return []
 
-  const categoryFolderIds = allFoldersFlat.value
-    .filter(f => f.category_id === selectedCategoryId.value)
-    .map(f => f.id)
-
-  const allCategoryHasNoFolders = categoryStore.categories.every(
-    cat => !allFoldersFlat.value.some(f => f.category_id === cat.id)
-  )
-
-  let notes = notesStore.notes
-
-  if (currentFolderId.value) {
-    notes = notes.filter(n => n.folder_id === currentFolderId.value)
-  } else {
-    if (categoryFolderIds.length > 0) {
-      notes = notes.filter(n => categoryFolderIds.includes(n.folder_id || ''))
-    } else if (allCategoryHasNoFolders) {
-      notes = notes.filter(n => !n.folder_id)
-    } else {
-      notes = []
-    }
+  if (!currentFolderId.value) {
+    return []
   }
+
+  let notes = notesStore.notes.filter(n => n.folder_id === currentFolderId.value)
 
   if (searchKeyword.value) {
     const keyword = searchKeyword.value.toLowerCase()
@@ -368,16 +352,18 @@ onMounted(async () => {
   document.addEventListener('click', hideFolderContextMenu)
   await categoryStore.fetchCategories()
   await foldersStore.fetchFolders()
-  await notesStore.fetchNotes()
   
   const categoryId = route.params.categoryId as string
   if (categoryId) {
     const category = categoryStore.categories.find(c => c.id === categoryId)
     if (category) {
       selectCategory(category)
+      await notesStore.fetchNotes({ category_id: categoryId })
     }
   } else if (categoryStore.categories.length > 0) {
-    selectCategory(categoryStore.categories[0])
+    const firstCategory = categoryStore.categories[0]
+    selectCategory(firstCategory)
+    await notesStore.fetchNotes({ category_id: firstCategory.id })
   }
 })
 
@@ -394,13 +380,14 @@ function toggleCreateDropdown() {
   showCreateDropdown.value = !showCreateDropdown.value
 }
 
-function selectCategory(category: Category) {
+async function selectCategory(category: Category) {
   selectedCategoryId.value = category.id
   currentFolderId.value = null
   navigationPath.value = []
   searchKeyword.value = ''
   categoryStore.currentCategory = category
   sidebarOpen.value = false
+  await notesStore.fetchNotes({ category_id: category.id })
 }
 
 function enterFolder(folder: FolderTree) {
@@ -435,7 +422,7 @@ function getCategoryNoteCount(categoryId: string): number {
   const folderIds = categoryFolders.map(f => f.id)
   
   return notesStore.notes.filter(n => 
-    !n.folder_id || folderIds.includes(n.folder_id || '')
+    folderIds.includes(n.folder_id || '')
   ).length
 }
 
