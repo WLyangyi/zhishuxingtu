@@ -86,6 +86,16 @@ class Settings(BaseSettings):
     WHISPER_MODEL: str = "base"             # tiny/base/small/medium/large
     WHISPER_DEVICE: str = "cpu"             # cpu/cuda
 
+    # B站 MCP 服务配置
+    BILIBILI_MCP_URL: str = "http://localhost:8080"
+    BILIBILI_MCP_API_KEY: str = ""
+
+    # B站登录凭证配置（可选，用于获取官方字幕）
+    BILIBILI_SESSDATA: str = ""
+    BILIBILI_BILI_JCT: str = ""
+    BILIBILI_BUVID3: str = ""
+    BILIBILI_DEDEUSERID: str = ""
+
     class Config:
         env_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env")
         case_sensitive = True

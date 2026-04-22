@@ -537,25 +537,43 @@ async def _process_video_url(task: ImportTask, url: str, platform: str):
 
         video_info = ytdl.get_video_info(url)
 
-        task_store.update_task(task.task_id, progress=20, progress_message="正在下载字幕...")
-        await asyncio.sleep(0.1)
-
         text = None
-        subtitle_path = ytdl.download_subtitles(url, temp_dir)
-        if subtitle_path:
+        subtitle_path = None
+
+        if platform == "bilibili":
+            task_store.update_task(task.task_id, progress=20, progress_message="正在通过 B站 MCP 获取字幕...")
+            await asyncio.sleep(0.1)
+
             try:
-                with open(subtitle_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    sub_content = f.read()
-                if sub_content.endswith('.srt'):
-                    text = subtitle_service._parse_srt(sub_content)
-                elif sub_content.endswith('.vtt'):
-                    text = subtitle_service._parse_srt(sub_content)
-                else:
-                    text = subtitle_service._parse_srt(sub_content)
-                if text and not text.strip():
+                from app.services.bilibili_mcp_service import get_bilibili_mcp_service
+                bilibili_mcp = get_bilibili_mcp_service()
+                mcp_subtitle = await bilibili_mcp.get_video_subtitles_async(url)
+                if mcp_subtitle and mcp_subtitle.strip():
+                    text = mcp_subtitle
+                    task_store.update_task(task.task_id, status="extracting", progress=40, progress_message="B站 MCP 字幕获取成功，正在分析内容...")
+                    await asyncio.sleep(0.1)
+            except Exception as e:
+                print(f"B站 MCP 字幕获取失败: {str(e)}")
+
+        if not text:
+            task_store.update_task(task.task_id, progress=25, progress_message="正在下载字幕...")
+            await asyncio.sleep(0.1)
+
+            subtitle_path = ytdl.download_subtitles(url, temp_dir)
+            if subtitle_path:
+                try:
+                    with open(subtitle_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        sub_content = f.read()
+                    if sub_content.endswith('.srt'):
+                        text = subtitle_service._parse_srt(sub_content)
+                    elif sub_content.endswith('.vtt'):
+                        text = subtitle_service._parse_srt(sub_content)
+                    else:
+                        text = subtitle_service._parse_srt(sub_content)
+                    if text and not text.strip():
+                        text = None
+                except Exception:
                     text = None
-            except Exception:
-                text = None
 
         if text and text.strip():
             task_store.update_task(task.task_id, status="extracting", progress=40, progress_message="字幕下载成功，正在分析内容...")
@@ -579,7 +597,7 @@ async def _process_video_url(task: ImportTask, url: str, platform: str):
             task_store.update_task(task.task_id, progress=50, progress_message="正在使用 Whisper 转录音频...")
 
             try:
-                text = whisper.transcribe(audio_path)
+                text = await asyncio.to_thread(whisper.transcribe, audio_path)
                 task_store.update_task(task.task_id, progress=70, progress_message="转录完成，正在分析内容...")
             except WhisperError as e:
                 task_store.update_task(
