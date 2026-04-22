@@ -54,10 +54,110 @@
 #### 1.1.4 创建 AI 摘要服务
 - [ ] 创建 `backend/app/services/summarizer_service.py`
   - 实现 `SummarizerService` 类
-  - 定义提示词模板（论文摘要生成）
   - 实现 `summarize(content, source_type)` 方法
+  - 实现 `suggest_category(summary, available_folders)` 方法
   - 实现超长内容分段处理
   - 复用现有的 LLM 服务
+
+**AI 摘要生成详细规范：**
+
+```
+【标题生成规范】
+- 根据内容主题生成 5-15 字的中文标题
+- 标题应简洁明了，突出核心主题
+- 避免使用"关于...的研究"、"...的分析"等通用开头
+- 示例：「Attention Is All You Need 核心解读」而非「关于Transformer论文的分析」
+
+【摘要生成规范】
+- 长度：200-500 字
+- 结构：
+  1. 一句话概括核心主题（50字以内）
+  2. 背景/问题：说明内容的背景或要解决的问题
+  3. 核心内容：详细说明主要观点、方法、发现
+  4. 价值/应用：内容的意义或实际应用场景
+- 语言风格：正式书面语，客观陈述，避免主观评价
+- 对于论文：重点说明创新点、实验结果、贡献
+- 对于教程/博客：重点说明知识点、实操步骤、适用场景
+- 对于视频：重点说明视频的核心话题、讨论要点、干货内容
+
+【关键要点生成规范】
+- 生成 3-8 个关键要点
+- 每个要点 20-100 字
+- 要点类型及占比：
+  - 概念类（30%）：定义、原理、机制
+  - 方法类（30%）：技术、算法、流程、步骤
+  - 结论类（25%）：发现、结果、观点、规律
+  - 应用类（15%）：场景、案例、实践、注意事项
+- 每个要点使用「•」开头，言简意赅
+- 避免重复，层次分明
+
+【标签生成规范】
+- 生成 3-8 个标签
+- 标签类型及来源：
+  - 主题标签：内容所属的领域/学科
+  - 技术标签：涉及的技术、工具、框架
+  - 场景标签：适用场景、使用条件
+  - 格式标签：内容形式（论文/教程/视频等）
+- 标签格式：2-6 字的中文词或英文词
+- 示例：["机器学习", "深度学习", "Transformer", "NLP", "论文解读"]
+
+【来源类型差异化处理】
+- PDF/论文：侧重研究方法、实验数据、学术贡献
+- 网页文章：侧重观点陈述、实用信息、时效性
+- 视频内容：侧重口语化提炼、时间线重点、可操作性
+
+【超长内容分段处理】
+- 单段 > 2000 字时自动分段
+- 分段策略：按 `---` → 标题 → 段落 自然边界切分
+- 分段摘要后合并去重
+- 优先保留开头、中间核心、结尾结论
+
+【导入结果数据结构】
+```json
+{
+  "task_id": "uuid-string",
+  "status": "completed",
+  "source_info": {
+    "type": "pdf|web|video",
+    "filename": "原始文件名.pdf",
+    "url": "https://...",
+    "platform": "youtube|bilibili|local",
+    "duration": 3600,
+    "size": 2097152
+  },
+  "extracted_content": {
+    "full_text": "原始全文（最多50000字）",
+    "text_length": 15000,
+    "language": "zh|en|multi"
+  },
+  "ai_generated": {
+    "title": "AI生成的标题（5-15字）",
+    "summary": "AI生成的摘要（200-500字）",
+    "key_points": [
+      "要点1：概念/原理说明...",
+      "要点2：方法/技术说明...",
+      "要点3：结论/发现说明..."
+    ],
+    "tags": ["标签1", "标签2", "标签3"],
+    "content_type": "论文|教程|博客|视频|文档|其他",
+    "language_detected": "zh"
+  },
+  "category_suggestion": {
+    "recommended_folder_id": "folder-uuid",
+    "recommended_folder_path": "个人/编程学习/Python",
+    "confidence_score": 0.85,
+    "reasoning": "该内容涉及...",
+    "alternatives": [...]
+  },
+  "processing_info": {
+    "started_at": "2026-04-22T10:00:00Z",
+    "completed_at": "2026-04-22T10:01:30Z",
+    "processing_time_seconds": 90,
+    "steps_completed": ["content_extraction", "ai_summarize", "tag_generation", "category_suggestion"]
+  }
+}
+```
+```
 
 #### 1.1.5 创建导入历史服务
 - [ ] 创建 `backend/app/services/import_history_service.py`
@@ -360,6 +460,55 @@
   - 定义分类建议提示词
   - 实现 `suggest_category(summary, available_folders)` 方法
   - 返回推荐的文件夹 ID 和理由
+
+**智能分类建议详细规范：**
+
+```
+【分类决策因素】
+基于以下信息综合判断最优分类：
+1. 内容主题分析（摘要、关键词、标签）
+2. 内容类型判断（论文/教程/新闻/笔记等）
+3. 来源判断（PDF/网页/视频）
+4. 用户已有文件夹结构
+
+【分类建议输出格式】
+{
+  "recommended_folder_id": "xxx-xxx-xxx",
+  "recommended_folder_path": "个人/编程学习/Python",
+  "confidence_score": 0.85,
+  "reasoning": "该内容涉及Python编程和机器学习，适合放在「个人/编程学习」分类下",
+  "alternatives": [
+    {
+      "folder_id": "yyy-yyy-yyy",
+      "folder_path": "工作/技术文档",
+      "confidence_score": 0.45,
+      "reasoning": "如果作为工作参考资料，可考虑此分类"
+    }
+  ]
+}
+
+【置信度评分标准】
+- 0.9-1.0：高度匹配，内容主题与分类高度一致
+- 0.7-0.9：良好匹配，内容与分类相关
+- 0.5-0.7：一般匹配，需要用户确认
+- < 0.5：低匹配，建议用户手动选择
+
+【分类建议提示词模板】
+分析以下内容的主题和类型，为其推荐最合适的分类文件夹。
+
+待分析内容：
+- 标题：{title}
+- 摘要：{summary}
+- 关键词：{keywords}
+- 标签：{tags}
+- 内容类型：{content_type}
+- 来源：{source_type}
+
+可用文件夹列表：
+{folder_list}
+
+请根据内容主题、类型和用户需求，选择最合适的分类，并提供置信度和推理过程。
+```
 
 #### 7.1.3 更新保存 API
 - [ ] 更新 `POST /api/import/save`

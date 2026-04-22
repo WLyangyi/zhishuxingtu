@@ -33,6 +33,8 @@ class ImportResult:
     key_points: List[str] = field(default_factory=list)
     tags: List[str] = field(default_factory=list)
     source_info: Optional[SourceInfo] = None
+    content_type: str = ""
+    language_detected: str = "zh"
 
 
 @dataclass

@@ -120,7 +120,9 @@ async def _process_pdf(task: ImportTask, file_path: str, filename: str):
             summary=result.get("summary", ""),
             key_points=result.get("key_points", []),
             tags=result.get("tags", []),
-            source_info=source_info
+            source_info=source_info,
+            content_type=result.get("content_type", ""),
+            language_detected=result.get("language_detected", "zh")
         )
 
         task_store.update_task(
@@ -188,7 +190,9 @@ async def _process_url(task: ImportTask, url: str):
             summary=result.get("summary", ""),
             key_points=result.get("key_points", []),
             tags=result.get("tags", []),
-            source_info=source_info
+            source_info=source_info,
+            content_type=result.get("content_type", ""),
+            language_detected=result.get("language_detected", "zh")
         )
 
         task_store.update_task(
@@ -256,6 +260,8 @@ async def stream_task_status(
                             "summary": task.result.summary,
                             "key_points": task.result.key_points,
                             "tags": task.result.tags,
+                            "content_type": task.result.content_type,
+                            "language_detected": task.result.language_detected,
                             "source_info": {
                                 "type": task.result.source_info.type if task.result.source_info else task.source_type,
                                 "url": task.result.source_info.url if task.result.source_info else None,
@@ -444,7 +450,9 @@ async def _process_video(task: ImportTask, file_path: str, filename: str):
             summary=result.get("summary", ""),
             key_points=result.get("key_points", []),
             tags=result.get("tags", []),
-            source_info=source_info
+            source_info=source_info,
+            content_type=result.get("content_type", ""),
+            language_detected=result.get("language_detected", "zh")
         )
 
         task_store.update_task(
@@ -629,7 +637,9 @@ async def _process_video_url(task: ImportTask, url: str, platform: str):
             summary=result.get("summary", ""),
             key_points=result.get("key_points", []),
             tags=result.get("tags", []),
-            source_info=source_info
+            source_info=source_info,
+            content_type=result.get("content_type", ""),
+            language_detected=result.get("language_detected", "zh")
         )
 
         task_store.update_task(
@@ -750,7 +760,9 @@ async def regenerate_summary(
             summary=result.get("summary", ""),
             key_points=result.get("key_points", []),
             tags=result.get("tags", []),
-            source_info=source_info
+            source_info=source_info,
+            content_type=result.get("content_type", ""),
+            language_detected=result.get("language_detected", "zh")
         )
 
         task_store.update_task(
@@ -762,7 +774,9 @@ async def regenerate_summary(
             "title": import_result.title,
             "summary": import_result.summary,
             "key_points": import_result.key_points,
-            "tags": import_result.tags
+            "tags": import_result.tags,
+            "content_type": import_result.content_type,
+            "language_detected": import_result.language_detected
         }, message="重新生成成功")
 
     except Exception as e:
@@ -787,17 +801,74 @@ async def suggest_category(
 
     from app.models.folder import Folder
     folders = db.query(Folder).filter(Folder.user_id == current_user.id).all()
-    folder_list = [{"id": f.id, "name": f.name} for f in folders]
+    
+    def get_folder_path(folder, all_folders):
+        path_parts = [folder.name]
+        parent_id = folder.parent_id
+        while parent_id:
+            parent = next((f for f in all_folders if f.id == parent_id), None)
+            if parent:
+                path_parts.insert(0, parent.name)
+                parent_id = parent.parent_id
+            else:
+                break
+        return "/".join(path_parts)
+    
+    folder_list = [
+        {
+            "id": f.id, 
+            "name": f.name,
+            "path": get_folder_path(f, folders)
+        } 
+        for f in folders
+    ]
 
     if not folder_list:
-        return Response(data={"folder_id": None, "reason": "暂无文件夹"}, message="无可用文件夹")
+        return Response(data={
+            "recommended_folder_id": None, 
+            "recommended_folder_path": None,
+            "confidence_score": 0,
+            "reasoning": "暂无文件夹",
+            "alternatives": []
+        }, message="无可用文件夹")
 
     try:
         summarizer = get_summarizer_service()
-        suggestion = summarizer.suggest_category(task.result.summary, folder_list)
-        return Response(data=suggestion, message="分类建议生成成功")
+        
+        source_type_name = {
+            "pdf": "PDF文档",
+            "url": "网页",
+            "video": "视频",
+            "video_url": "视频"
+        }.get(task.source_type, "文档")
+        
+        suggestion = summarizer.suggest_category(
+            summary=task.result.summary,
+            folders=folder_list,
+            title=task.result.title,
+            tags=task.result.tags,
+            content_type=getattr(task.result, 'content_type', ''),
+            source_type=source_type_name
+        )
+        
+        if suggestion:
+            return Response(data=suggestion, message="分类建议生成成功")
+        else:
+            return Response(data={
+                "recommended_folder_id": None,
+                "recommended_folder_path": None,
+                "confidence_score": 0,
+                "reasoning": "无法生成分类建议",
+                "alternatives": []
+            }, message="分类建议生成失败")
     except Exception as e:
-        return Response(data={"folder_id": None, "reason": f"建议生成失败: {str(e)}"}, message="建议生成失败")
+        return Response(data={
+            "recommended_folder_id": None, 
+            "recommended_folder_path": None,
+            "confidence_score": 0,
+            "reasoning": f"建议生成失败: {str(e)}",
+            "alternatives": []
+        }, message="建议生成失败")
 
 
 @router.post("/pdf")
@@ -862,6 +933,8 @@ async def get_task_detail(
             "summary": task.result.summary,
             "key_points": task.result.key_points,
             "tags": task.result.tags,
+            "content_type": task.result.content_type,
+            "language_detected": task.result.language_detected,
             "source_info": {
                 "type": task.result.source_info.type if task.result.source_info else task.source_type,
                 "url": task.result.source_info.url if task.result.source_info else None,
