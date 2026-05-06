@@ -49,7 +49,7 @@ def get_few_shot_example(
 ):
     example = db.query(FewShotExample).filter(FewShotExample.id == example_id).first()
     if not example:
-        raise HTTPException(status_code=404, detail="Few-Shot示例不存�?)
+        raise HTTPException(status_code=404, detail="Few-Shot示例不存在")
     return Response(data=FewShotExampleInDB.model_validate(example).model_dump())
 
 @router.put("/{example_id}", response_model=Response)
@@ -61,7 +61,7 @@ def update_few_shot_example(
 ):
     db_example = db.query(FewShotExample).filter(FewShotExample.id == example_id).first()
     if not db_example:
-        raise HTTPException(status_code=404, detail="Few-Shot示例不存�?)
+        raise HTTPException(status_code=404, detail="Few-Shot示例不存在")
     
     update_data = example_update.dict(exclude_unset=True)
     for field, value in update_data.items():
@@ -79,7 +79,7 @@ def delete_few_shot_example(
 ):
     db_example = db.query(FewShotExample).filter(FewShotExample.id == example_id).first()
     if not db_example:
-        raise HTTPException(status_code=404, detail="Few-Shot示例不存�?)
+        raise HTTPException(status_code=404, detail="Few-Shot示例不存在")
     
     db_example.is_active = False
     db.commit()

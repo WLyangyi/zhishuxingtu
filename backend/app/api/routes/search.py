@@ -710,7 +710,8 @@ async def ai_chat_langchain(
 
             history_list = json.loads(history)
 
-        except Exception:`n            pass
+        except Exception:
+            pass
 
 
 
@@ -872,7 +873,7 @@ async def ai_chat_original(
 
 ## 免责声明
 
-当涉及医疗、法律、金融等专业知识时，请提醒用户寻求专业人士的意见?""
+当涉及医疗、法律、金融等专业知识时，请提醒用户寻求专业人士的意见。"""
 
 
 
@@ -890,7 +891,7 @@ async def ai_chat_original(
 
 
 
-请根据以上知识库内容回答问题?""
+请根据以上知识库内容回答问题："""
 
         else:
 
@@ -912,7 +913,8 @@ async def ai_chat_original(
 
                 messages.append({"role": h.get("role", "user"), "content": h.get("content", "")})
 
-        except Exception:`n            pass
+        except Exception:
+            pass
 
 
 
@@ -942,7 +944,7 @@ async def ai_chat_original(
 
     except Exception as e:
 
-        answer = sanitize_error(e, "AI 服务暂时不可?)
+        answer = sanitize_error(e, "AI 服务暂时不可用，请稍后重试")
 
 
 
@@ -966,7 +968,7 @@ async def vector_search(
 
     k: int = Query(5, ge=1, le=20, description="返回结果数量"),
 
-    threshold: float = Query(0.3, ge=0.0, le=1.0, description="相似度阈?),
+    threshold: float = Query(0.3, ge=0.0, le=1.0, description="相似度阈值"),
 
     current_user: User = Depends(get_current_user),
 
@@ -980,7 +982,7 @@ async def vector_search(
 
             code=503,
 
-            message="向量搜索服务不可用，模型未加?,
+            message="向量搜索服务不可用，模型未加载",
 
             data={"results": [], "engine": "unavailable"}
 
@@ -1002,7 +1004,7 @@ async def vector_search(
 
                 "total_vectors": 0,
 
-                "message": "向量索引为空，请先添加笔?
+                "message": "向量索引为空，请先添加笔"
 
             }
 
@@ -1080,7 +1082,7 @@ async def batch_vector_search(
 
     k: int = Query(5, ge=1, le=20, description="每个查询返回结果数量"),
 
-    threshold: float = Query(0.3, ge=0.0, le=1.0, description="相似度阈?),
+    threshold: float = Query(0.3, ge=0.0, le=1.0, description="相似度阈值"),
 
     current_user: User = Depends(get_current_user),
 
@@ -1094,7 +1096,7 @@ async def batch_vector_search(
 
             code=503,
 
-            message="向量搜索服务不可用，模型未加?,
+            message="向量搜索服务不可用，模型未加载",
 
             data={"results": [], "engine": "unavailable"}
 
@@ -1144,7 +1146,7 @@ async def batch_vector_search(
 
             code=400,
 
-            message="批量查询最多支?10 个查?,
+            message="批量查询最多支持10个查询",
 
             data={"results": []}
 
@@ -1342,7 +1344,7 @@ async def rebuild_vector_index(
 
             return Response(data={
 
-                "message": "没有笔记需要重建索?,
+                "message": "没有笔记需要重建索引",
 
                 "total": 0,
 
@@ -1374,7 +1376,7 @@ async def rebuild_vector_index(
 
             return Response(data={
 
-                "message": "没有有效内容的笔?,
+                "message": "没有有效内容的笔记",
 
                 "total": len(notes),
 
@@ -1464,7 +1466,7 @@ async def test_reranker(
 
             code=503,
 
-            message="向量搜索服务不可?,
+            message="向量搜索服务不可用",
 
             data={"before": [], "after": [], "reranker_available": False}
 
@@ -1668,7 +1670,8 @@ async def ai_chat_stream(
 
             history_list = json.loads(history)
 
-        except Exception:`n            pass
+        except Exception:
+            pass
 
     
 
@@ -1928,7 +1931,7 @@ def _rebuild_index_in_background(user_id: str, db_session_factory):
 
     except Exception as e:
 
-        status.error = sanitize_error(e, "向量?)
+        status.error = sanitize_error(e, "向量索引重建失败")
 
         print(f"Background rebuild failed: {e}")
 
@@ -1944,7 +1947,8 @@ def _rebuild_index_in_background(user_id: str, db_session_factory):
 
             db.close()
 
-        except Exception:`n            pass
+        except Exception:
+            pass
 
 
 
@@ -1986,7 +1990,7 @@ async def rebuild_vector_index_background(
 
             code=409,
 
-            message="索引重建正在进行?,
+            message="索引重建正在进行中",
 
             data=status.to_dict()
 
@@ -2002,7 +2006,7 @@ async def rebuild_vector_index_background(
 
         return Response(data={
 
-            "message": "没有笔记需要重建索?,
+            "message": "没有笔记需要重建索引",
 
             "total": 0,
 
@@ -2096,7 +2100,7 @@ async def stop_rebuild(
 
     if not status.is_running:
 
-        return Response(message="没有正在运行的重建任?)
+        return Response(message="没有正在运行的重建任务")
 
     
 
@@ -2104,7 +2108,7 @@ async def stop_rebuild(
 
     
 
-    return Response(message="已请求停止重建任?, data=status.to_dict())
+    return Response(message="已请求停止重建任务", data=status.to_dict())
 
 
 
@@ -2304,7 +2308,7 @@ async def hybrid_search_endpoint(
 
             code=500,
 
-            message=sanitize_error(e, "混合检索错?),
+            message=sanitize_error(e, "混合检索错误"),
 
             data={"results": [], "engine": "error"}
 
@@ -2420,7 +2424,7 @@ async def bm25_search_endpoint(
 
             code=500,
 
-            message=sanitize_error(e, "BM25检索错?),
+            message=sanitize_error(e, "BM25检索错误"),
 
             data={"results": [], "engine": "error"}
 
@@ -2434,7 +2438,7 @@ async def bm25_search_endpoint(
 
 async def bm25_status(current_user: User = Depends(get_current_user)):
 
-    """获取 BM25 索引状?""
+    """获取 BM25 索引状态"""
 
     bm25_service = get_bm25_service()
 

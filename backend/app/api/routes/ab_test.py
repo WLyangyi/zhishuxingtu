@@ -26,7 +26,7 @@ def create_prompt_version(
     db.add(db_version)
     db.commit()
     db.refresh(db_version)
-    return Response(data=PromptVersionInDB.model_validate(db_version).model_dump(), message="提示词版本创建成�?)
+    return Response(data=PromptVersionInDB.model_validate(db_version).model_dump(), message="提示词版本创建成功")
 
 @router.get("/versions", response_model=Response)
 def list_prompt_versions(
@@ -70,12 +70,12 @@ def start_experiment(
 ):
     experiment = db.query(ABExperiment).filter(ABExperiment.id == experiment_id).first()
     if not experiment:
-        raise HTTPException(status_code=404, detail="实验不存�?)
+        raise HTTPException(status_code=404, detail="实验不存在")
     
     experiment.status = "running"
     experiment.start_time = datetime.now(timezone.utc)
     db.commit()
-    return Response(message="实验已启�?)
+    return Response(message="实验已启动")
 
 @router.post("/experiments/{experiment_id}/pause", response_model=Response)
 def pause_experiment(
@@ -85,11 +85,11 @@ def pause_experiment(
 ):
     experiment = db.query(ABExperiment).filter(ABExperiment.id == experiment_id).first()
     if not experiment:
-        raise HTTPException(status_code=404, detail="实验不存�?)
+        raise HTTPException(status_code=404, detail="实验不存在")
     
     experiment.status = "paused"
     db.commit()
-    return Response(message="实验已暂�?)
+    return Response(message="实验已暂停")
 
 @router.post("/experiments/{experiment_id}/assign", response_model=Response)
 def assign_version(
@@ -99,10 +99,10 @@ def assign_version(
 ):
     experiment = db.query(ABExperiment).filter(ABExperiment.id == experiment_id).first()
     if not experiment:
-        raise HTTPException(status_code=404, detail="实验不存�?)
+        raise HTTPException(status_code=404, detail="实验不存在")
     
     if experiment.status != "running":
-        raise HTTPException(status_code=400, detail="实验未运�?)
+        raise HTTPException(status_code=400, detail="实验未运行")
     
     hash_value = int(hashlib.md5(f"{experiment_id}{session_id}".encode()).hexdigest(), 16)
     assigned_version = "A" if (hash_value % 100) / 100 < experiment.traffic_split else "B"
@@ -122,7 +122,7 @@ def submit_test_result(
 ):
     experiment = db.query(ABExperiment).filter(ABExperiment.id == experiment_id).first()
     if not experiment:
-        raise HTTPException(status_code=404, detail="实验不存�?)
+        raise HTTPException(status_code=404, detail="实验不存在")
     
     db_result = ABTestResult(**result.model_dump())
     db.add(db_result)
@@ -139,7 +139,7 @@ def update_ab_experiment(
 ):
     experiment = db.query(ABExperiment).filter(ABExperiment.id == experiment_id).first()
     if not experiment:
-        raise HTTPException(status_code=404, detail="实验不存�?)
+        raise HTTPException(status_code=404, detail="实验不存在")
     
     update_data = experiment_update.dict(exclude_unset=True)
     for field, value in update_data.items():
@@ -157,12 +157,12 @@ def delete_ab_experiment(
 ):
     experiment = db.query(ABExperiment).filter(ABExperiment.id == experiment_id).first()
     if not experiment:
-        raise HTTPException(status_code=404, detail="实验不存�?)
+        raise HTTPException(status_code=404, detail="实验不存在")
     
     experiment.status = "completed"
     experiment.end_time = datetime.now(timezone.utc)
     db.commit()
-    return Response(message="实验已删�?)
+    return Response(message="实验已删除")
 
 @router.get("/experiments/{experiment_id}/stats", response_model=Response)
 def get_experiment_stats(
@@ -171,7 +171,7 @@ def get_experiment_stats(
 ):
     experiment = db.query(ABExperiment).filter(ABExperiment.id == experiment_id).first()
     if not experiment:
-        raise HTTPException(status_code=404, detail="实验不存�?)
+        raise HTTPException(status_code=404, detail="实验不存在")
     
     results_a = db.query(ABTestResult).filter(
         ABTestResult.experiment_id == experiment_id,

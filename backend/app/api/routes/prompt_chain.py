@@ -66,7 +66,7 @@ def create_from_preset(
     chain = engine.create_preset_chain(chain_type, db)
     if not chain:
         raise HTTPException(status_code=400, detail="无效的预设链类型")
-    return Response(data=PromptChainInDB.model_validate(chain).model_dump(), message="预设链创建成�?)
+    return Response(data=PromptChainInDB.model_validate(chain).model_dump(), message="预设链创建成功")
 
 @router.get("/{chain_id}", response_model=Response)
 def get_chain(
@@ -75,7 +75,7 @@ def get_chain(
 ):
     chain = db.query(PromptChain).filter(PromptChain.id == chain_id).first()
     if not chain:
-        raise HTTPException(status_code=404, detail="提示词链不存�?)
+        raise HTTPException(status_code=404, detail="提示词链不存在")
     return Response(data=PromptChainInDB.model_validate(chain).model_dump())
 
 @router.put("/{chain_id}", response_model=Response)
@@ -87,7 +87,7 @@ def update_chain(
 ):
     chain = db.query(PromptChain).filter(PromptChain.id == chain_id).first()
     if not chain:
-        raise HTTPException(status_code=404, detail="提示词链不存�?)
+        raise HTTPException(status_code=404, detail="提示词链不存在")
     
     update_data = chain_update.dict(exclude_unset=True)
     for field, value in update_data.items():
@@ -105,7 +105,7 @@ def delete_chain(
 ):
     chain = db.query(PromptChain).filter(PromptChain.id == chain_id).first()
     if not chain:
-        raise HTTPException(status_code=404, detail="提示词链不存�?)
+        raise HTTPException(status_code=404, detail="提示词链不存在")
     
     chain.is_active = False
     db.commit()
@@ -120,7 +120,7 @@ def add_step(
 ):
     chain = db.query(PromptChain).filter(PromptChain.id == chain_id).first()
     if not chain:
-        raise HTTPException(status_code=404, detail="提示词链不存�?)
+        raise HTTPException(status_code=404, detail="提示词链不存在")
     
     db_step = ChainStep(
         chain_id=chain_id,
@@ -143,7 +143,7 @@ def delete_step(
         ChainStep.chain_id == chain_id
     ).first()
     if not step:
-        raise HTTPException(status_code=404, detail="步骤不存�?)
+        raise HTTPException(status_code=404, detail="步骤不存在")
     
     db.delete(step)
     db.commit()
@@ -158,15 +158,15 @@ def execute_chain(
 ):
     chain = db.query(PromptChain).filter(PromptChain.id == chain_id).first()
     if not chain:
-        raise HTTPException(status_code=404, detail="提示词链不存�?)
+        raise HTTPException(status_code=404, detail="提示词链不存在")
     
     if not chain.is_active:
-        raise HTTPException(status_code=400, detail="提示词链未激�?)
+        raise HTTPException(status_code=400, detail="提示词链未激活")
     
     engine = get_chain_engine()
     result = engine.execute_chain(chain, input_data, db, session_id)
     
-    return Response(data=result, message="链执行完�? if result["success"] else "链执行失�?)
+    return Response(data=result, message="链执行完成" if result["success"] else "链执行失败")
 
 @router.get("/{chain_id}/executions", response_model=Response)
 def list_executions(
@@ -187,5 +187,5 @@ def get_execution(
 ):
     execution = db.query(ChainExecution).filter(ChainExecution.id == execution_id).first()
     if not execution:
-        raise HTTPException(status_code=404, detail="执行记录不存�?)
+        raise HTTPException(status_code=404, detail="执行记录不存在")
     return Response(data=ChainExecutionInDB.model_validate(execution).model_dump())

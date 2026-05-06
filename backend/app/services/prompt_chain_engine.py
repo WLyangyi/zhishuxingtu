@@ -7,13 +7,13 @@ from app.services.llm_service import get_llm_service
 
 PRESET_CHAINS = {
     "knowledge_analysis": {
-        "name": "知识分析�?,
+        "name": "知识分析链",
         "description": "分析外部资料并生成结构化知识卡片",
         "steps": [
             {
                 "step_order": 1,
                 "step_name": "提取核心概念",
-                "prompt_template": "请从以下内容中提取核心概念和关键知识点：\n\n{content}\n\n请以列表形式输出核心概念�?,
+                "prompt_template": "请从以下内容中提取核心概念和关键知识点：\n\n{content}\n\n请以列表形式输出核心概念。",
                 "input_mapping": "{\"content\": \"input.content\"}",
                 "output_mapping": "{\"concepts\": \"output\"}"
             },
@@ -27,8 +27,8 @@ PRESET_CHAINS = {
         ]
     },
     "conversation_summary": {
-        "name": "对话总结�?,
-        "description": "总结对话内容并提取关键信�?,
+        "name": "对话总结链",
+        "description": "总结对话内容并提取关键信息",
         "steps": [
             {
                 "step_order": 1,
@@ -47,8 +47,8 @@ PRESET_CHAINS = {
         ]
     },
     "qa_enhance": {
-        "name": "问答增强�?,
-        "description": "增强AI问答质量，提供更全面的答�?,
+        "name": "问答增强链",
+        "description": "增强AI问答质量，提供更全面的答案",
         "steps": [
             {
                 "step_order": 1,

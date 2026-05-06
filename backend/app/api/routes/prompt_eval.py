@@ -130,7 +130,7 @@ def submit_user_feedback(
 ):
     evaluation = db.query(PromptEvaluation).filter(PromptEvaluation.id == evaluation_id).first()
     if not evaluation:
-        raise HTTPException(status_code=404, detail="评估记录不存�?)
+        raise HTTPException(status_code=404, detail="评估记录不存在")
     
     evaluation.user_rating = str(user_rating)
     if user_feedback:

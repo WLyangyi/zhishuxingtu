@@ -66,7 +66,7 @@ class ImportTaskStore:
             source_path=source_path,
             status="pending",
             progress=0,
-            progress_message="任务已创�?
+            progress_message="任务已创建"
         )
         with self._lock:
             self._tasks[task.task_id] = task
