@@ -17,11 +17,11 @@ def create_few_shot_example(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    db_example = FewShotExample(**example.dict())
+    db_example = FewShotExample(**example.model_dump())
     db.add(db_example)
     db.commit()
     db.refresh(db_example)
-    return Response(data=FewShotExampleInDB.from_orm(db_example).dict(), message="Few-Shot示例创建成功")
+    return Response(data=FewShotExampleInDB.model_validate(db_example).model_dump(), message="Few-Shot示例创建成功")
 
 @router.get("/", response_model=Response)
 def list_few_shot_examples(
@@ -40,7 +40,7 @@ def list_few_shot_examples(
         query = query.filter(FewShotExample.quality_score >= min_quality)
     
     examples = query.order_by(FewShotExample.quality_score.desc()).all()
-    return Response(data=[FewShotExampleInDB.from_orm(e).dict() for e in examples])
+    return Response(data=[FewShotExampleInDB.model_validate(e).model_dump() for e in examples])
 
 @router.get("/{example_id}", response_model=Response)
 def get_few_shot_example(
@@ -49,8 +49,8 @@ def get_few_shot_example(
 ):
     example = db.query(FewShotExample).filter(FewShotExample.id == example_id).first()
     if not example:
-        raise HTTPException(status_code=404, detail="Few-Shot示例不存在")
-    return Response(data=FewShotExampleInDB.from_orm(example).dict())
+        raise HTTPException(status_code=404, detail="Few-Shot示例不存�?)
+    return Response(data=FewShotExampleInDB.model_validate(example).model_dump())
 
 @router.put("/{example_id}", response_model=Response)
 def update_few_shot_example(
@@ -61,7 +61,7 @@ def update_few_shot_example(
 ):
     db_example = db.query(FewShotExample).filter(FewShotExample.id == example_id).first()
     if not db_example:
-        raise HTTPException(status_code=404, detail="Few-Shot示例不存在")
+        raise HTTPException(status_code=404, detail="Few-Shot示例不存�?)
     
     update_data = example_update.dict(exclude_unset=True)
     for field, value in update_data.items():
@@ -69,7 +69,7 @@ def update_few_shot_example(
     
     db.commit()
     db.refresh(db_example)
-    return Response(data=FewShotExampleInDB.from_orm(db_example).dict(), message="Few-Shot示例更新成功")
+    return Response(data=FewShotExampleInDB.model_validate(db_example).model_dump(), message="Few-Shot示例更新成功")
 
 @router.delete("/{example_id}", response_model=Response)
 def delete_few_shot_example(
@@ -79,7 +79,7 @@ def delete_few_shot_example(
 ):
     db_example = db.query(FewShotExample).filter(FewShotExample.id == example_id).first()
     if not db_example:
-        raise HTTPException(status_code=404, detail="Few-Shot示例不存在")
+        raise HTTPException(status_code=404, detail="Few-Shot示例不存�?)
     
     db_example.is_active = False
     db.commit()

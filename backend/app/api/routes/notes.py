@@ -1,5 +1,6 @@
 import json
 import re
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -12,6 +13,8 @@ from app.api.deps import get_current_user
 from app.services import get_vector_store
 from app.services.vector_store_adapter import get_vector_store_adapter
 from app.services.embedding_service import embedding_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/notes", tags=["笔记"])
 
@@ -96,7 +99,7 @@ async def create_note(
         import json as json_module
         try:
             tag_ids = json_module.loads(tag_ids)
-        except:
+        except (json_module.JSONDecodeError, ValueError):
             tag_ids = []
     if not isinstance(tag_ids, list):
         tag_ids = []
@@ -124,7 +127,7 @@ async def create_note(
             if chunks and len(vectors) > 0:
                 vector_store.add_note_chunks(note.id, chunks, vectors)
         except Exception as e:
-            print(f"Failed to add vector for note {note.id}: {e}")
+            logger.warning(f"Failed to add vector for note {note.id}: {e}")
     
     note_dict = {
         "id": note.id,
@@ -239,17 +242,17 @@ async def get_backlinks(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    notes = db.query(Note).all()
-    backlinks = []
+    backlink_notes = db.query(Note).filter(
+        Note.user_id == current_user.id,
+        Note.linked_note_ids.contains(f'"{note_id}"')
+    ).all()
     
-    for note in notes:
-        if note.linked_note_ids:
-            linked_ids = json.loads(note.linked_note_ids)
-            if note_id in linked_ids:
-                backlinks.append(BacklinkResponse(
-                    id=note.id,
-                    title=note.title,
-                    created_at=note.created_at
-                ))
+    backlinks = []
+    for note in backlink_notes:
+        backlinks.append(BacklinkResponse(
+            id=note.id,
+            title=note.title,
+            created_at=note.created_at
+        ))
     
     return Response(data=backlinks)

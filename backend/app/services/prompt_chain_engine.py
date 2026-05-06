@@ -1,19 +1,19 @@
 import json
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from app.models.few_shot import PromptChain, ChainStep, ChainExecution
 from app.services.llm_service import get_llm_service
 
 PRESET_CHAINS = {
     "knowledge_analysis": {
-        "name": "知识分析链",
+        "name": "知识分析�?,
         "description": "分析外部资料并生成结构化知识卡片",
         "steps": [
             {
                 "step_order": 1,
                 "step_name": "提取核心概念",
-                "prompt_template": "请从以下内容中提取核心概念和关键知识点：\n\n{content}\n\n请以列表形式输出核心概念：",
+                "prompt_template": "请从以下内容中提取核心概念和关键知识点：\n\n{content}\n\n请以列表形式输出核心概念�?,
                 "input_mapping": "{\"content\": \"input.content\"}",
                 "output_mapping": "{\"concepts\": \"output\"}"
             },
@@ -27,8 +27,8 @@ PRESET_CHAINS = {
         ]
     },
     "conversation_summary": {
-        "name": "对话总结链",
-        "description": "总结对话内容并提取关键信息",
+        "name": "对话总结�?,
+        "description": "总结对话内容并提取关键信�?,
         "steps": [
             {
                 "step_order": 1,
@@ -47,8 +47,8 @@ PRESET_CHAINS = {
         ]
     },
     "qa_enhance": {
-        "name": "问答增强链",
-        "description": "增强AI问答质量，提供更全面的答案",
+        "name": "问答增强�?,
+        "description": "增强AI问答质量，提供更全面的答�?,
         "steps": [
             {
                 "step_order": 1,
@@ -101,7 +101,7 @@ class PromptChainEngine:
             
             execution.output_data = json.dumps({"result": final_output}, ensure_ascii=False)
             execution.status = "completed"
-            execution.completed_at = datetime.utcnow()
+            execution.completed_at = datetime.now(timezone.utc)
             db.commit()
             
             return {
@@ -113,7 +113,7 @@ class PromptChainEngine:
         except Exception as e:
             execution.status = "failed"
             execution.error_message = str(e)
-            execution.completed_at = datetime.utcnow()
+            execution.completed_at = datetime.now(timezone.utc)
             db.commit()
             
             return {
@@ -133,7 +133,7 @@ class PromptChainEngine:
                 value = self._resolve_path(path, context)
                 result[key] = value
             return result
-        except:
+        except Exception:
             return context.get("input", {})
     
     def _resolve_path(self, path: str, context: Dict) -> Any:
@@ -146,7 +146,7 @@ class PromptChainEngine:
                 else:
                     value = value.get(part, "")
             return value
-        except:
+        except Exception:
             return ""
     
     def _execute_step(self, step: ChainStep, step_input: Dict) -> str:

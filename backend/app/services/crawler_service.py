@@ -1,15 +1,51 @@
+import ipaddress
 import httpx
 from typing import Optional
+from urllib.parse import urlparse
 
 
 class CrawlerError(Exception):
     pass
 
 
+PRIVATE_NETWORKS = [
+    ipaddress.ip_network('10.0.0.0/8'),
+    ipaddress.ip_network('172.16.0.0/12'),
+    ipaddress.ip_network('192.168.0.0/16'),
+    ipaddress.ip_network('127.0.0.0/8'),
+    ipaddress.ip_network('169.254.0.0/16'),
+    ipaddress.ip_network('0.0.0.0/8'),
+    ipaddress.ip_network('::1/128'),
+    ipaddress.ip_network('fc00::/7'),
+    ipaddress.ip_network('fe80::/10'),
+]
+
+
+def is_private_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if not hostname:
+            return True
+        if hostname in ('localhost', 'localhost.localdomain'):
+            return True
+        try:
+            ip = ipaddress.ip_address(hostname)
+            for network in PRIVATE_NETWORKS:
+                if ip in network:
+                    return True
+        except ValueError:
+            pass
+        return False
+    except Exception:
+        return True
+
+
 class CrawlerService:
     def __init__(self):
         self._trafilatura = None
         self.timeout = 30.0
+        self.max_redirects = 5
 
     def _get_trafilatura(self):
         if self._trafilatura is None:
@@ -20,7 +56,15 @@ class CrawlerService:
                 raise CrawlerError("trafilatura 未安装，请运行: pip install trafilatura")
         return self._trafilatura
 
+    def _validate_url(self, url: str) -> None:
+        parsed = urlparse(url)
+        if parsed.scheme not in ('http', 'https'):
+            raise CrawlerError("仅支持 HTTP/HTTPS URL")
+        if is_private_url(url):
+            raise CrawlerError("不允许访问内网地址")
+
     def _fetch_html(self, url: str) -> Optional[str]:
+        self._validate_url(url)
         trafilatura = self._get_trafilatura()
 
         try:
@@ -34,6 +78,7 @@ class CrawlerService:
             with httpx.Client(
                 timeout=self.timeout,
                 follow_redirects=True,
+                max_redirects=self.max_redirects,
                 headers={
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -49,6 +94,7 @@ class CrawlerService:
         return None
 
     def extract_content(self, url: str, max_chars: int = 50000) -> tuple:
+        self._validate_url(url)
         trafilatura = self._get_trafilatura()
 
         downloaded = self._fetch_html(url)
@@ -95,7 +141,8 @@ class CrawlerService:
 
     def is_accessible(self, url: str) -> bool:
         try:
-            with httpx.Client(timeout=self.timeout, follow_redirects=True) as client:
+            self._validate_url(url)
+            with httpx.Client(timeout=self.timeout, follow_redirects=True, max_redirects=self.max_redirects) as client:
                 response = client.head(url)
                 return response.status_code < 400
         except Exception:

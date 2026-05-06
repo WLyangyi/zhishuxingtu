@@ -1,10 +1,9 @@
 import uuid
-from datetime import datetime
 from sqlalchemy import Column, String, Boolean, Integer, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
-from app.db.base import Base
+from app.db.base import Base, TimestampMixin
 
-class Category(Base):
+class Category(Base, TimestampMixin):
     __tablename__ = "categories"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -13,12 +12,11 @@ class Category(Base):
     color = Column(String(7), default="#00d4ff")
     sort_order = Column(Integer, default=0)
     is_system = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
 
     content_types = relationship("ContentType", back_populates="category", cascade="all, delete-orphan")
     contents = relationship("Content", back_populates="category", cascade="all, delete-orphan")
 
-class ContentType(Base):
+class ContentType(Base, TimestampMixin):
     __tablename__ = "content_types"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -28,12 +26,11 @@ class ContentType(Base):
     color = Column(String(7), default="#00d4ff")
     field_schema = Column(Text, default="{}")
     is_system = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
 
     category = relationship("Category", back_populates="content_types")
     contents = relationship("Content", back_populates="content_type", cascade="all, delete-orphan")
 
-class Content(Base):
+class Content(Base, TimestampMixin):
     __tablename__ = "contents"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -47,8 +44,6 @@ class Content(Base):
     file_path = Column(String(500))
     file_url = Column(String(1000))
     file_size = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     content_type = relationship("ContentType", back_populates="contents")
     category = relationship("Category", back_populates="contents")

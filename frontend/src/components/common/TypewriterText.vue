@@ -13,8 +13,18 @@ const props = defineProps<{
   isStreaming?: boolean
 }>()
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
 const formattedContent = computed(() => {
-  return props.content
+  const escaped = escapeHtml(props.content)
+  return escaped
     .replace(/\n/g, '<br>')
     .replace(/【([^】]+)】/g, '<strong>【$1】</strong>')
 })

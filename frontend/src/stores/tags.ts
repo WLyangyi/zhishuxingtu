@@ -18,23 +18,38 @@ export const useTagsStore = defineStore('tags', () => {
   }
 
   async function createTag(data: TagCreate) {
-    const response = await tagsApi.create(data)
-    tags.value.push(response.data)
-    return response.data
+    try {
+      const response = await tagsApi.create(data)
+      tags.value.push(response.data)
+      return response.data
+    } catch (error: any) {
+      const message = error?.response?.data?.detail || '创建标签失败'
+      throw new Error(message)
+    }
   }
 
   async function updateTag(id: string, data: TagUpdate) {
-    const response = await tagsApi.update(id, data)
-    const index = tags.value.findIndex(t => t.id === id)
-    if (index !== -1) {
-      tags.value[index] = response.data
+    try {
+      const response = await tagsApi.update(id, data)
+      const index = tags.value.findIndex(t => t.id === id)
+      if (index !== -1) {
+        tags.value[index] = response.data
+      }
+      return response.data
+    } catch (error: any) {
+      const message = error?.response?.data?.detail || '更新标签失败'
+      throw new Error(message)
     }
-    return response.data
   }
 
   async function deleteTag(id: string) {
-    await tagsApi.delete(id)
-    tags.value = tags.value.filter(t => t.id !== id)
+    try {
+      await tagsApi.delete(id)
+      tags.value = tags.value.filter(t => t.id !== id)
+    } catch (error: any) {
+      const message = error?.response?.data?.detail || '删除标签失败'
+      throw new Error(message)
+    }
   }
 
   return {

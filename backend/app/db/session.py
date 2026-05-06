@@ -18,6 +18,7 @@ def get_db():
     finally:
         db.close()
 
-async def init_db():
-    os.makedirs("data", exist_ok=True)
+def init_db():
+    db_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data")
+    os.makedirs(db_dir, exist_ok=True)
     Base.metadata.create_all(bind=engine)

@@ -121,7 +121,7 @@ class ChatChain:
         try:
             encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
             return len(encoding.encode(text))
-        except:
+        except Exception:
             return len(text) // 4
 
     def _truncate_history_by_tokens(self, messages: List[BaseMessage], max_tokens: int = MAX_CONTEXT_TOKENS) -> List[BaseMessage]:

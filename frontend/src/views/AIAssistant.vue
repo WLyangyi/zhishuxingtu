@@ -321,8 +321,18 @@ watch(selectedCotType, () => {
   localStorage.setItem('ai_cot_type', selectedCotType.value || 'null')
 })
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
 function formatMessage(content: string): string {
-  return content
+  const escaped = escapeHtml(content)
+  return escaped
     .replace(/\n/g, '<br>')
     .replace(/【([^】]+)】/g, '<strong>【$1】</strong>')
 }

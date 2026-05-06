@@ -204,6 +204,7 @@
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import MarkdownIt from 'markdown-it'
+import DOMPurify from 'dompurify'
 import { useNotesStore } from '@/stores/notes'
 import { useFoldersStore } from '@/stores/folders'
 import { useTagsStore } from '@/stores/tags'
@@ -279,13 +280,14 @@ const flatFolders = computed(() => {
 })
 
 const md = new MarkdownIt({
-  html: true,
+  html: false,
   linkify: true,
   typographer: true
 })
 
 const renderedContent = computed(() => {
   let html = md.render(content.value || '*开始编写笔记内容...*')
+  html = DOMPurify.sanitize(html)
   html = html.replace(/\[\[([^\]]+)\]\]/g, (_match: string, titleText: string) => {
     const note = notesStore.notes.find(n => n.title === titleText)
     if (note) {

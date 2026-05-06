@@ -10,15 +10,25 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => !!token.value)
 
   async function login(username: string, password: string) {
-    const response = await authApi.login(username, password)
-    token.value = response.access_token
-    localStorage.setItem('token', response.access_token)
-    await fetchUser()
+    try {
+      const response = await authApi.login(username, password)
+      token.value = response.access_token
+      localStorage.setItem('token', response.access_token)
+      await fetchUser()
+    } catch (error: any) {
+      const message = error?.response?.data?.detail || '登录失败，请检查用户名和密码'
+      throw new Error(message)
+    }
   }
 
   async function register(username: string, password: string) {
-    const response = await authApi.register(username, password)
-    return response.data
+    try {
+      const response = await authApi.register(username, password)
+      return response.data
+    } catch (error: any) {
+      const message = error?.response?.data?.detail || '注册失败，请稍后重试'
+      throw new Error(message)
+    }
   }
 
   async function fetchUser() {

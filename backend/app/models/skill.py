@@ -1,10 +1,10 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, String, Boolean, Integer, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
-from app.db.base import Base
+from app.db.base import Base, TimestampMixin
 
-class Skill(Base):
+class Skill(Base, TimestampMixin):
     __tablename__ = "skills"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -23,8 +23,6 @@ class Skill(Base):
     output_tag_ids = Column(Text, default="[]")
     is_template = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     executions = relationship("SkillExecution", back_populates="skill", cascade="all, delete-orphan")
 
@@ -39,7 +37,7 @@ class SkillExecution(Base):
     output_content_id = Column(String(36), ForeignKey("contents.id", ondelete="SET NULL"))
     status = Column(String(20), default="pending")
     error_message = Column(Text)
-    started_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     completed_at = Column(DateTime)
 
     skill = relationship("Skill", back_populates="executions")

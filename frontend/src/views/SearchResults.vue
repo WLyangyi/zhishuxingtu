@@ -190,10 +190,25 @@ function getExcerpt(content: string | null | undefined, query: string): string {
   return (start > 0 ? '...' : '') + content.slice(start, end) + (end < content.length ? '...' : '')
 }
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 function highlightText(text: string): string {
-  if (!searchQuery.value) return text
-  const regex = new RegExp(`(${searchQuery.value})`, 'gi')
-  return text.replace(regex, '<mark>$1</mark>')
+  if (!searchQuery.value) return escapeHtml(text)
+  const escapedText = escapeHtml(text)
+  const escapedQuery = escapeRegExp(escapeHtml(searchQuery.value))
+  const regex = new RegExp(`(${escapedQuery})`, 'gi')
+  return escapedText.replace(regex, '<mark>$1</mark>')
 }
 
 function formatDate(date: string): string {

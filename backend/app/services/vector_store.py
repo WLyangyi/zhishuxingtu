@@ -70,7 +70,8 @@ class VectorStore:
             self._create_new()
     
     def _create_new(self):
-        self.index = faiss.IndexFlatIP(self.dimension)
+        base_index = faiss.IndexFlatIP(self.dimension)
+        self.index = faiss.IndexIDMap(base_index)
         self.id_map = {}
         self.reverse_map = {}
         self._next_idx = 0
@@ -98,9 +99,10 @@ class VectorStore:
                 vector = self._validate_vector(vector)
                 vector = vector.reshape(1, -1)
                 
-                self.index.add(vector)
-                
                 idx = self._next_idx
+                ids = np.array([idx], dtype=np.int64)
+                self.index.add_with_ids(vector, ids)
+                
                 self.id_map[idx] = note_id
                 self.reverse_map[note_id] = idx
                 self._next_idx += 1
@@ -139,14 +141,12 @@ class VectorStore:
         vector = self._validate_vector(vector)
         vector = vector.reshape(1, -1)
         
-        try:
-            self.index.remove_ids(faiss.IDSelectorArray(np.array([idx])))
-        except Exception:
-            pass
-        
-        self.index.add(vector)
+        self.index.remove_ids(np.array([idx], dtype=np.int64))
         
         new_idx = self._next_idx
+        ids = np.array([new_idx], dtype=np.int64)
+        self.index.add_with_ids(vector, ids)
+        
         del self.id_map[idx]
         self.id_map[new_idx] = note_id
         self.reverse_map[note_id] = new_idx
@@ -173,10 +173,7 @@ class VectorStore:
             
             idx = self.reverse_map[note_id]
             
-            try:
-                self.index.remove_ids(faiss.IDSelectorArray(np.array([idx])))
-            except Exception:
-                pass
+            self.index.remove_ids(np.array([idx], dtype=np.int64))
             
             if idx in self.id_map:
                 del self.id_map[idx]

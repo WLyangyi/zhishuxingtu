@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from app.api.deps import get_db, get_current_user
 from app.models.few_shot import PromptEvaluation
 from app.models.user import User
@@ -21,11 +21,11 @@ def create_evaluation(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    db_eval = PromptEvaluation(**evaluation.dict())
+    db_eval = PromptEvaluation(**evaluation.model_dump())
     db.add(db_eval)
     db.commit()
     db.refresh(db_eval)
-    return Response(data=PromptEvaluationInDB.from_orm(db_eval).dict(), message="评估记录创建成功")
+    return Response(data=PromptEvaluationInDB.model_validate(db_eval).model_dump(), message="评估记录创建成功")
 
 @router.post("/auto-evaluate", response_model=Response)
 async def auto_evaluate_response(
@@ -73,7 +73,7 @@ def list_evaluations(
         query = query.filter(PromptEvaluation.overall_score >= min_score)
     
     evaluations = query.order_by(PromptEvaluation.created_at.desc()).limit(limit).all()
-    return Response(data=[PromptEvaluationInDB.from_orm(e).dict() for e in evaluations])
+    return Response(data=[PromptEvaluationInDB.model_validate(e).model_dump() for e in evaluations])
 
 @router.get("/stats", response_model=Response)
 def get_evaluation_stats(
@@ -82,7 +82,7 @@ def get_evaluation_stats(
     db: Session = Depends(get_db)
 ):
     from datetime import timedelta
-    start_date = datetime.utcnow() - timedelta(days=days)
+    start_date = datetime.now(timezone.utc) - timedelta(days=days)
     
     query = db.query(PromptEvaluation).filter(PromptEvaluation.created_at >= start_date)
     if prompt_version_id:
@@ -130,7 +130,7 @@ def submit_user_feedback(
 ):
     evaluation = db.query(PromptEvaluation).filter(PromptEvaluation.id == evaluation_id).first()
     if not evaluation:
-        raise HTTPException(status_code=404, detail="评估记录不存在")
+        raise HTTPException(status_code=404, detail="评估记录不存�?)
     
     evaluation.user_rating = str(user_rating)
     if user_feedback:

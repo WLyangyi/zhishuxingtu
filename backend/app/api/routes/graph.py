@@ -1,6 +1,6 @@
 import json
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.db.session import get_db
 from app.models.note import Note
 from app.models.folder import Folder
@@ -11,6 +11,8 @@ from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/graph", tags=["知识图谱"])
 
+MAX_GRAPH_NODES = 500
+
 @router.get("/global", response_model=Response[GraphResponse])
 async def get_global_graph(
     current_user: User = Depends(get_current_user),
@@ -19,7 +21,7 @@ async def get_global_graph(
     nodes = []
     edges = []
     
-    folders = db.query(Folder).all()
+    folders = db.query(Folder).filter(Folder.user_id == current_user.id).all()
     for folder in folders:
         nodes.append(GraphNode(
             id=folder.id,
@@ -39,7 +41,7 @@ async def get_global_graph(
             size=15
         ))
     
-    notes = db.query(Note).all()
+    notes = db.query(Note).filter(Note.user_id == current_user.id).options(joinedload(Note.tags)).limit(MAX_GRAPH_NODES).all()
     note_id_set = {note.id for note in notes}
     
     for note in notes:
@@ -66,7 +68,10 @@ async def get_global_graph(
             ))
         
         if note.linked_note_ids:
-            linked_ids = json.loads(note.linked_note_ids)
+            try:
+                linked_ids = json.loads(note.linked_note_ids)
+            except (json.JSONDecodeError, TypeError):
+                linked_ids = []
             for linked_id in linked_ids:
                 if linked_id in note_id_set:
                     edges.append(GraphEdge(
@@ -87,7 +92,7 @@ async def get_local_graph(
     edges = []
     visited = set()
     
-    current_note = db.query(Note).filter(Note.id == note_id).first()
+    current_note = db.query(Note).filter(Note.id == note_id, Note.user_id == current_user.id).first()
     if not current_note:
         return Response(data=GraphResponse(nodes=[], edges=[]))
     
@@ -100,11 +105,22 @@ async def get_local_graph(
     ))
     visited.add(current_note.id)
     
+    linked_note_ids_set = set()
     if current_note.linked_note_ids:
-        linked_ids = json.loads(current_note.linked_note_ids)
+        try:
+            linked_ids = json.loads(current_note.linked_note_ids)
+        except (json.JSONDecodeError, TypeError):
+            linked_ids = []
         for linked_id in linked_ids:
-            linked_note = db.query(Note).filter(Note.id == linked_id).first()
-            if linked_note and linked_id not in visited:
+            linked_note_ids_set.add(linked_id)
+    
+    if linked_note_ids_set:
+        linked_notes = db.query(Note).filter(
+            Note.id.in_(linked_note_ids_set),
+            Note.user_id == current_user.id
+        ).all()
+        for linked_note in linked_notes:
+            if linked_note.id not in visited:
                 nodes.append(GraphNode(
                     id=linked_note.id,
                     label=linked_note.title,
@@ -114,30 +130,30 @@ async def get_local_graph(
                 ))
                 edges.append(GraphEdge(
                     source=current_note.id,
-                    target=linked_id,
+                    target=linked_note.id,
                     type="links_to"
                 ))
-                visited.add(linked_id)
+                visited.add(linked_note.id)
     
-    all_notes = db.query(Note).all()
-    for note in all_notes:
-        if note.id == note_id:
-            continue
-        if note.linked_note_ids:
-            linked_ids = json.loads(note.linked_note_ids)
-            if note_id in linked_ids and note.id not in visited:
-                nodes.append(GraphNode(
-                    id=note.id,
-                    label=note.title,
-                    type="note",
-                    color="#00d4ff",
-                    size=18
-                ))
-                edges.append(GraphEdge(
-                    source=note.id,
-                    target=note_id,
-                    type="links_to"
-                ))
-                visited.add(note.id)
+    backlink_notes = db.query(Note).filter(
+        Note.user_id == current_user.id,
+        Note.linked_note_ids.contains(f'"{note_id}"')
+    ).all()
+    
+    for note in backlink_notes:
+        if note.id not in visited:
+            nodes.append(GraphNode(
+                id=note.id,
+                label=note.title,
+                type="note",
+                color="#00d4ff",
+                size=18
+            ))
+            edges.append(GraphEdge(
+                source=note.id,
+                target=note_id,
+                type="links_to"
+            ))
+            visited.add(note.id)
     
     return Response(data=GraphResponse(nodes=nodes, edges=edges))

@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, String, Boolean, Text, DateTime, Float, ForeignKey, Integer
 from sqlalchemy.orm import relationship
 from app.db.base import Base
@@ -14,7 +14,7 @@ class FewShotExample(Base):
     output_example = Column(Text, nullable=False)
     quality_score = Column(Float, default=5.0)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     prompt = relationship("Prompt", back_populates="few_shot_examples")
 
@@ -29,7 +29,7 @@ class PromptVersion(Base):
     user_prompt_template = Column(Text)
     changes_description = Column(Text)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     prompt = relationship("Prompt", back_populates="versions")
 
@@ -46,7 +46,7 @@ class ABExperiment(Base):
     status = Column(String(20), default="running")
     start_time = Column(DateTime)
     end_time = Column(DateTime)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     prompt = relationship("Prompt", back_populates="experiments")
     version_a = relationship("PromptVersion", foreign_keys=[version_a_id])
@@ -62,10 +62,10 @@ class ABTestResult(Base):
     session_id = Column(String(36))
     user_question = Column(Text)
     ai_response = Column(Text)
-    response_time_ms = Column(String(20))
-    token_count = Column(String(20))
-    user_feedback = Column(String(10))
-    created_at = Column(DateTime, default=datetime.utcnow)
+    response_time_ms = Column(Integer)
+    token_count = Column(Integer)
+    user_feedback = Column(Integer)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     experiment = relationship("ABExperiment", back_populates="results")
     version = relationship("PromptVersion")
@@ -77,7 +77,7 @@ class PromptChain(Base):
     name = Column(String(200), nullable=False)
     description = Column(Text)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     steps = relationship("ChainStep", back_populates="chain", order_by="ChainStep.step_order")
     executions = relationship("ChainExecution", back_populates="chain")
@@ -92,7 +92,7 @@ class ChainStep(Base):
     prompt_template = Column(Text, nullable=False)
     input_mapping = Column(Text)
     output_mapping = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     chain = relationship("PromptChain", back_populates="steps")
 
@@ -106,7 +106,7 @@ class ChainExecution(Base):
     output_data = Column(Text)
     status = Column(String(20), default="pending")
     error_message = Column(Text)
-    started_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     completed_at = Column(DateTime)
     
     chain = relationship("PromptChain", back_populates="executions")
@@ -127,13 +127,13 @@ class PromptEvaluation(Base):
     clarity_score = Column(Float)
     overall_score = Column(Float)
     
-    response_time_ms = Column(String(20))
-    token_count = Column(String(20))
+    response_time_ms = Column(Integer)
+    token_count = Column(Integer)
     cost_usd = Column(Float, default=0.0)
     
-    user_rating = Column(String(10))
+    user_rating = Column(Integer)
     user_feedback = Column(Text)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     version = relationship("PromptVersion")

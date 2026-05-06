@@ -13,7 +13,9 @@ class Folder(Base, TimestampMixin):
     parent_id = Column(String(36), ForeignKey("folders.id"), nullable=True)
     level = Column(Integer, nullable=False, default=0)
     category_id = Column(String(36), ForeignKey("categories.id"), nullable=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
 
     parent = relationship("Folder", remote_side=[id], backref="children")
     category = relationship("Category", backref="folders")
     notes = relationship("Note", back_populates="folder")
+    user = relationship("User", backref="folders")

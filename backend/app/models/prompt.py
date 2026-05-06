@@ -1,14 +1,13 @@
 import uuid
-from datetime import datetime
-from sqlalchemy import Column, String, Boolean, Text, DateTime
+from sqlalchemy import Column, String, Boolean, Text, ForeignKey
 from sqlalchemy.orm import relationship
-from app.db.base import Base
+from app.db.base import Base, TimestampMixin
 
-class Prompt(Base):
+class Prompt(Base, TimestampMixin):
     __tablename__ = "prompts"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String(36), nullable=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     name = Column(String(100), nullable=False)
     description = Column(Text)
     category = Column(String(50), nullable=False)
@@ -20,8 +19,6 @@ class Prompt(Base):
     is_active = Column(Boolean, default=True)
     is_default = Column(Boolean, default=False)
     priority = Column(String(20), default="normal")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     few_shot_examples = relationship("FewShotExample", back_populates="prompt")
     versions = relationship("PromptVersion", back_populates="prompt")
@@ -34,5 +31,5 @@ class Prompt(Base):
         try:
             import json
             return json.loads(self.variables)
-        except:
+        except (json.JSONDecodeError, ValueError):
             return []

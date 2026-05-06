@@ -356,7 +356,7 @@ def prompt_to_dict(prompt: Prompt) -> dict:
     if prompt.variables:
         try:
             variables = json.loads(prompt.variables)
-        except:
+        except (json.JSONDecodeError, ValueError):
             variables = []
 
     return {

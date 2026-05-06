@@ -22,6 +22,7 @@ from app.services.subtitle_service import get_subtitle_service
 from app.services.whisper_service import get_whisper_service, WhisperError
 from app.services.ytdlp_service import get_ytdl_service, YTDLError, SUPPORTED_PLATFORMS
 from app.core.config import settings
+from app.core.exceptions import sanitize_error
 
 router = APIRouter(prefix="/import", tags=["智能导入"])
 
@@ -512,7 +513,7 @@ async def import_video(
         with open(file_path, "wb") as f:
             f.write(content)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"文件保存失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=sanitize_error(e, "文件保存失败"))
 
     task_store = get_import_task_store()
     task = task_store.create_task(
@@ -780,7 +781,7 @@ async def regenerate_summary(
         }, message="重新生成成功")
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"重新生成失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=sanitize_error(e, "重新生成失败"))
 
 
 @router.post("/suggest-category")
@@ -893,7 +894,7 @@ async def import_pdf(
         with open(file_path, "wb") as f:
             f.write(content)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"文件保存失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=sanitize_error(e, "文件保存失败"))
 
     task_store = get_import_task_store()
     task = task_store.create_task(

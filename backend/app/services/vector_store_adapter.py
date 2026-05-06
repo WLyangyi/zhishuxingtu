@@ -47,6 +47,8 @@ class VectorStoreAdapter:
         chunks: List[Any],
         vectors: np.ndarray
     ) -> Dict[str, Any]:
+        self.remove_note_chunks(note_id)
+
         chunk_ids = []
 
         for i, (chunk, vector) in enumerate(zip(chunks, vectors)):
@@ -74,12 +76,14 @@ class VectorStoreAdapter:
         query_vector: np.ndarray,
         k: int = 5,
         threshold: float = 0.3,
-        aggregate_by_note: bool = True
+        aggregate_by_note: bool = True,
+        query_text: str = ""
     ) -> List[Tuple[str, float]]:
         raw_k = k * 3 if aggregate_by_note else k
 
         if self._use_langchain:
-            query_text = f"query_{np.argmax(query_vector)}"
+            if not query_text:
+                query_text = "search_query"
             results = self._langchain_store.similarity_search_with_score(query_text, k=raw_k)
             filtered = [(doc.metadata.get("note_id", ""), float(score))
                        for doc, score in results if score >= (1 - threshold)]

@@ -41,7 +41,8 @@ class EmbeddingService:
         api_key = getattr(settings, 'DASHSCOPE_API_KEY', '')
         if api_key:
             self._available = True
-            print(f"Using DashScope API with model: text-embedding-v3")
+            self._model_name = getattr(settings, 'DASHSCOPE_EMBEDDING_MODEL', 'text-embedding-v3')
+            print(f"Using DashScope API with model: {self._model_name}")
             print(f"Embedding service initialized, dimension: {self._dimension}")
         else:
             print("Warning: DASHSCOPE_API_KEY not set, embedding service disabled")
@@ -71,7 +72,7 @@ class EmbeddingService:
                 'Content-Type': 'application/json'
             }
             payload = {
-                "model": "text-embedding-v3",
+                "model": self._model_name,
                 "input": text,
                 "dimensions": 1024,
                 "encoding_format": "float"
@@ -110,7 +111,7 @@ class EmbeddingService:
             for i in range(0, len(valid_texts), batch_size):
                 batch = valid_texts[i:i + batch_size]
                 payload = {
-                    "model": "text-embedding-v3",
+                    "model": self._model_name,
                     "input": batch,
                     "dimensions": 1024,
                     "encoding_format": "float"

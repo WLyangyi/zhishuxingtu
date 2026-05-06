@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from sqlalchemy import func
+from typing import List, Optional, Dict
 from app.db.session import get_db
 from app.models.folder import Folder
 from app.models.note import Note
@@ -11,12 +12,20 @@ from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/folders", tags=["文件夹"])
 
-def build_folder_tree(folders: List[Folder], db: Session, parent_id: str = None, category_id: str = None) -> List[dict]:
+def _get_note_counts(db: Session, folder_ids: List[str]) -> Dict[str, int]:
+    if not folder_ids:
+        return {}
+    rows = db.query(Note.folder_id, func.count(Note.id)).filter(
+        Note.folder_id.in_(folder_ids)
+    ).group_by(Note.folder_id).all()
+    return {str(folder_id): count for folder_id, count in rows}
+
+def build_folder_tree(folders: List[Folder], note_counts: Dict[str, int], parent_id: str = None, category_id: str = None) -> List[dict]:
     result = []
     for folder in folders:
         if folder.parent_id == parent_id and (category_id is None or folder.category_id == category_id):
-            direct_count = db.query(Note).filter(Note.folder_id == folder.id).count()
-            children_count = sum_count_notes(folders, db, folder.id)
+            direct_count = note_counts.get(folder.id, 0)
+            children_count = _sum_children_count(folders, note_counts, folder.id)
             total_count = direct_count + children_count
 
             folder_dict = FolderTreeResponse(
@@ -27,18 +36,17 @@ def build_folder_tree(folders: List[Folder], db: Session, parent_id: str = None,
                 category_id=folder.category_id,
                 note_count=total_count,
                 created_at=folder.created_at,
-                children=build_folder_tree(folders, db, folder.id, category_id)
+                children=build_folder_tree(folders, note_counts, folder.id, category_id)
             ).model_dump()
             result.append(folder_dict)
     return result
 
-def sum_count_notes(folders: List[Folder], db: Session, parent_id: str) -> int:
+def _sum_children_count(folders: List[Folder], note_counts: Dict[str, int], parent_id: str) -> int:
     total = 0
     for folder in folders:
         if folder.parent_id == parent_id:
-            direct_count = db.query(Note).filter(Note.folder_id == folder.id).count()
-            total += direct_count
-            total += sum_count_notes(folders, db, folder.id)
+            total += note_counts.get(folder.id, 0)
+            total += _sum_children_count(folders, note_counts, folder.id)
     return total
 
 @router.get("", response_model=Response[List[FolderTreeResponse]])
@@ -47,8 +55,10 @@ async def get_folders(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    folders = db.query(Folder).all()
-    tree = build_folder_tree(folders, db, category_id=category_id)
+    folders = db.query(Folder).filter(Folder.user_id == current_user.id).all()
+    folder_ids = [f.id for f in folders]
+    note_counts = _get_note_counts(db, folder_ids)
+    tree = build_folder_tree(folders, note_counts, category_id=category_id)
     return Response(data=tree)
 
 @router.post("", response_model=Response[FolderResponse])
@@ -79,7 +89,8 @@ async def create_folder(
         name=folder_data.name,
         parent_id=folder_data.parent_id,
         level=level,
-        category_id=category_id
+        category_id=category_id,
+        user_id=current_user.id
     )
     db.add(folder)
     db.commit()

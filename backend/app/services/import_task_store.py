@@ -1,7 +1,7 @@
 import uuid
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, List
 
 
@@ -23,7 +23,7 @@ class SourceInfo:
     filename: Optional[str] = None
     duration: Optional[int] = None
     platform: Optional[str] = None
-    imported_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    imported_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 @dataclass
@@ -50,8 +50,8 @@ class ImportTask:
     video_info: Optional[VideoInfo] = None
     result: Optional[ImportResult] = None
     error: str = ""
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    updated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class ImportTaskStore:
@@ -66,7 +66,7 @@ class ImportTaskStore:
             source_path=source_path,
             status="pending",
             progress=0,
-            progress_message="任务已创建"
+            progress_message="任务已创�?
         )
         with self._lock:
             self._tasks[task.task_id] = task
@@ -84,7 +84,7 @@ class ImportTaskStore:
             for key, value in kwargs.items():
                 if hasattr(task, key):
                     setattr(task, key, value)
-            task.updated_at = datetime.utcnow().isoformat()
+            task.updated_at = datetime.now(timezone.utc).isoformat()
             return task
 
     def delete_task(self, task_id: str) -> bool:
@@ -99,7 +99,7 @@ class ImportTaskStore:
             return [t for t in self._tasks.values() if t.user_id == user_id]
 
     def cleanup_old_tasks(self, max_age_hours: int = 24):
-        cutoff = datetime.utcnow().timestamp() - (max_age_hours * 3600)
+        cutoff = datetime.now(timezone.utc).timestamp() - (max_age_hours * 3600)
         with self._lock:
             to_delete = []
             for task_id, task in self._tasks.items():

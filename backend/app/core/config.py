@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 import os
+import tempfile
 
 
 def get_faiss_path():
@@ -7,28 +8,30 @@ def get_faiss_path():
     if custom_path:
         return custom_path
     
-    for base_path in ['C:/temp', 'D:/temp', 'E:/temp']:
-        try:
-            os.makedirs(base_path, exist_ok=True)
-            if os.access(base_path, os.W_OK):
-                return os.path.join(base_path, 'zhishuxingtu_faiss')
-        except:
-            continue
+    base_path = tempfile.gettempdir()
+    try:
+        os.makedirs(base_path, exist_ok=True)
+        if os.access(base_path, os.W_OK):
+            return os.path.join(base_path, 'zhishuxingtu_faiss')
+    except Exception:
+        pass
     
-    return 'C:/temp/zhishuxingtu_faiss'
+    return os.path.join(tempfile.gettempdir(), 'zhishuxingtu_faiss')
 
 
 class Settings(BaseSettings):
     APP_NAME: str = "知枢星图"
     APP_ENV: str = "development"
-    DEBUG: bool = True
-    SECRET_KEY: str = "your-secret-key"
+    DEBUG: bool = False
+    SECRET_KEY: str = ""
     
     DATABASE_URL: str = "sqlite:///./data/knowledge.db"
     
-    JWT_SECRET_KEY: str = "your-jwt-secret-key"
+    JWT_SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_DAYS: int = 7
+    
+    CORS_ORIGINS: list = ["http://localhost:5173"]
     
     OPENAI_API_KEY: str = ""
     OPENAI_BASE_URL: str = "https://api.openai.com/v1"
@@ -39,7 +42,7 @@ class Settings(BaseSettings):
     
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     HF_MIRROR_URL: str = "https://hf-mirror.com"
-    HF_CACHE_DIR: str = "C:/temp/huggingface_cache"
+    HF_CACHE_DIR: str = os.path.join(tempfile.gettempdir(), "huggingface_cache")
     
     FAISS_INDEX_PATH: str = get_faiss_path()
 
@@ -60,7 +63,7 @@ class Settings(BaseSettings):
     CHUNK_BY_SENTENCE: bool = True     # 是否按句子分割（保底）
 
     USE_VECTOR_MEMORY: bool = True
-    CHAT_MEMORY_INDEX_PATH: str = "C:/temp/zhishuxingtu_chat_memory"
+    CHAT_MEMORY_INDEX_PATH: str = os.path.join(tempfile.gettempdir(), "zhishuxingtu_chat_memory")
     CHAT_MEMORY_TOP_K: int = 5
     CHAT_MEMORY_MIN_SCORE: float = 0.3
 
@@ -85,6 +88,10 @@ class Settings(BaseSettings):
     # Whisper 语音转文字配置
     WHISPER_MODEL: str = "base"             # tiny/base/small/medium/large
     WHISPER_DEVICE: str = "cpu"             # cpu/cuda
+
+    # AI 搜索配置
+    AI_MAX_TOKENS: int = 1000
+    AI_TEMPERATURE: float = 0.7
 
     # B站 MCP 服务配置
     BILIBILI_MCP_URL: str = "http://localhost:8080"

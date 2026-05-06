@@ -117,12 +117,24 @@ const router = createRouter({
   routes
 })
 
+function isTokenExpired(): boolean {
+  const token = localStorage.getItem('token')
+  if (!token) return true
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    return payload.exp * 1000 < Date.now()
+  } catch {
+    return true
+  }
+}
+
 router.beforeEach((to, _from, next) => {
   const authStore = useAuthStore()
 
-  if (to.meta.requiresAuth && !authStore.isAuthenticated) {
+  if (to.meta.requiresAuth && (!authStore.isAuthenticated || isTokenExpired())) {
+    authStore.logout()
     next('/login')
-  } else if (to.path === '/login' && authStore.isAuthenticated) {
+  } else if (to.path === '/login' && authStore.isAuthenticated && !isTokenExpired()) {
     next('/')
   } else {
     next()

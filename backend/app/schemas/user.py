@@ -1,11 +1,11 @@
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 class UserBase(BaseModel):
-    username: str
+    username: str = Field(..., min_length=2, max_length=50)
 
 class UserCreate(UserBase):
-    password: str
+    password: str = Field(..., min_length=8, description="密码，至少8个字符")
 
 class UserResponse(UserBase):
     id: str

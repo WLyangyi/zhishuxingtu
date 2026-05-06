@@ -31,7 +31,7 @@ class ContentTypeInDB(BaseModel):
         if isinstance(v, str):
             try:
                 return json.loads(v)
-            except:
+            except (json.JSONDecodeError, ValueError):
                 return {}
         return v if isinstance(v, dict) else {}
 
