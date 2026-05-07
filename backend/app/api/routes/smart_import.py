@@ -13,28 +13,23 @@ from app.models.tag import Tag
 from app.api.deps import get_current_user
 from app.schemas.response import Response
 from app.services.import_task_store import get_import_task_store, ImportTask
-from app.services.pdf_service import get_pdf_service, PDFParseError
 from app.services.summarizer_service import get_summarizer_service
 from app.services.import_history_service import get_import_history_service
-from app.services.crawler_service import get_crawler_service, CrawlerError
-from app.services.video_service import get_video_service, VideoError
-from app.services.subtitle_service import get_subtitle_service
-from app.services.whisper_service import get_whisper_service, WhisperError
-from app.services.ytdlp_service import get_ytdl_service, YTDLError, SUPPORTED_PLATFORMS
+from app.services.ytdlp_service import get_ytdl_service, SUPPORTED_PLATFORMS
+from app.services.import_orchestrator import (
+    PDFImportOrchestrator,
+    URLImportOrchestrator,
+    VideoImportOrchestrator,
+    VideoURLImportOrchestrator,
+)
+from app.services.file_helper import save_temp_file
 from app.core.config import settings
 from app.core.exceptions import sanitize_error
 
 router = APIRouter(prefix="/import", tags=["智能导入"])
 
 MAX_FILE_SIZE = getattr(settings, 'IMPORT_MAX_FILE_SIZE', 209715200)
-ALLOWED_PDF_TYPES = {"application/pdf"}
-ALLOWED_VIDEO_TYPES = {"video/mp4", "video/x-matroska", "video/avi", "video/quicktime"}
-ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov"}
 TEMP_DIR = getattr(settings, 'IMPORT_TEMP_DIR', './temp/imports')
-
-
-def _ensure_temp_dir():
-    os.makedirs(TEMP_DIR, exist_ok=True)
 
 
 def _format_note_content(result: dict, source_info: dict) -> str:
@@ -88,139 +83,53 @@ def _format_note_content(result: dict, source_info: dict) -> str:
     return "\n".join(parts)
 
 
-async def _process_pdf(task: ImportTask, file_path: str, filename: str):
-    task_store = get_import_task_store()
-    pdf_service = get_pdf_service()
-    summarizer = get_summarizer_service()
-
-    try:
-        task_store.update_task(task.task_id, status="parsing", progress=10, progress_message="正在解析文件...")
-        await asyncio.sleep(0.1)
-
-        text = pdf_service.extract_text(file_path)
-
-        task_store.update_task(task.task_id, status="extracting", progress=30, progress_message="正在提取内容...")
-        await asyncio.sleep(0.1)
-
-        task_store.update_task(task.task_id, status="analyzing", progress=50, progress_message="正在分析内容...")
-        await asyncio.sleep(0.1)
-
-        task_store.update_task(task.task_id, status="summarizing", progress=70, progress_message="正在生成摘要...")
-
-        source_type_name = "PDF文档"
-        result = summarizer.summarize(text, source_type_name)
-
-        from app.services.import_task_store import SourceInfo, ImportResult
-        source_info = SourceInfo(
-            type="pdf",
-            filename=filename,
-            imported_at=task.created_at
-        )
-        import_result = ImportResult(
-            title=result.get("title", filename.replace(".pdf", "")),
-            summary=result.get("summary", ""),
-            key_points=result.get("key_points", []),
-            tags=result.get("tags", []),
-            source_info=source_info,
-            content_type=result.get("content_type", ""),
-            language_detected=result.get("language_detected", "zh")
-        )
-
-        task_store.update_task(
-            task.task_id,
-            status="completed",
-            progress=100,
-            progress_message="处理完成",
-            extracted_content=text,
-            result=import_result
-        )
-
-    except PDFParseError as e:
-        task_store.update_task(
-            task.task_id,
-            status="failed",
-            progress=0,
-            error=str(e),
-            progress_message=str(e)
-        )
-    except Exception as e:
-        task_store.update_task(
-            task.task_id,
-            status="failed",
-            progress=0,
-            error=f"处理失败: {str(e)}",
-            progress_message=f"处理失败: {str(e)}"
-        )
-    finally:
-        try:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-        except Exception:
-            pass
+def _result_to_dict(task) -> dict:
+    if not task.result:
+        return None
+    return {
+        "title": task.result.title,
+        "summary": task.result.summary,
+        "key_points": task.result.key_points,
+        "tags": task.result.tags,
+        "content_type": task.result.content_type,
+        "language_detected": task.result.language_detected,
+        "source_info": {
+            "type": task.result.source_info.type if task.result.source_info else task.source_type,
+            "url": task.result.source_info.url if task.result.source_info else None,
+            "filename": task.result.source_info.filename if task.result.source_info else None,
+            "duration": task.result.source_info.duration if task.result.source_info else None,
+            "platform": task.result.source_info.platform if task.result.source_info else None,
+            "imported_at": task.result.source_info.imported_at if task.result.source_info else None,
+        } if task.result.source_info else None
+    }
 
 
-async def _process_url(task: ImportTask, url: str):
-    task_store = get_import_task_store()
-    crawler = get_crawler_service()
-    summarizer = get_summarizer_service()
+SOURCE_TYPE_NAME_MAP = {
+    "pdf": "PDF文档",
+    "url": "网页",
+    "video": "视频",
+    "video_url": "视频"
+}
 
-    try:
-        task_store.update_task(task.task_id, status="parsing", progress=10, progress_message="正在访问网页...")
-        await asyncio.sleep(0.1)
 
-        text, page_title, resolved_url = crawler.extract_content(url)
+async def _execute_pdf_import(task: ImportTask, file_path: str, filename: str):
+    orchestrator = PDFImportOrchestrator(task, file_path, filename)
+    await orchestrator.execute()
 
-        task_store.update_task(task.task_id, status="extracting", progress=30, progress_message="正在提取正文...")
-        await asyncio.sleep(0.1)
 
-        task_store.update_task(task.task_id, status="analyzing", progress=50, progress_message="正在分析内容...")
-        await asyncio.sleep(0.1)
+async def _execute_url_import(task: ImportTask, url: str):
+    orchestrator = URLImportOrchestrator(task, url)
+    await orchestrator.execute()
 
-        task_store.update_task(task.task_id, status="summarizing", progress=70, progress_message="正在生成摘要...")
 
-        result = summarizer.summarize(text, "网页")
+async def _execute_video_import(task: ImportTask, file_path: str, filename: str):
+    orchestrator = VideoImportOrchestrator(task, file_path, filename)
+    await orchestrator.execute()
 
-        from app.services.import_task_store import SourceInfo, ImportResult
-        source_info = SourceInfo(
-            type="web",
-            url=resolved_url,
-            imported_at=task.created_at
-        )
-        import_result = ImportResult(
-            title=result.get("title", page_title),
-            summary=result.get("summary", ""),
-            key_points=result.get("key_points", []),
-            tags=result.get("tags", []),
-            source_info=source_info,
-            content_type=result.get("content_type", ""),
-            language_detected=result.get("language_detected", "zh")
-        )
 
-        task_store.update_task(
-            task.task_id,
-            status="completed",
-            progress=100,
-            progress_message="处理完成",
-            extracted_content=text,
-            result=import_result
-        )
-
-    except CrawlerError as e:
-        task_store.update_task(
-            task.task_id,
-            status="failed",
-            progress=0,
-            error=str(e),
-            progress_message=str(e)
-        )
-    except Exception as e:
-        task_store.update_task(
-            task.task_id,
-            status="failed",
-            progress=0,
-            error=f"处理失败: {str(e)}",
-            progress_message=f"处理失败: {str(e)}"
-        )
+async def _execute_video_url_import(task: ImportTask, url: str, platform: str):
+    orchestrator = VideoURLImportOrchestrator(task, url, platform)
+    await orchestrator.execute()
 
 
 @router.get("/status/{task_id}")
@@ -254,24 +163,7 @@ async def stream_task_status(
                 last_progress = task.progress
 
                 if task.status == "completed":
-                    result_data = None
-                    if task.result:
-                        result_data = {
-                            "title": task.result.title,
-                            "summary": task.result.summary,
-                            "key_points": task.result.key_points,
-                            "tags": task.result.tags,
-                            "content_type": task.result.content_type,
-                            "language_detected": task.result.language_detected,
-                            "source_info": {
-                                "type": task.result.source_info.type if task.result.source_info else task.source_type,
-                                "url": task.result.source_info.url if task.result.source_info else None,
-                                "filename": task.result.source_info.filename if task.result.source_info else None,
-                                "duration": task.result.source_info.duration if task.result.source_info else None,
-                                "platform": task.result.source_info.platform if task.result.source_info else None,
-                                "imported_at": task.result.source_info.imported_at if task.result.source_info else None,
-                            } if task.result.source_info else None
-                        }
+                    result_data = _result_to_dict(task)
                     data = json.dumps({"type": "completed", "progress": 100, "result": result_data}, ensure_ascii=False)
                     yield f"data: {data}\n\n"
                     break
@@ -319,174 +211,12 @@ async def import_url(
         source_path=url
     )
 
-    asyncio.create_task(_process_url(task, url))
+    asyncio.create_task(_execute_url_import(task, url))
 
     return Response(data={
         "task_id": task.task_id,
         "url": url
     }, message="URL 提交成功，正在处理")
-
-
-async def _process_video(task: ImportTask, file_path: str, filename: str):
-    task_store = get_import_task_store()
-    video_service = get_video_service()
-    subtitle_service = get_subtitle_service()
-    summarizer = get_summarizer_service()
-
-    try:
-        task_store.update_task(task.task_id, status="parsing", progress=10, progress_message="正在解析视频...")
-        await asyncio.sleep(0.1)
-
-        video_info = video_service.get_video_info(file_path)
-
-        from app.services.import_task_store import VideoInfo
-        task_video_info = VideoInfo(
-            duration=video_info.duration,
-            width=video_info.width,
-            height=video_info.height,
-            fps=video_info.fps,
-            audio_tracks=video_info.audio_tracks,
-            subtitle_tracks=video_info.subtitle_tracks
-        )
-        task_store.update_task(
-            task.task_id,
-            progress=20,
-            progress_message="正在提取字幕...",
-            video_info=task_video_info
-        )
-        await asyncio.sleep(0.1)
-
-        text = subtitle_service.extract_subtitles(file_path)
-
-        if text and text.strip():
-            task_store.update_task(task.task_id, status="extracting", progress=40, progress_message="字幕提取成功，正在分析内容...")
-            await asyncio.sleep(0.1)
-        else:
-            task_store.update_task(task.task_id, status="extracting", progress=40, progress_message="无字幕，尝试提取音频...")
-            await asyncio.sleep(0.1)
-
-            if video_info.audio_tracks > 0:
-                task_store.update_task(task.task_id, progress=50, progress_message="正在提取音频...")
-
-                audio_path = file_path.rsplit('.', 1)[0] + ".mp3"
-                try:
-                    video_service.extract_audio(file_path, audio_path)
-                except VideoError as e:
-                    task_store.update_task(
-                        task.task_id,
-                        status="failed",
-                        progress=0,
-                        error=f"音频提取失败: {str(e)}",
-                        progress_message=f"音频提取失败: {str(e)}"
-                    )
-                    return
-
-                task_store.update_task(task.task_id, progress=60, progress_message="正在使用 Whisper 转录音频...")
-
-                try:
-                    from app.services.whisper_service import get_whisper_service, WhisperError
-                    whisper = get_whisper_service()
-                    text = whisper.transcribe(audio_path)
-                    task_store.update_task(task.task_id, progress=75, progress_message="转录完成，正在分析内容...")
-                except WhisperError as e:
-                    task_store.update_task(
-                        task.task_id,
-                        status="failed",
-                        progress=0,
-                        error=f"语音转录失败: {str(e)}",
-                        progress_message=f"语音转录失败: {str(e)}"
-                    )
-                    try:
-                        if os.path.exists(audio_path):
-                            os.remove(audio_path)
-                    except Exception:
-                        pass
-                    return
-                except Exception as e:
-                    task_store.update_task(
-                        task.task_id,
-                        status="failed",
-                        progress=0,
-                        error=f"语音转录失败: {str(e)}",
-                        progress_message=f"语音转录失败: {str(e)}"
-                    )
-                    try:
-                        if os.path.exists(audio_path):
-                            os.remove(audio_path)
-                    except Exception:
-                        pass
-                    return
-
-                try:
-                    if os.path.exists(audio_path):
-                        os.remove(audio_path)
-                except Exception:
-                    pass
-            else:
-                task_store.update_task(
-                    task.task_id,
-                    status="failed",
-                    progress=0,
-                    error="视频无字幕且无音频轨道",
-                    progress_message="视频无字幕且无音频轨道"
-                )
-                return
-
-        task_store.update_task(task.task_id, status="analyzing", progress=60, progress_message="正在分析内容...")
-        await asyncio.sleep(0.1)
-
-        task_store.update_task(task.task_id, status="summarizing", progress=70, progress_message="正在生成摘要...")
-
-        result = summarizer.summarize(text, "视频")
-
-        from app.services.import_task_store import SourceInfo, ImportResult
-        source_info = SourceInfo(
-            type="video",
-            filename=filename,
-            duration=video_info.duration,
-            imported_at=task.created_at
-        )
-        import_result = ImportResult(
-            title=result.get("title", filename),
-            summary=result.get("summary", ""),
-            key_points=result.get("key_points", []),
-            tags=result.get("tags", []),
-            source_info=source_info,
-            content_type=result.get("content_type", ""),
-            language_detected=result.get("language_detected", "zh")
-        )
-
-        task_store.update_task(
-            task.task_id,
-            status="completed",
-            progress=100,
-            progress_message="处理完成",
-            extracted_content=text,
-            result=import_result
-        )
-
-    except VideoError as e:
-        task_store.update_task(
-            task.task_id,
-            status="failed",
-            progress=0,
-            error=str(e),
-            progress_message=str(e)
-        )
-    except Exception as e:
-        task_store.update_task(
-            task.task_id,
-            status="failed",
-            progress=0,
-            error=f"处理失败: {str(e)}",
-            progress_message=f"处理失败: {str(e)}"
-        )
-    finally:
-        try:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-        except Exception:
-            pass
 
 
 @router.post("/video")
@@ -504,14 +234,8 @@ async def import_video(
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail=f"文件超过 {MAX_FILE_SIZE // 1024 // 1024}MB 限制")
 
-    _ensure_temp_dir()
-
-    task_id = str(uuid.uuid4())
-    file_path = os.path.join(TEMP_DIR, f"{task_id}_{filename}")
-
     try:
-        with open(file_path, "wb") as f:
-            f.write(content)
+        file_path = save_temp_file(content, filename)
     except Exception as e:
         raise HTTPException(status_code=500, detail=sanitize_error(e, "文件保存失败"))
 
@@ -522,159 +246,13 @@ async def import_video(
         source_path=file_path
     )
 
-    asyncio.create_task(_process_video(task, file_path, filename))
+    asyncio.create_task(_execute_video_import(task, file_path, filename))
 
     return Response(data={
         "task_id": task.task_id,
         "filename": filename,
         "file_size": len(content)
     }, message="视频上传成功，正在处理")
-
-
-async def _process_video_url(task: ImportTask, url: str, platform: str):
-    task_store = get_import_task_store()
-    ytdl = get_ytdl_service()
-    subtitle_service = get_subtitle_service()
-    whisper = get_whisper_service()
-    summarizer = get_summarizer_service()
-
-    temp_dir = os.path.join(TEMP_DIR, task.task_id)
-
-    try:
-        task_store.update_task(task.task_id, status="parsing", progress=10, progress_message="正在获取视频信息...")
-        await asyncio.sleep(0.1)
-
-        video_info = ytdl.get_video_info(url)
-
-        text = None
-        subtitle_path = None
-
-        if platform == "bilibili":
-            task_store.update_task(task.task_id, progress=20, progress_message="正在通过 B站 MCP 获取字幕...")
-            await asyncio.sleep(0.1)
-
-            try:
-                from app.services.bilibili_mcp_service import get_bilibili_mcp_service
-                bilibili_mcp = get_bilibili_mcp_service()
-                mcp_subtitle = await bilibili_mcp.get_video_subtitles_async(url)
-                if mcp_subtitle and mcp_subtitle.strip():
-                    text = mcp_subtitle
-                    task_store.update_task(task.task_id, status="extracting", progress=40, progress_message="B站 MCP 字幕获取成功，正在分析内容...")
-                    await asyncio.sleep(0.1)
-            except Exception as e:
-                print(f"B站 MCP 字幕获取失败: {str(e)}")
-
-        if not text:
-            task_store.update_task(task.task_id, progress=25, progress_message="正在下载字幕...")
-            await asyncio.sleep(0.1)
-
-            subtitle_path = ytdl.download_subtitles(url, temp_dir)
-            if subtitle_path:
-                try:
-                    with open(subtitle_path, 'r', encoding='utf-8', errors='ignore') as f:
-                        sub_content = f.read()
-                    if sub_content.endswith('.srt'):
-                        text = subtitle_service._parse_srt(sub_content)
-                    elif sub_content.endswith('.vtt'):
-                        text = subtitle_service._parse_srt(sub_content)
-                    else:
-                        text = subtitle_service._parse_srt(sub_content)
-                    if text and not text.strip():
-                        text = None
-                except Exception:
-                    text = None
-
-        if text and text.strip():
-            task_store.update_task(task.task_id, status="extracting", progress=40, progress_message="字幕下载成功，正在分析内容...")
-            await asyncio.sleep(0.1)
-        else:
-            task_store.update_task(task.task_id, status="extracting", progress=30, progress_message="无字幕，正在下载音频...")
-            await asyncio.sleep(0.1)
-
-            try:
-                audio_path = ytdl.download(url, temp_dir)
-            except YTDLError as e:
-                task_store.update_task(
-                    task.task_id,
-                    status="failed",
-                    progress=0,
-                    error=f"下载失败: {str(e)}",
-                    progress_message=f"下载失败: {str(e)}"
-                )
-                return
-
-            task_store.update_task(task.task_id, progress=50, progress_message="正在使用 Whisper 转录音频...")
-
-            try:
-                text = await asyncio.to_thread(whisper.transcribe, audio_path)
-                task_store.update_task(task.task_id, progress=70, progress_message="转录完成，正在分析内容...")
-            except WhisperError as e:
-                task_store.update_task(
-                    task.task_id,
-                    status="failed",
-                    progress=0,
-                    error=f"语音转录失败: {str(e)}",
-                    progress_message=f"语音转录失败: {str(e)}"
-                )
-                return
-
-        task_store.update_task(task.task_id, status="analyzing", progress=75, progress_message="正在分析内容...")
-        await asyncio.sleep(0.1)
-
-        task_store.update_task(task.task_id, status="summarizing", progress=80, progress_message="正在生成摘要...")
-
-        result = summarizer.summarize(text, "视频")
-
-        from app.services.import_task_store import SourceInfo, ImportResult
-        source_info = SourceInfo(
-            type="video_url",
-            url=url,
-            duration=int(video_info.get("duration", 0) or 0),
-            platform=platform,
-            imported_at=task.created_at
-        )
-        import_result = ImportResult(
-            title=result.get("title", video_info.get("title", "")),
-            summary=result.get("summary", ""),
-            key_points=result.get("key_points", []),
-            tags=result.get("tags", []),
-            source_info=source_info,
-            content_type=result.get("content_type", ""),
-            language_detected=result.get("language_detected", "zh")
-        )
-
-        task_store.update_task(
-            task.task_id,
-            status="completed",
-            progress=100,
-            progress_message="处理完成",
-            extracted_content=text,
-            result=import_result
-        )
-
-    except YTDLError as e:
-        task_store.update_task(
-            task.task_id,
-            status="failed",
-            progress=0,
-            error=str(e),
-            progress_message=str(e)
-        )
-    except Exception as e:
-        task_store.update_task(
-            task.task_id,
-            status="failed",
-            progress=0,
-            error=f"处理失败: {str(e)}",
-            progress_message=f"处理失败: {str(e)}"
-        )
-    finally:
-        import shutil
-        try:
-            if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir)
-        except Exception:
-            pass
 
 
 @router.post("/video-url")
@@ -702,7 +280,7 @@ async def import_video_url(
         source_path=url
     )
 
-    asyncio.create_task(_process_video_url(task, url, platform))
+    asyncio.create_task(_execute_video_url_import(task, url, platform))
 
     return Response(data={
         "task_id": task.task_id,
@@ -742,12 +320,7 @@ async def regenerate_summary(
     if not task.extracted_content:
         raise HTTPException(status_code=400, detail="无原始内容，无法重新生成")
 
-    source_type_name = {
-        "pdf": "PDF文档",
-        "url": "网页",
-        "video": "视频",
-        "video_url": "视频"
-    }.get(task.source_type, "文档")
+    source_type_name = SOURCE_TYPE_NAME_MAP.get(task.source_type, "文档")
 
     try:
         summarizer = get_summarizer_service()
@@ -802,7 +375,7 @@ async def suggest_category(
 
     from app.models.folder import Folder
     folders = db.query(Folder).filter(Folder.user_id == current_user.id).all()
-    
+
     def get_folder_path(folder, all_folders):
         path_parts = [folder.name]
         parent_id = folder.parent_id
@@ -814,19 +387,19 @@ async def suggest_category(
             else:
                 break
         return "/".join(path_parts)
-    
+
     folder_list = [
         {
-            "id": f.id, 
+            "id": f.id,
             "name": f.name,
             "path": get_folder_path(f, folders)
-        } 
+        }
         for f in folders
     ]
 
     if not folder_list:
         return Response(data={
-            "recommended_folder_id": None, 
+            "recommended_folder_id": None,
             "recommended_folder_path": None,
             "confidence_score": 0,
             "reasoning": "暂无文件夹",
@@ -835,14 +408,9 @@ async def suggest_category(
 
     try:
         summarizer = get_summarizer_service()
-        
-        source_type_name = {
-            "pdf": "PDF文档",
-            "url": "网页",
-            "video": "视频",
-            "video_url": "视频"
-        }.get(task.source_type, "文档")
-        
+
+        source_type_name = SOURCE_TYPE_NAME_MAP.get(task.source_type, "文档")
+
         suggestion = summarizer.suggest_category(
             summary=task.result.summary,
             folders=folder_list,
@@ -851,7 +419,7 @@ async def suggest_category(
             content_type=getattr(task.result, 'content_type', ''),
             source_type=source_type_name
         )
-        
+
         if suggestion:
             return Response(data=suggestion, message="分类建议生成成功")
         else:
@@ -864,7 +432,7 @@ async def suggest_category(
             }, message="分类建议生成失败")
     except Exception as e:
         return Response(data={
-            "recommended_folder_id": None, 
+            "recommended_folder_id": None,
             "recommended_folder_path": None,
             "confidence_score": 0,
             "reasoning": f"建议生成失败: {str(e)}",
@@ -885,14 +453,8 @@ async def import_pdf(
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail=f"文件超过 {MAX_FILE_SIZE // 1024 // 1024}MB 限制")
 
-    _ensure_temp_dir()
-
-    task_id = str(uuid.uuid4())
-    file_path = os.path.join(TEMP_DIR, f"{task_id}_{file.filename}")
-
     try:
-        with open(file_path, "wb") as f:
-            f.write(content)
+        file_path = save_temp_file(content, file.filename)
     except Exception as e:
         raise HTTPException(status_code=500, detail=sanitize_error(e, "文件保存失败"))
 
@@ -903,7 +465,7 @@ async def import_pdf(
         source_path=file_path
     )
 
-    asyncio.create_task(_process_pdf(task, file_path, file.filename))
+    asyncio.create_task(_execute_pdf_import(task, file_path, file.filename))
 
     return Response(data={
         "task_id": task.task_id,
@@ -927,24 +489,7 @@ async def get_task_detail(
     if task.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="无权访问该任务")
 
-    result_data = None
-    if task.result:
-        result_data = {
-            "title": task.result.title,
-            "summary": task.result.summary,
-            "key_points": task.result.key_points,
-            "tags": task.result.tags,
-            "content_type": task.result.content_type,
-            "language_detected": task.result.language_detected,
-            "source_info": {
-                "type": task.result.source_info.type if task.result.source_info else task.source_type,
-                "url": task.result.source_info.url if task.result.source_info else None,
-                "filename": task.result.source_info.filename if task.result.source_info else None,
-                "duration": task.result.source_info.duration if task.result.source_info else None,
-                "platform": task.result.source_info.platform if task.result.source_info else None,
-                "imported_at": task.result.source_info.imported_at if task.result.source_info else None,
-            } if task.result.source_info else None
-        }
+    result_data = _result_to_dict(task)
 
     return Response(data={
         "task_id": task.task_id,
