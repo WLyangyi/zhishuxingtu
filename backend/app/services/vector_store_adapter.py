@@ -16,9 +16,10 @@ class VectorStoreAdapter:
     def _init_stores(self):
         if not self._use_langchain:
             from app.services.vector_store import VectorStore
+            from app.services.embedding_service import embedding_service
             self._original_store = VectorStore(
                 index_path=settings.FAISS_INDEX_PATH,
-                dimension=1024
+                dimension=embedding_service.dimension if embedding_service.available else 1024
             )
         else:
             from app.services.langchain_vectorstore import get_langchain_vectorstore
@@ -137,10 +138,12 @@ class VectorStoreAdapter:
         return self._original_store.save()
 
     def get_stats(self) -> Dict[str, Any]:
+        from app.services.embedding_service import embedding_service
+        dim = embedding_service.dimension if embedding_service.available else 1024
         if self._use_langchain:
             return {
                 "total_vectors": len(self._langchain_store.index) if self._langchain_store.index else 0,
-                "dimension": 1024,
+                "dimension": dim,
                 "index_path": settings.FAISS_INDEX_PATH,
                 "backend": "langchain"
             }

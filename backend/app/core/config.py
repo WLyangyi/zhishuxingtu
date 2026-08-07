@@ -36,10 +36,16 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     OPENAI_BASE_URL: str = "https://api.openai.com/v1"
     OPENAI_MODEL: str = "qwen-turbo"
-    
+
+    DEEPSEEK_API_KEY: str = ""
+    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
+    DEEPSEEK_MODEL: str = "deepseek-v4-flash"
+    DEEPSEEK_THINKING: str = "disabled"
+
     DASHSCOPE_API_KEY: str = ""
     DASHSCOPE_EMBEDDING_MODEL: str = "text-embedding-v3"
-    
+    QWEN_EMBEDDING_MODEL: str = "qwen3.7-text-embedding"
+
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     HF_MIRROR_URL: str = "https://hf-mirror.com"
     HF_CACHE_DIR: str = os.path.join(tempfile.gettempdir(), "huggingface_cache")

@@ -10,8 +10,11 @@ dist/
 .idea/
 .vscode/
 *.db
+*.db-shm
+*.db-wal
 *.sqlite3
 .trae/
 .obsidian/
 test_note_id.txt
 temp/
+.venv/

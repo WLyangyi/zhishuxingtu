@@ -41,7 +41,7 @@ class EmbeddingService:
         api_key = getattr(settings, 'DASHSCOPE_API_KEY', '')
         if api_key:
             self._available = True
-            self._model_name = getattr(settings, 'DASHSCOPE_EMBEDDING_MODEL', 'text-embedding-v3')
+            self._model_name = getattr(settings, 'QWEN_EMBEDDING_MODEL', None) or getattr(settings, 'DASHSCOPE_EMBEDDING_MODEL', 'text-embedding-v3')
             print(f"Using DashScope API with model: {self._model_name}")
             print(f"Embedding service initialized, dimension: {self._dimension}")
         else:
@@ -74,7 +74,7 @@ class EmbeddingService:
             payload = {
                 "model": self._model_name,
                 "input": text,
-                "dimensions": 1024,
+                "dimensions": self._dimension,
                 "encoding_format": "float"
             }
             response = requests.post(url, headers=headers, json=payload, timeout=30)
@@ -113,7 +113,7 @@ class EmbeddingService:
                 payload = {
                     "model": self._model_name,
                     "input": batch,
-                    "dimensions": 1024,
+                    "dimensions": self._dimension,
                     "encoding_format": "float"
                 }
                 response = requests.post(url, headers=headers, json=payload, timeout=30)

@@ -9,3 +9,4 @@ from app.api.routes.contents import router as contents_router
 from app.api.routes.skills import router as skills_router
 from app.api.routes.prompts import router as prompts_router
 from app.api.routes.smart_import import router as import_router
+from app.api.routes.agent import router as agent_router

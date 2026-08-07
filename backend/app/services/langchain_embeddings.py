@@ -4,7 +4,7 @@ from app.core.config import settings
 class LangChainEmbeddings(DashScopeEmbeddings):
     def __init__(self):
         super().__init__(
-            model=settings.DASHSCOPE_EMBEDDING_MODEL,
+            model=settings.QWEN_EMBEDDING_MODEL or settings.DASHSCOPE_EMBEDDING_MODEL,
             dashscope_api_key=settings.DASHSCOPE_API_KEY
         )
 
