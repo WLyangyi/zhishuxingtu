@@ -1,0 +1,352 @@
+[
+  {
+    "id": "q001",
+    "question": "Apple在5月10日宣布哪款产品停产？",
+    "expected_answer": "iPod touch（来源：5月10日科技行业动态与产品发布）",
+    "relevant_doc_ids": ["307bdc71-5215-473a-b0b6-91a13cea4a76"],
+    "category": "simple_fact"
+  },
+  {
+    "id": "q002",
+    "question": "大疆在5月10日发布了哪款无人机？",
+    "expected_answer": "DJI Mini 3 Pro（来源：5月10日科技行业动态与产品发布）",
+    "relevant_doc_ids": ["307bdc71-5215-473a-b0b6-91a13cea4a76"],
+    "category": "simple_fact"
+  },
+  {
+    "id": "q003",
+    "question": "雷蛇在5月10日推出了什么产品？",
+    "expected_answer": "毒蝰V2专业版游戏鼠标（来源：5月10日科技行业动态与产品发布）",
+    "relevant_doc_ids": ["307bdc71-5215-473a-b0b6-91a13cea4a76"],
+    "category": "simple_fact"
+  },
+  {
+    "id": "q004",
+    "question": "天猫精灵推出了什么智能产品？",
+    "expected_answer": "小红盒Pro智能投影仪（来源：5月10日科技行业动态与产品发布）",
+    "relevant_doc_ids": ["307bdc71-5215-473a-b0b6-91a13cea4a76"],
+    "category": "simple_fact"
+  },
+  {
+    "id": "q005",
+    "question": "吴浩阳的简历中提到了哪些核心技术？",
+    "expected_answer": "LangChain 和 FastAPI（来源：吴浩阳个人简历与项目经历摘要）",
+    "relevant_doc_ids": ["0e9ca631-359c-4722-8cd5-fe0cad6fe3d7"],
+    "category": "simple_fact"
+  },
+  {
+    "id": "q006",
+    "question": "吴浩阳参与过哪两个主要项目？",
+    "expected_answer": "RAG智能助手项目和在线学习平台项目（来源：吴浩阳个人简历与项目经历摘要）",
+    "relevant_doc_ids": ["0e9ca631-359c-4722-8cd5-fe0cad6fe3d7"],
+    "category": "simple_fact"
+  },
+  {
+    "id": "q007",
+    "question": "安装克劳德code之前需要先安装什么？",
+    "expected_answer": "Node.js 和 Git（来源：克劳德code安装与配置指南）",
+    "relevant_doc_ids": ["ab11270b-d216-4f3a-bfb8-65c26cc319f9"],
+    "category": "simple_fact"
+  },
+  {
+    "id": "q008",
+    "question": "克劳德code安装指南建议用什么方式加速npm包下载？",
+    "expected_answer": "切换淘宝镜像（来源：克劳德code安装与配置指南）",
+    "relevant_doc_ids": ["ab11270b-d216-4f3a-bfb8-65c26cc319f9"],
+    "category": "simple_fact"
+  },
+  {
+    "id": "q009",
+    "question": "Cloud Code的Plan Mode有什么作用？",
+    "expected_answer": "用于防止Cloud Code自动写入代码，适合需求讨论阶段（来源：Cloud Code六个小技巧）",
+    "relevant_doc_ids": ["62dc6357-b5ca-41f9-8b32-fcd45f6aa48a"],
+    "category": "simple_fact"
+  },
+  {
+    "id": "q010",
+    "question": "Cloud Code中按哪个键可以立即中断当前任务？",
+    "expected_answer": "Escape键（来源：Cloud Code六个小技巧）",
+    "relevant_doc_ids": ["62dc6357-b5ca-41f9-8b32-fcd45f6aa48a"],
+    "category": "simple_fact"
+  },
+  {
+    "id": "q011",
+    "question": "5月10日拳头游戏起诉了哪家公司？原因是什么？",
+    "expected_answer": "起诉沐瞳科技，原因是抄袭（来源：5月10日科技行业动态与产品发布）",
+    "relevant_doc_ids": ["307bdc71-5215-473a-b0b6-91a13cea4a76"],
+    "category": "single_doc"
+  },
+  {
+    "id": "q012",
+    "question": "5月10日科技动态中提到哪些硬件产品动态？",
+    "expected_answer": "Apple宣布iPod touch停产、大疆发布DJI Mini 3 Pro、雷蛇推出毒蝰V2专业版鼠标、天猫精灵推出小红盒Pro智能投影仪（来源：5月10日科技行业动态与产品发布）",
+    "relevant_doc_ids": ["307bdc71-5215-473a-b0b6-91a13cea4a76"],
+    "category": "single_doc"
+  },
+  {
+    "id": "q013",
+    "question": "5月10日AMD有什么新动态？",
+    "expected_answer": "AMD老显卡获得光追驱动支持（来源：5月10日科技行业动态与产品发布）",
+    "relevant_doc_ids": ["307bdc71-5215-473a-b0b6-91a13cea4a76"],
+    "category": "single_doc"
+  },
+  {
+    "id": "q014",
+    "question": "吴浩阳的RAG智能助手项目取得了什么成果？",
+    "expected_answer": "实现AI问答准确率提升（来源：吴浩阳个人简历与项目经历摘要）",
+    "relevant_doc_ids": ["0e9ca631-359c-4722-8cd5-fe0cad6fe3d7"],
+    "category": "single_doc"
+  },
+  {
+    "id": "q015",
+    "question": "吴浩阳的在线学习平台项目的亮点是什么？",
+    "expected_answer": "高并发优化（来源：吴浩阳个人简历与项目经历摘要）",
+    "relevant_doc_ids": ["0e9ca631-359c-4722-8cd5-fe0cad6fe3d7"],
+    "category": "single_doc"
+  },
+  {
+    "id": "q016",
+    "question": "克劳德code安装指南中提到通过什么API接入克劳德code？",
+    "expected_answer": "豆包API（来源：克劳德code安装与配置指南）",
+    "relevant_doc_ids": ["ab11270b-d216-4f3a-bfb8-65c26cc319f9"],
+    "category": "single_doc"
+  },
+  {
+    "id": "q017",
+    "question": "克劳德code安装完成后如何验证配置成功？",
+    "expected_answer": "测试环境变量并验证配置成功（来源：克劳德code安装与配置指南）",
+    "relevant_doc_ids": ["ab11270b-d216-4f3a-bfb8-65c26cc319f9"],
+    "category": "single_doc"
+  },
+  {
+    "id": "q018",
+    "question": "15个Cloud Code技巧中提到如何提升启动效率？",
+    "expected_answer": "设置Cloud Code别名（来源：15个Cloud Code实用技巧与优化方法）",
+    "relevant_doc_ids": ["05bf3ed3-322c-4b75-b927-daea5d0a8789"],
+    "category": "single_doc"
+  },
+  {
+    "id": "q019",
+    "question": "Cloud Code中如何实现换行操作？",
+    "expected_answer": "通过Ctrl+J或Shift+Enter实现，具体取决于终端类型（来源：Cloud Code六个小技巧）",
+    "relevant_doc_ids": ["62dc6357-b5ca-41f9-8b32-fcd45f6aa48a"],
+    "category": "single_doc"
+  },
+  {
+    "id": "q020",
+    "question": "Cloud Code中Think、Think Hard关键字有什么作用？",
+    "expected_answer": "触发不同深度的思考模式（来源：Cloud Code六个小技巧）",
+    "relevant_doc_ids": ["62dc6357-b5ca-41f9-8b32-fcd45f6aa48a"],
+    "category": "single_doc"
+  },
+  {
+    "id": "q021",
+    "question": "5月10日科技动态中，Apple有哪些相关动态？",
+    "expected_answer": "硬件上宣布iPod touch停产；另有小道消息提到Apple远程监督中国工程师的权限调整（来源：5月10日科技行业动态与产品发布）",
+    "relevant_doc_ids": ["307bdc71-5215-473a-b0b6-91a13cea4a76"],
+    "category": "multi_hop"
+  },
+  {
+    "id": "q022",
+    "question": "知识库中一共有几篇直接讨论Cloud Code的笔记？分别侧重什么？",
+    "expected_answer": "3篇：15个Cloud Code实用技巧与优化方法（综合技巧）、Cloud Code六个小技巧、Cloud Code六技巧（后两篇内容基本重复）（来源：对应笔记）",
+    "relevant_doc_ids": ["05bf3ed3-322c-4b75-b927-daea5d0a8789", "62dc6357-b5ca-41f9-8b32-fcd45f6aa48a", "0a659255-a04c-431c-ab8c-81791398870b"],
+    "category": "multi_hop"
+  },
+  {
+    "id": "q023",
+    "question": "克劳德code安装配置类笔记和Cloud Code技巧类笔记分别侧重什么？",
+    "expected_answer": "安装配置类（克劳德code安装与配置指南）侧重环境搭建、镜像与API接入；技巧类（15个技巧/六个小技巧）侧重使用效率、Plan Mode、思考模式等（来源：对应笔记）",
+    "relevant_doc_ids": ["ab11270b-d216-4f3a-bfb8-65c26cc319f9", "05bf3ed3-322c-4b75-b927-daea5d0a8789", "62dc6357-b5ca-41f9-8b32-fcd45f6aa48a"],
+    "category": "multi_hop"
+  },
+  {
+    "id": "q024",
+    "question": "5月10日发布的科技产品中，哪些是硬件产品？",
+    "expected_answer": "大疆DJI Mini 3 Pro无人机、雷蛇毒蝰V2专业版鼠标、天猫精灵小红盒Pro智能投影仪（iPod touch为停产而非发布）（来源：5月10日科技行业动态与产品发布）",
+    "relevant_doc_ids": ["307bdc71-5215-473a-b0b6-91a13cea4a76"],
+    "category": "multi_hop"
+  },
+  {
+    "id": "q025",
+    "question": "吴浩阳做的RAG智能助手项目用到了哪些技术栈？",
+    "expected_answer": "LangChain和FastAPI（简历明确列出，且标注具备全栈开发能力）（来源：吴浩阳个人简历与项目经历摘要）",
+    "relevant_doc_ids": ["0e9ca631-359c-4722-8cd5-fe0cad6fe3d7"],
+    "category": "multi_hop"
+  },
+  {
+    "id": "q026",
+    "question": "知识库里是否有关于设置代理的笔记？讲了什么？",
+    "expected_answer": "有，克劳德code安装与配置指南中提到设置代理以解决国内访问问题（来源：克劳德code安装与配置指南）",
+    "relevant_doc_ids": ["ab11270b-d216-4f3a-bfb8-65c26cc319f9"],
+    "category": "multi_hop"
+  },
+  {
+    "id": "q027",
+    "question": "5月10日有哪些法律纠纷或行业诉讼相关动态？",
+    "expected_answer": "拳头游戏起诉沐瞳科技抄袭（来源：5月10日科技行业动态与产品发布）",
+    "relevant_doc_ids": ["307bdc71-5215-473a-b0b6-91a13cea4a76"],
+    "category": "multi_hop"
+  },
+  {
+    "id": "q028",
+    "question": "Cloud Code的15个技巧与六个小技巧都共同关注哪些方面？",
+    "expected_answer": "都与提升开发效率相关，共同涉及：配置管理（cloud.md）、与AI协作的交互方式、任务控制等（来源：15个技巧与六个小技巧笔记）",
+    "relevant_doc_ids": ["05bf3ed3-322c-4b75-b927-daea5d0a8789", "62dc6357-b5ca-41f9-8b32-fcd45f6aa48a"],
+    "category": "multi_hop"
+  },
+  {
+    "id": "q029",
+    "question": "吴浩阳具备哪些开发能力？",
+    "expected_answer": "掌握LangChain和FastAPI，具备全栈开发能力，能完成AI应用和在线学习平台开发（来源：吴浩阳个人简历与项目经历摘要）",
+    "relevant_doc_ids": ["0e9ca631-359c-4722-8cd5-fe0cad6fe3d7"],
+    "category": "multi_hop"
+  },
+  {
+    "id": "q030",
+    "question": "知识库中哪些笔记讨论了科技产品发布或硬件动态？",
+    "expected_answer": "5月10日科技行业动态与产品发布（两篇，内容基本一致）讨论科技产品发布与硬件动态（来源：对应笔记）",
+    "relevant_doc_ids": ["307bdc71-5215-473a-b0b6-91a13cea4a76", "abb1f912-4994-4a25-a06c-eac60c644246"],
+    "category": "multi_hop"
+  },
+  {
+    "id": "q031",
+    "question": "知识库中两篇5月10日科技动态笔记内容有何区别？",
+    "expected_answer": "一篇（307bdc71）信息更全，含AMD老显卡光追、Netflix广告订阅、Apple工程师权限调整；另一篇（abb1f912）要点较少，关键要点只列到雷蛇产品（来源：两篇笔记对比）",
+    "relevant_doc_ids": ["307bdc71-5215-473a-b0b6-91a13cea4a76", "abb1f912-4994-4a25-a06c-eac60c644246"],
+    "category": "comparison"
+  },
+  {
+    "id": "q032",
+    "question": "Cloud Code六个小技巧和Cloud Code六技巧两篇笔记内容相同吗？",
+    "expected_answer": "高度相似，基本为同一内容（视频BV1YQhgzjE9r）重复导入，关键要点几乎一致，个别措辞不同（来源：两篇笔记对比）",
+    "relevant_doc_ids": ["62dc6357-b5ca-41f9-8b32-fcd45f6aa48a", "0a659255-a04c-431c-ab8c-81791398870b"],
+    "category": "comparison"
+  },
+  {
+    "id": "q033",
+    "question": "对比克劳德code安装配置与Cloud Code使用技巧两类笔记，内容定位有何不同？",
+    "expected_answer": "安装配置类讲如何装好并用豆包API接入；技巧类讲装好后如何用得高效（Plan Mode、换行、中断等）（来源：对应笔记）",
+    "relevant_doc_ids": ["ab11270b-d216-4f3a-bfb8-65c26cc319f9", "62dc6357-b5ca-41f9-8b32-fcd45f6aa48a"],
+    "category": "comparison"
+  },
+  {
+    "id": "q034",
+    "question": "两篇5月10日科技动态中，哪篇提到了AMD老显卡获得光追驱动支持？",
+    "expected_answer": "307bdc71那篇（信息更全的一篇）提到了AMD老显卡光追驱动，abb1f912那篇未提及（来源：两篇笔记对比）",
+    "relevant_doc_ids": ["307bdc71-5215-473a-b0b6-91a13cea4a76", "abb1f912-4994-4a25-a06c-eac60c644246"],
+    "category": "comparison"
+  },
+  {
+    "id": "q035",
+    "question": "吴浩阳简历中两个项目的侧重点分别是什么？",
+    "expected_answer": "RAG智能助手侧重AI问答准确率提升；在线学习平台侧重高并发优化（来源：吴浩阳个人简历与项目经历摘要）",
+    "relevant_doc_ids": ["0e9ca631-359c-4722-8cd5-fe0cad6fe3d7"],
+    "category": "comparison"
+  },
+  {
+    "id": "q036",
+    "question": "15个Cloud Code技巧与六个小技巧覆盖范围有何差别？",
+    "expected_answer": "15个技巧覆盖面更广（别名、重构CLOUD MD、UI客户端、回滚、反馈链路、LSP插件、技能、子代理等）；六个小技巧更聚焦（Plan Mode、换行、任务中断、配置文件、思考模式）（来源：两篇笔记对比）",
+    "relevant_doc_ids": ["05bf3ed3-322c-4b75-b927-daea5d0a8789", "62dc6357-b5ca-41f9-8b32-fcd45f6aa48a"],
+    "category": "comparison"
+  },
+  {
+    "id": "q037",
+    "question": "两篇Test PDF笔记的内容有何不同？",
+    "expected_answer": "两篇均为测试用PDF，无实质内容；一篇关键要点写'未提供具体信息'，另一篇写'内容未明确说明、无实际信息'，措辞略有差异（来源：两篇Test PDF笔记）",
+    "relevant_doc_ids": ["18b54f48-6dbd-4989-8e41-b6d777b00f85", "0506fb4c-8323-4945-a02d-3ac47fdd8da4"],
+    "category": "comparison"
+  },
+  {
+    "id": "q038",
+    "question": "5月10日大疆和雷蛇各发布了什么产品？",
+    "expected_answer": "大疆发布DJI Mini 3 Pro无人机，雷蛇推出毒蝰V2专业版游戏鼠标（来源：5月10日科技行业动态与产品发布）",
+    "relevant_doc_ids": ["307bdc71-5215-473a-b0b6-91a13cea4a76"],
+    "category": "comparison"
+  },
+  {
+    "id": "q039",
+    "question": "豆包API接入与Think关键字分别解决什么问题？",
+    "expected_answer": "豆包API用于给克劳德code接入大模型服务；Think/Think Hard用于控制Cloud Code的思考深度（来源：安装配置与六技巧笔记）",
+    "relevant_doc_ids": ["ab11270b-d216-4f3a-bfb8-65c26cc319f9", "62dc6357-b5ca-41f9-8b32-fcd45f6aa48a"],
+    "category": "comparison"
+  },
+  {
+    "id": "q040",
+    "question": "简历笔记、科技动态笔记、Cloud Code技巧笔记的来源和导入时间有何不同？",
+    "expected_answer": "简历来源PDF（2026-04-21导入）；科技动态来源网页sspai.com（2026-04-09导入）；技巧笔记来源bilibili视频（2026-04-22导入）（来源：各笔记'来源信息'段落）",
+    "relevant_doc_ids": ["0e9ca631-359c-4722-8cd5-fe0cad6fe3d7", "307bdc71-5215-473a-b0b6-91a13cea4a76", "62dc6357-b5ca-41f9-8b32-fcd45f6aa48a"],
+    "category": "comparison"
+  },
+  {
+    "id": "q041",
+    "question": "5月10日科技动态是关于哪一天的新闻？",
+    "expected_answer": "5月10日（来源：5月10日科技行业动态与产品发布）",
+    "relevant_doc_ids": ["307bdc71-5215-473a-b0b6-91a13cea4a76"],
+    "category": "temporal"
+  },
+  {
+    "id": "q042",
+    "question": "吴浩阳的简历是什么时候导入知识库的？",
+    "expected_answer": "2026-04-21导入（来源：吴浩阳个人简历与项目经历摘要的'来源信息'段落）",
+    "relevant_doc_ids": ["0e9ca631-359c-4722-8cd5-fe0cad6fe3d7"],
+    "category": "temporal"
+  },
+  {
+    "id": "q043",
+    "question": "克劳德code安装指南来源于哪个网站？",
+    "expected_answer": "CSDN博客（blog.csdn.net），2026-04-21导入（来源：克劳德code安装与配置指南的'来源信息'段落）",
+    "relevant_doc_ids": ["ab11270b-d216-4f3a-bfb8-65c26cc319f9"],
+    "category": "temporal"
+  },
+  {
+    "id": "q044",
+    "question": "15个Cloud Code技巧笔记来源于哪个平台？",
+    "expected_answer": "bilibili视频（16分26秒），2026-04-22导入（来源：15个Cloud Code实用技巧与优化方法的'来源信息'段落）",
+    "relevant_doc_ids": ["05bf3ed3-322c-4b75-b927-daea5d0a8789"],
+    "category": "temporal"
+  },
+  {
+    "id": "q045",
+    "question": "5月10日科技动态的来源链接是什么？",
+    "expected_answer": "https://sspai.com/post/73145（来源：5月10日科技行业动态与产品发布的'来源信息'段落）",
+    "relevant_doc_ids": ["307bdc71-5215-473a-b0b6-91a13cea4a76"],
+    "category": "temporal"
+  },
+  {
+    "id": "q046",
+    "question": "知识库中有关于Python编程教程的笔记吗？",
+    "expected_answer": "没有，知识库中未找到相关Python编程教程笔记（如实回答，不编造）",
+    "relevant_doc_ids": [],
+    "category": "edge_case"
+  },
+  {
+    "id": "q047",
+    "question": "5月10日发布了什么新款智能手机？",
+    "expected_answer": "知识库中没有提及新款智能手机发布；5月10日涉及的是iPod touch停产、无人机/鼠标/投影仪等产品（如实回答，不编造智能手机）",
+    "relevant_doc_ids": ["307bdc71-5215-473a-b0b6-91a13cea4a76"],
+    "category": "edge_case"
+  },
+  {
+    "id": "q048",
+    "question": "Test PDF笔记中有具体的技术内容吗？",
+    "expected_answer": "没有，Test PDF笔记是测试用途文档，未提供具体内容（来源：Test PDF笔记）",
+    "relevant_doc_ids": ["18b54f48-6dbd-4989-8e41-b6d777b00f85"],
+    "category": "edge_case"
+  },
+  {
+    "id": "q049",
+    "question": "知识库中与Cloud Code直接相关的笔记有多少篇？",
+    "expected_answer": "3篇：15个Cloud Code实用技巧与优化方法、Cloud Code六个小技巧、Cloud Code六技巧（来源：对应笔记）",
+    "relevant_doc_ids": ["05bf3ed3-322c-4b75-b927-daea5d0a8789", "62dc6357-b5ca-41f9-8b32-fcd45f6aa48a", "0a659255-a04c-431c-ab8c-81791398870b"],
+    "category": "edge_case"
+  },
+  {
+    "id": "q050",
+    "question": "知识库中是否存在内容损坏、无法读取的笔记？",
+    "expected_answer": "存在一篇标题显示为问号、内容为占位符的笔记，无法作为有效信息使用（如实说明）",
+    "relevant_doc_ids": [],
+    "category": "edge_case"
+  }
+]

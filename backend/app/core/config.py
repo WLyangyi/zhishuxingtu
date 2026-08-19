@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     DASHSCOPE_API_KEY: str = ""
     DASHSCOPE_EMBEDDING_MODEL: str = "text-embedding-v3"
     QWEN_EMBEDDING_MODEL: str = "qwen3.7-text-embedding"
+    QWEN_JUDGE_MODEL: str = "qwen3.8-max"      # M2: 评估独立裁判（与推理模型不同源）
 
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     HF_MIRROR_URL: str = "https://hf-mirror.com"
@@ -99,9 +100,22 @@ class Settings(BaseSettings):
     AI_MAX_TOKENS: int = 1000
     AI_TEMPERATURE: float = 0.7
 
-    # B站 MCP 服务配置
-    BILIBILI_MCP_URL: str = "http://localhost:8080"
-    BILIBILI_MCP_API_KEY: str = ""
+    # M2: Langfuse 可观测（fail-silent，key 缺失不影响主流程）
+    LANGFUSE_PUBLIC_KEY: str = ""
+    LANGFUSE_SECRET_KEY: str = ""
+    LANGFUSE_BASE_URL: str = "https://cloud.langfuse.com"
+
+    # M2: 评估配置
+    EVAL_SET_PATH: str = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "eval", "eval_set_v1.json")
+    EVAL_REPORT_DIR: str = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "eval", "reports")
+
+    # M3: MCP Server 认证（Authorization: Bearer <MCP_API_KEY>；为空则 /mcp 拒绝所有请求）
+    MCP_API_KEY: str = ""
+
+    # M3-2: web_search 联网搜索（Tavily；key 为空则工具优雅降级返回未启用提示）
+    TAVILY_API_KEY: str = ""
+    TAVILY_MAX_RESULTS: int = 5     # 每次搜索返回条数
+    TAVILY_TIMEOUT: int = 15        # Tavily API 超时（秒）
 
     # B站登录凭证配置（可选，用于获取官方字幕）
     BILIBILI_SESSDATA: str = ""

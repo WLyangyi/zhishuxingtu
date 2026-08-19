@@ -17,6 +17,7 @@
 
 ### 🤖 AI 智能
 - **RAG 检索增强生成** - 基于知识库的 AI 问答
+- **Agentic RAG** - LangGraph ReAct Agent，自主检索 + 三查反思（资料相关性 / 答案出处 / 回答质量）
 - **SSE 流式输出** - 逐字实时显示，打字机效果
 - **语义分块** - 按语义边界分割，提升检索精度
 - **混合检索** - 向量 + BM25 融合，召回率提升 15-25%
@@ -53,8 +54,8 @@
 | FastAPI 0.109+ | 现代 Web 框架 |
 | SQLAlchemy 2.x | ORM 框架 |
 | FAISS | Facebook 开源向量索引 |
-| LangChain | RAG 应用开发框架 |
-| 通义千问 embedding | 阿里云文本向量化服务 |
+| LangChain + LangGraph | RAG 应用开发 + Agent 编排（ReAct + 三查） |
+| DeepSeek + qwen | agent 推理（deepseek-v4-flash）+ 文本向量化/评估裁判（qwen） |
 
 ## 🚀 快速开始
 
@@ -74,7 +75,7 @@ cd 知枢星图
 ```bash
 cd backend
 
-# 创建虚拟环境
+# 创建虚拟环境（Windows 推荐用 uv 管理依赖，见 docs/启动文档.md）
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
 # 或 venv\Scripts\activate  # Windows
@@ -90,14 +91,34 @@ cp .env.example .env
 `.env.example` 配置项：
 ```env
 # 阿里云 DashScope API（用于文本向量化）
-DASHSCOPE_API_KEY=your_api_key_here
+DASHSCOPE_API_KEY=your_dashscope_api_key
 
-# JWT 密钥
-JWT_SECRET_KEY=your_secret_key_here
+# JWT 认证密钥
+JWT_SECRET_KEY=your_jwt_secret_key_here
 
-# LLM 模型配置（可选，默认为通义千问）
-LLM_API_KEY=your_api_key_here
-LLM_MODEL=qwen-plus
+# 数据库路径
+DATABASE_URL=sqlite:///./data/knowledge.db
+
+# 向量索引路径
+FAISS_INDEX_PATH=./data/faiss_index
+
+# LLM 模型配置（可选）
+OPENAI_API_KEY=your_openai_api_key
+OPENAI_MODEL=gpt-3.5-turbo
+
+# Agentic RAG：DeepSeek 推理（M1）
+DEEPSEEK_API_KEY=your_deepseek_api_key
+DEEPSEEK_MODEL=deepseek-v4-flash
+DEEPSEEK_THINKING=disabled
+
+# Embedding / 评估裁判（M0/M2）
+QWEN_EMBEDDING_MODEL=qwen3.7-text-embedding
+QWEN_JUDGE_MODEL=qwen3.8-max
+
+# 可观测（M2，可选，fail-silent）
+LANGFUSE_PUBLIC_KEY=
+LANGFUSE_SECRET_KEY=
+LANGFUSE_BASE_URL=https://cloud.langfuse.com
 ```
 
 ### 3. 前端配置
@@ -203,8 +224,8 @@ GET /api/graph/local/:id      # 局部图谱
 ## 📚 文档
 
 - [产品需求文档 (PRD)](docs/superpowers/specs/prd.md)
-- [开发实施文档](docs/开发实施文档.md)
-- [技术架构文档](docs/技术架构.md)
+- [开发实施文档](docs/superpowers/specs/开发实施文档.md)
+- [技术架构文档](docs/superpowers/specs/技术架构.md)
 
 ## 🗺️ 版本演进
 

@@ -12,6 +12,7 @@ from app.db.session import get_db
 from app.models.agent_session import AgentSession, AgentToolCall
 from app.models.user import User
 from app.services.agent.graph import build_input, get_graph
+from app.services.observability.langfuse_trace import build_stream_config
 from app.services.tools.context import ToolContext, reset_tool_context, set_tool_context
 
 router = APIRouter(prefix="/agent", tags=["Agent"])
@@ -73,9 +74,7 @@ def _stream_agent(db: Session, question: str, session: AgentSession, user_id: st
         final_answer = ""
 
         try:
-            for step in get_graph().stream(
-                input_data, config={"configurable": {"thread_id": session.id}}
-            ):
+            for step in get_graph().stream(input_data, config=build_stream_config(session.id)):
                 for _node, v in step.items():
                     thoughts = v.get("thoughts") or []
                     for th in thoughts[emitted:]:

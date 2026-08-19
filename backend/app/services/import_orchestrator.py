@@ -286,16 +286,16 @@ class VideoURLImportOrchestrator(BaseImportOrchestrator):
 
     async def _try_extract_subtitles(self) -> Optional[str]:
         if self.platform == "bilibili":
-            self.progress.update_sync(20, "正在通过 B站 MCP 获取字幕...")
+            self.progress.update_sync(20, "正在通过 B站 API 获取字幕...")
             try:
-                from app.services.bilibili_mcp_service import get_bilibili_mcp_service
-                bilibili_mcp = get_bilibili_mcp_service()
-                mcp_subtitle = await bilibili_mcp.get_video_subtitles_async(self.url)
-                if mcp_subtitle and mcp_subtitle.strip():
-                    await self.progress.update("extracting", 40, "B站 MCP 字幕获取成功，正在分析内容...")
-                    return mcp_subtitle
+                from app.services.bilibili_subtitle_service import get_bilibili_subtitle_service
+                bilibili_subtitle = get_bilibili_subtitle_service()
+                subtitle = await bilibili_subtitle.get_video_subtitles_async(self.url)
+                if subtitle and subtitle.strip():
+                    await self.progress.update("extracting", 40, "B站 API 字幕获取成功，正在分析内容...")
+                    return subtitle
             except Exception as e:
-                logger.warning(f"B站 MCP 字幕获取失败: {str(e)}")
+                logger.warning(f"B站 API 字幕获取失败: {str(e)}")
 
         self.progress.update_sync(25, "正在下载字幕...")
 

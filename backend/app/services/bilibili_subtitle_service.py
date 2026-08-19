@@ -1,17 +1,10 @@
-import os
-import sys
 import re
 import json
-import site
-
-_user_site_packages = site.getusersitepackages()
-if _user_site_packages and _user_site_packages not in sys.path:
-    sys.path.insert(0, _user_site_packages)
 
 from typing import Optional
 
 
-class BilibiliMCPService:
+class BilibiliSubtitleService:
     def __init__(self):
         self._credential = None
         self._initialized = False
@@ -168,11 +161,11 @@ class BilibiliMCPService:
             return None
 
 
-_bilibili_mcp_service_instance = None
+_bilibili_subtitle_service_instance = None
 
 
-def get_bilibili_mcp_service() -> BilibiliMCPService:
-    global _bilibili_mcp_service_instance
-    if _bilibili_mcp_service_instance is None:
-        _bilibili_mcp_service_instance = BilibiliMCPService()
-    return _bilibili_mcp_service_instance
+def get_bilibili_subtitle_service() -> BilibiliSubtitleService:
+    global _bilibili_subtitle_service_instance
+    if _bilibili_subtitle_service_instance is None:
+        _bilibili_subtitle_service_instance = BilibiliSubtitleService()
+    return _bilibili_subtitle_service_instance

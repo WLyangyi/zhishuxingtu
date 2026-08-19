@@ -47,8 +47,8 @@ npm run build
 | 层级 | 技术 |
 |------|------|
 | 前端 | Vue 3.4 + TypeScript + Pinia + Naive UI + Tailwind CSS + D3 |
-| 后端 | Python 3.11 + FastAPI + SQLAlchemy + FAISS + LangChain |
-| AI | 通义千问 Embedding + RAG + SSE 流式输出 |
+| 后端 | Python 3.11 + FastAPI + SQLAlchemy + FAISS + LangChain + LangGraph |
+| AI | DeepSeek agent（LangGraph ReAct + 三查）+ qwen Embedding/裁判 + RAG + SSE |
 
 ## 架构概览
 
@@ -68,15 +68,17 @@ npm run build
     ├── db/              # 数据库会话和基类
     ├── models/          # SQLAlchemy 数据模型
     ├── schemas/         # Pydantic 请求/响应模型
-    └── services/        # 业务逻辑 (RAG, embedding, vector store, LLM)
+    └── services/        # 业务逻辑 (agent/, llm/, tools/, observability/, RAG, embedding, vector store)
 ```
 
 ## 核心模块
 
 - **笔记管理**: `backend/app/api/routes/notes.py` - 支持双向链接 (`[[标题]]` 语法)
 - **知识图谱**: `backend/app/api/routes/graph.py` - 全局/局部图谱可视化
-- **AI 问答**: `backend/app/services/rag_chain.py` - RAG 检索 + 流式输出
+- **Agentic RAG**: `backend/app/services/agent/` + `llm/` + `tools/` - LangGraph ReAct 循环 + 三查强制节点（grade_documents / hallucination_check / answer_quality）+ 6 个工具（DeepSeek provider）
+- **AI 问答**: `backend/app/services/rag_chain.py` - RAG 检索 + 流式输出（agent 降级 fallback）
 - **向量检索**: `backend/app/services/vector_store.py` - FAISS 向量索引 + 混合检索
+- **评估体系**: `backend/eval/` + `services/llm/judge_metrics.py` - 50 条 eval set + qwen3.8-max 独立裁判（`run_eval.py` 跑新旧对比，报告在 `eval/reports/`）
 - **Prompt 系统**: PromptLab + Skill Chain + Few-Shot 学习
 
 ## 数据模型
@@ -87,14 +89,20 @@ npm run build
 - Category → Folders (一对多，三大分类：个人/工作/素材)
 - Note ↔ Tag (多对多)
 - Note ↔ Note (双向链接，通过 `linked_note_ids` 字段)
+- agent_sessions / agent_tool_calls - Agent 会话与工具调用审计（M1）
+- eval_sets / eval_runs - 评测题库与成绩单（M2）
 
 ## 环境变量
 
 后端需要配置 `backend/.env` 文件（参考 `.env.example`）：
-- `DASHSCOPE_API_KEY` - 阿里云 DashScope API（向量化）
+- `DASHSCOPE_API_KEY` - 阿里云 DashScope API（向量化 + 裁判）
 - `JWT_SECRET_KEY` - JWT 认证密钥
 - `DATABASE_URL` - SQLite 数据库路径
 - `FAISS_INDEX_PATH` - 向量索引路径
+- `DEEPSEEK_API_KEY` / `DEEPSEEK_MODEL=deepseek-v4-flash` / `DEEPSEEK_THINKING=disabled` - Agent 推理（M1，P2 必须关思考）
+- `QWEN_EMBEDDING_MODEL=qwen3.7-text-embedding` - Embedding（M0）
+- `QWEN_JUDGE_MODEL=qwen3.8-max` - 评估裁判（M2，P16 需 `enable_thinking:false`）
+- `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL` - 可观测（M2，fail-silent；trace 上报遗留，需干净 `.venv-clean`）
 
 ## API 路由前缀
 
@@ -106,3 +114,15 @@ npm run build
 - `/api/graph` - 知识图谱
 - `/api/skills` - Skill 执行引擎
 - `/api/prompts` - Prompt 管理
+- `/api/agent/chat/stream` - Agent ReAct 问答（SSE 流式）
+- `/api/agent/sessions` - Agent 会话管理
+
+## 深入文档
+
+- [Code Wiki](docs/CODE_WIKI.md) — 代码架构全览（模块职责、核心类/函数、API 路由）
+- [启动文档](docs/启动文档.md) — Windows/Anaconda 环境启动指南与故障排查
+- [产品需求文档 (PRD)](docs/superpowers/specs/prd.md)
+- [技术架构](docs/superpowers/specs/技术架构.md)
+- [开发实施文档](docs/superpowers/specs/开发实施文档.md)
+- [Agentic RAG 升级笔记](docs/agentic-rag-upgrade/升级笔记.md) — Agentic RAG 升级的决策/踩坑/进展（持续维护）
+- [Agentic RAG 实施计划](docs/agentic-rag-upgrade/实施计划.md) — M0-M5 执行步骤清单（M0/M1/M2 已细化）

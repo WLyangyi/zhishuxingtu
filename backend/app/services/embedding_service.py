@@ -1,11 +1,5 @@
-import sys
-import os
 import json
 import requests
-
-user_site = os.path.join(os.path.expanduser('~'), 'AppData', 'Roaming', 'Python', 'Python313', 'site-packages')
-if os.path.exists(user_site) and user_site not in sys.path:
-    sys.path.insert(0, user_site)
 
 import numpy as np
 from typing import List, Optional, Tuple
