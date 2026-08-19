@@ -69,10 +69,17 @@ class Settings(BaseSettings):
     CHUNK_BY_PARAGRAPH: bool = True    # 是否按段落分割
     CHUNK_BY_SENTENCE: bool = True     # 是否按句子分割（保底）
 
-    USE_VECTOR_MEMORY: bool = True
+    # 旧 FAISS 对话记忆已由 LangGraph checkpoint + store 取代，仅保留开关兼容旧 .env。
+    USE_VECTOR_MEMORY: bool = False
     CHAT_MEMORY_INDEX_PATH: str = os.path.join(tempfile.gettempdir(), "zhishuxingtu_chat_memory")
     CHAT_MEMORY_TOP_K: int = 5
     CHAT_MEMORY_MIN_SCORE: float = 0.3
+
+    # M4: Agent 短期 checkpoint / 长期 store / 上下文控制
+    AGENT_MAX_ITERATIONS: int = 8
+    AGENT_TOKEN_BUDGET: int = 10000
+    AGENT_MAX_HISTORY_MESSAGES: int = 24
+    AGENT_CHECKPOINT_DB: str = os.path.join("data", "langgraph_checkpoints.db")
 
     USE_RERANKER: bool = True
     RERANKER_TOP_K: int = 5
@@ -104,6 +111,7 @@ class Settings(BaseSettings):
     LANGFUSE_PUBLIC_KEY: str = ""
     LANGFUSE_SECRET_KEY: str = ""
     LANGFUSE_BASE_URL: str = "https://cloud.langfuse.com"
+    LANGFUSE_TIMEOUT: int = 5
 
     # M2: 评估配置
     EVAL_SET_PATH: str = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "eval", "eval_set_v1.json")

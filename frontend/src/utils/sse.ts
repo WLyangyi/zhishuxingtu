@@ -1,8 +1,19 @@
 export interface SSEMessage {
-  type: 'content' | 'sources' | 'disclaimer' | 'error' | 'done'
+  type: 'content' | 'sources' | 'disclaimer' | 'error' | 'done' |
+    'thought' | 'action' | 'observation' | 'check' | 'final_answer' | 'approval_required'
   text?: string
   notes?: Array<{ id: string; title: string }>
   message?: string
+  content?: string
+  answer?: string
+  node?: string
+  session_id?: string
+  tool_call_id?: string
+  tool_name?: string
+  title?: string
+  description?: string
+  args?: Record<string, unknown>
+  preview?: { title?: string; content?: string; folder_id?: string | null }
 }
 
 export interface SSEOptions {

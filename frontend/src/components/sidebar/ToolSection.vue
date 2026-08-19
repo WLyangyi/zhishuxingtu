@@ -37,6 +37,14 @@
         <span>提示词实验室</span>
       </div>
       <div
+        class="tool-item observability-tool"
+        :class="{ active: isCurrentRoute('/observability') }"
+        @click="goToObservability"
+      >
+        <Activity :size="16" />
+        <span>Agent 可观测</span>
+      </div>
+      <div
         class="tool-item import-tool"
         @click="openImport"
       >
@@ -50,7 +58,7 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import { useImportStore } from '@/stores/import'
-import { Search, GitBranch, Bot, Microscope, Download } from 'lucide-vue-next'
+import { Search, GitBranch, Bot, Microscope, Download, Activity } from 'lucide-vue-next'
 
 const router = useRouter()
 const importStore = useImportStore()
@@ -73,6 +81,10 @@ function goToAI() {
 
 function goToPromptLab() {
   router.push('/prompt-lab')
+}
+
+function goToObservability() {
+  router.push('/observability')
 }
 
 function openImport() {
@@ -146,6 +158,14 @@ function openImport() {
 
     &:hover {
       background: rgba(139, 92, 246, 0.1);
+    }
+  }
+
+  &.observability-tool {
+    color: var(--accent-blue);
+
+    &:hover, &.active {
+      background: rgba(59, 130, 246, 0.1);
     }
   }
 }

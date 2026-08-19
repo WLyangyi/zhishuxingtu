@@ -6,6 +6,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 
 from app.services.agent.config import CHECKPOINT_DB
+from app.services.agent.memory import get_memory_store
 from app.services.agent.nodes import (
     agent_step,
     answer_quality,
@@ -23,6 +24,7 @@ from app.services.agent.nodes import (
 from app.services.agent.state import AgentState
 
 _graph = None
+_checkpointer = None
 
 
 def build_graph():
@@ -70,11 +72,25 @@ def _create_checkpointer() -> SqliteSaver:
     return SqliteSaver(conn)
 
 
+def get_checkpointer() -> SqliteSaver:
+    global _checkpointer
+    if _checkpointer is None:
+        _checkpointer = _create_checkpointer()
+    return _checkpointer
+
+
 def get_graph():
     global _graph
     if _graph is None:
-        _graph = build_graph().compile(checkpointer=_create_checkpointer())
+        _graph = build_graph().compile(
+            checkpointer=get_checkpointer(),
+            store=get_memory_store(),
+        )
     return _graph
+
+
+def delete_thread(thread_id: str) -> None:
+    get_checkpointer().delete_thread(thread_id)
 
 
 def build_input(question: str, session_id: str, user_id: str, history: Optional[List[dict]] = None) -> Dict[str, Any]:

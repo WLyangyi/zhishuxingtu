@@ -69,6 +69,11 @@ const routes = [
         component: () => import('@/views/AIAssistant.vue')
       },
       {
+        path: 'observability',
+        name: 'AgentObservability',
+        component: () => import('@/views/AgentObservability.vue')
+      },
+      {
         path: 'work',
         name: 'Work',
         component: () => import('@/views/Home.vue')

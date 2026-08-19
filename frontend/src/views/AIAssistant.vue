@@ -1,1043 +1,424 @@
 <template>
   <div class="ai-assistant">
-    <div class="sidebar">
+    <aside class="chat-sidebar">
       <div class="sidebar-header">
         <button class="new-chat-btn" @click="createNewChat">
-          <Plus :size="16" />
-          新对话
+          <Plus :size="16" /> 新对话
         </button>
       </div>
       <div class="chat-list">
-        <div 
-          v-for="chat in chatList" 
+        <button
+          v-for="chat in chatList"
           :key="chat.id"
           class="chat-item"
           :class="{ active: chat.id === currentChatId }"
           @click="switchChat(chat.id)"
         >
-          <div class="chat-item-info">
-            <MessageSquare :size="16" class="chat-icon" />
+          <span class="chat-item-info">
+            <MessageSquare :size="16" />
             <span class="chat-title">{{ chat.title }}</span>
-          </div>
-          <button class="delete-chat-btn" @click.stop="deleteChat(chat.id)">
-            <X :size="14" />
-          </button>
-        </div>
-        <div v-if="chatList.length === 0" class="empty-list">
-          暂无历史对话
-        </div>
+          </span>
+          <span class="delete-chat-btn" @click.stop="deleteChat(chat.id)"><X :size="14" /></span>
+        </button>
+        <div v-if="chatList.length === 0" class="empty-list">暂无历史对话</div>
       </div>
-    </div>
+    </aside>
 
-    <div class="main-content">
-      <div class="chat-header">
+    <main class="main-content">
+      <header class="chat-header">
         <div class="header-info">
           <Bot :size="24" class="header-icon" />
-          <div class="header-text">
-            <h1>AI 助手</h1>
-            <p class="header-desc">基于你的知识库进行智能对话</p>
+          <div>
+            <h1>Agentic RAG 助手</h1>
+            <p>多轮记忆 · 工具调用 · 三查反思 · 人工审批</p>
           </div>
         </div>
         <div class="header-actions">
-          <select v-model="selectedRole" class="role-select" @change="onRoleChange">
-            <option v-for="role in roles" :key="role.key" :value="role.key">
-              {{ role.name }}
-            </option>
-          </select>
-          <select v-model="selectedCotType" class="cot-select" title="思维链模板">
-            <option :value="null">不使用思维链</option>
-            <option v-for="t in COT_TEMPLATES" :key="t.type" :value="t.type">
-              {{ t.name }}
-            </option>
-          </select>
-          <button class="clear-btn" @click="clearChat" :disabled="messages.length === 0">
-            <Trash2 :size="16" />
-            清空对话
+          <button class="header-btn" @click="showPreferences = !showPreferences">
+            <SlidersHorizontal :size="16" /> 长期偏好
+          </button>
+          <router-link class="header-btn" to="/observability">
+            <Activity :size="16" /> 可观测面板
+          </router-link>
+          <button class="header-btn" :disabled="messages.length === 0" @click="clearChat">
+            <Trash2 :size="16" /> 清空
           </button>
         </div>
+      </header>
+
+      <div v-if="showPreferences" class="preferences-panel">
+        <div class="preferences-heading">
+          <div>
+            <strong>跨会话长期偏好</strong>
+            <span>保存后，后续所有 Agent 会话都会自动读取。</span>
+          </div>
+          <button @click="showPreferences = false"><X :size="16" /></button>
+        </div>
+        <div class="preference-tags">
+          <span v-for="(value, key) in preferences" :key="key" class="preference-tag">
+            <b>{{ key }}</b> {{ value }}
+            <button @click="removePreference(String(key))"><X :size="12" /></button>
+          </span>
+          <span v-if="Object.keys(preferences).length === 0" class="preference-empty">尚未设置偏好</span>
+        </div>
+        <div class="preference-form">
+          <input v-model="preferenceKey" placeholder="偏好名称，如 answer_style" />
+          <input v-model="preferenceValue" placeholder="偏好内容，如 简洁、先给结论" @keydown.enter="savePreference" />
+          <button :disabled="!preferenceKey.trim() || !preferenceValue.trim()" @click="savePreference">保存</button>
+        </div>
+        <span v-if="preferenceStatus" class="preference-status">{{ preferenceStatus }}</span>
       </div>
 
-    <div class="chat-container" ref="chatContainer">
-      <div class="welcome-message" v-if="messages.length === 0">
-        <div class="welcome-icon">
-          <Sparkles :size="48" />
-        </div>
-        <h2>你好！我是 {{ selectedRole }}</h2>
-        <p>我可以帮助你：</p>
-        <ul>
-          <li>回答关于知识库内容的问题</li>
-          <li>帮你整理和总结笔记</li>
-          <li>提供学习和知识管理的建议</li>
-          <li>进行一般性的对话交流</li>
-        </ul>
-        <div class="current-role-info">
-          当前角色：{{ roles.find(r => r.key === selectedRole)?.desc }}
-        </div>
-        <div class="quick-actions">
-          <button 
-            v-for="action in quickActions" 
-            :key="action.text"
-            class="quick-action-btn"
-            @click="sendQuickAction(action.text)"
-          >
-            {{ action.text }}
-          </button>
-        </div>
-      </div>
-
-      <div 
-        v-for="(msg, index) in messages" 
-        :key="index" 
-        class="message"
-        :class="msg.role"
-      >
-        <div class="message-avatar">
-          <Bot v-if="msg.role === 'assistant'" :size="20" />
-          <User v-else :size="20" />
-        </div>
-        <div class="message-content">
-          <div class="message-text" v-html="formatMessage(msg.content)"></div>
-          <div v-if="msg.notes && msg.notes.length > 0" class="related-notes">
-            <div class="notes-label">相关笔记：</div>
-            <div class="note-links">
-              <router-link 
-                v-for="note in msg.notes" 
-                :key="note.id"
-                :to="`/notes/${note.id}`"
-                class="note-link"
-              >
-                <FileText :size="14" />
-                {{ note.title }}
-              </router-link>
+      <div class="assistant-workspace">
+        <section class="conversation-column">
+          <div ref="chatContainer" class="chat-container">
+            <div v-if="messages.length === 0" class="welcome-message">
+              <div class="welcome-icon"><Sparkles :size="42" /></div>
+              <h2>和你的知识库一起思考</h2>
+              <p>Agent 会自主检索、调用工具，并在写入笔记前请求你的确认。</p>
+              <div class="quick-actions">
+                <button v-for="action in quickActions" :key="action" @click="sendQuickAction(action)">
+                  {{ action }}
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-      </div>
 
-      <div v-if="loading && !isStreaming" class="message assistant loading">
-        <div class="message-avatar">
-          <Bot :size="20" />
-        </div>
-        <div class="message-content">
-          <div class="typing-indicator">
-            <span></span>
-            <span></span>
-            <span></span>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="isStreaming && streamingContent" class="message assistant streaming">
-        <div class="message-avatar">
-          <Bot :size="20" />
-        </div>
-        <div class="message-content">
-          <div class="message-text">
-            <TypewriterText :content="streamingContent" :isStreaming="true" />
-          </div>
-          <div v-if="streamingNotes.length > 0" class="related-notes">
-            <div class="notes-label">相关笔记：</div>
-            <div class="note-links">
-              <router-link 
-                v-for="note in streamingNotes" 
-                :key="note.id"
-                :to="`/notes/${note.id}`"
-                class="note-link"
-              >
-                <FileText :size="14" />
-                {{ note.title }}
-              </router-link>
+            <div v-for="(message, index) in messages" :key="index" class="message" :class="message.role">
+              <div class="message-avatar">
+                <Bot v-if="message.role === 'assistant'" :size="19" />
+                <User v-else :size="19" />
+              </div>
+              <div class="message-content">
+                <div class="message-text" v-html="formatMessage(message.content)"></div>
+              </div>
             </div>
-          </div>
-        </div>
-      </div>
-    </div>
 
-    <div class="input-area">
-      <div class="input-container">
-        <textarea
-          v-model="inputMessage"
-          placeholder="输入你的问题..."
-          @keydown.enter.exact.prevent="sendMessage"
-          :disabled="loading"
-          rows="1"
-          ref="inputRef"
-        ></textarea>
-        <button 
-          v-if="!isStreaming"
-          class="send-btn" 
-          @click="sendMessage" 
-          :disabled="!inputMessage.trim() || loading"
-        >
-          <Send :size="18" />
-        </button>
-        <button 
-          v-else
-          class="stop-btn" 
-          @click="stopStreaming"
-        >
-          <Square :size="18" />
-        </button>
+            <div v-if="isStreaming && streamingContent" class="message assistant streaming">
+              <div class="message-avatar"><Bot :size="19" /></div>
+              <div class="message-content">
+                <div class="message-text">{{ streamingContent }}</div>
+              </div>
+            </div>
+
+            <div v-if="loading && !streamingContent && !pendingApproval" class="message assistant loading">
+              <div class="message-avatar"><Bot :size="19" /></div>
+              <div class="message-content"><div class="typing-indicator"><span></span><span></span><span></span></div></div>
+            </div>
+
+            <ApprovalCard
+              v-if="pendingApproval"
+              :approval="pendingApproval"
+              :disabled="loading"
+              @decide="resumeApproval"
+            />
+          </div>
+
+          <div class="input-area">
+            <div class="input-container">
+              <textarea
+                ref="inputRef"
+                v-model="inputMessage"
+                rows="1"
+                placeholder="输入问题，或让 Agent 创建一篇笔记…"
+                :disabled="loading || !!pendingApproval"
+                @keydown.enter.exact.prevent="sendMessage"
+              ></textarea>
+              <button v-if="!isStreaming" class="send-btn" :disabled="!inputMessage.trim() || loading || !!pendingApproval" @click="sendMessage">
+                <Send :size="18" />
+              </button>
+              <button v-else class="stop-btn" @click="stopStreaming"><Square :size="17" /></button>
+            </div>
+            <div class="input-hint">会话由 LangGraph checkpoint 持久化 · 写操作必须审批</div>
+          </div>
+        </section>
+
+        <aside class="timeline-panel">
+          <div class="timeline-header">
+            <div><Activity :size="16" /><strong>Agent 时间线</strong></div>
+            <span>{{ combinedTimeline.length }} 事件</span>
+          </div>
+          <div class="timeline-scroll"><AgentTimeline :events="combinedTimeline" /></div>
+        </aside>
       </div>
-      <div class="input-hint">
-        按 Enter 发送消息
-      </div>
-    </div>
-    </div>
+    </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted, watch, onUnmounted } from 'vue'
-import { Bot, User, Send, Sparkles, FileText, Trash2, Plus, MessageSquare, X, Square } from 'lucide-vue-next'
-import { COT_TEMPLATES } from '@/types/promptLab'
-import { SSEClient, type SSEMessage } from '@/utils/sse'
-import TypewriterText from '@/components/common/TypewriterText.vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import {
+  Activity, Bot, MessageSquare, Plus, Send, SlidersHorizontal,
+  Sparkles, Square, Trash2, User, X
+} from 'lucide-vue-next'
+import { agentApi, type AgentMessage, type AgentSession, type TimelineEvent } from '@/api/agent'
+import AgentTimeline from '@/components/agent/AgentTimeline.vue'
+import ApprovalCard from '@/components/agent/ApprovalCard.vue'
 import { useAuthStore } from '@/stores/auth'
+import { SSEClient, type SSEMessage } from '@/utils/sse'
 
-interface Message {
-  role: 'user' | 'assistant'
-  content: string
-  notes?: { id: string; title: string }[]
-  isStreaming?: boolean
-}
-
-interface ChatHistory {
-  id: string
-  title: string
-  messages: Message[]
-  createdAt: number
-  updatedAt: number
-}
-
-const STORAGE_KEY = 'ai_chat_history'
-
-const messages = ref<Message[]>([])
+const messages = ref<AgentMessage[]>([])
+const chatList = ref<AgentSession[]>([])
+const currentChatId = ref('')
 const inputMessage = ref('')
 const loading = ref(false)
+const isStreaming = ref(false)
+const streamingContent = ref('')
+const persistedTimeline = ref<TimelineEvent[]>([])
+const liveTimeline = ref<TimelineEvent[]>([])
+const pendingApproval = ref<SSEMessage | null>(null)
 const chatContainer = ref<HTMLElement | null>(null)
 const inputRef = ref<HTMLTextAreaElement | null>(null)
-const chatList = ref<ChatHistory[]>([])
-const currentChatId = ref<string>('')
-const selectedCotType = ref<string | null>(null)
-const streamingContent = ref('')
-const streamingNotes = ref<{ id: string; title: string }[]>([])
-const isStreaming = ref(false)
 const sseClient = ref<SSEClient | null>(null)
 const authStore = useAuthStore()
 
-const quickActions = [
-  { text: '我有哪些笔记？' },
-  { text: '帮我总结一下知识库' },
-  { text: '如何更好地管理知识？' }
-]
+const showPreferences = ref(false)
+const preferences = ref<Record<string, string>>({})
+const preferenceKey = ref('')
+const preferenceValue = ref('')
+const preferenceStatus = ref('')
 
-const roles = [
-  { key: '知识问答助手', name: '知识问答助手', desc: '友善、专业、乐于助人' },
-  { key: '技术专家', name: '技术专家', desc: '严谨、精确、逻辑性强' },
-  { key: '创意写作助手', name: '创意写作助手', desc: '富有创意、想象力丰富' },
-  { key: '学习教练', name: '学习教练', desc: '激励、耐心、循循善诱' }
-]
-
-const selectedRole = ref('知识问答助手')
-
-function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2)
-}
-
-function loadChatList() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    if (saved) {
-      chatList.value = JSON.parse(saved)
-    }
-  } catch {
-    chatList.value = []
-  }
-}
-
-function saveChatList() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(chatList.value))
-}
-
-function createNewChat() {
-  const newChat: ChatHistory = {
-    id: generateId(),
-    title: '新对话',
-    messages: [],
-    createdAt: Date.now(),
-    updatedAt: Date.now()
-  }
-  chatList.value.unshift(newChat)
-  currentChatId.value = newChat.id
-  messages.value = []
-  saveChatList()
-}
-
-function switchChat(chatId: string) {
-  currentChatId.value = chatId
-  const chat = chatList.value.find(c => c.id === chatId)
-  if (chat) {
-    messages.value = [...chat.messages]
-    scrollToBottom()
-  }
-}
-
-function deleteChat(chatId: string) {
-  const index = chatList.value.findIndex(c => c.id === chatId)
-  if (index > -1) {
-    chatList.value.splice(index, 1)
-    if (currentChatId.value === chatId) {
-      if (chatList.value.length > 0) {
-        switchChat(chatList.value[0].id)
-      } else {
-        createNewChat()
-      }
-    }
-    saveChatList()
-  }
-}
-
-function updateCurrentChat() {
-  if (!currentChatId.value) return
-  const chat = chatList.value.find(c => c.id === currentChatId.value)
-  if (chat) {
-    chat.messages = [...messages.value]
-    chat.updatedAt = Date.now()
-    if (messages.value.length > 0 && chat.title === '新对话') {
-      const firstMsg = messages.value[0].content
-      chat.title = firstMsg.slice(0, 20) + (firstMsg.length > 20 ? '...' : '')
-    }
-    chatList.value.sort((a, b) => b.updatedAt - a.updatedAt)
-    saveChatList()
-  }
-}
-
-watch(messages, () => {
-  updateCurrentChat()
-}, { deep: true })
-
-watch(selectedCotType, () => {
-  localStorage.setItem('ai_cot_type', selectedCotType.value || 'null')
-})
+const quickActions = ['我有哪些笔记？', '帮我总结一下知识库', '对比最近的两篇笔记']
+const combinedTimeline = computed(() => [...persistedTimeline.value, ...liveTimeline.value])
 
 function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;')
 }
 
 function formatMessage(content: string): string {
-  const escaped = escapeHtml(content)
-  return escaped
-    .replace(/\n/g, '<br>')
-    .replace(/【([^】]+)】/g, '<strong>【$1】</strong>')
+  return escapeHtml(content).replace(/\n/g, '<br>').replace(/【([^】]+)】/g, '<strong>【$1】</strong>')
 }
 
 function scrollToBottom() {
   nextTick(() => {
-    if (chatContainer.value) {
-      chatContainer.value.scrollTop = chatContainer.value.scrollHeight
+    if (chatContainer.value) chatContainer.value.scrollTop = chatContainer.value.scrollHeight
+  })
+}
+
+async function loadSessions() {
+  chatList.value = await agentApi.listSessions()
+  if (!chatList.value.length) {
+    await createNewChat()
+  } else if (!currentChatId.value) {
+    await switchChat(chatList.value[0].id)
+  }
+}
+
+async function createNewChat() {
+  const chat = await agentApi.createSession()
+  chatList.value.unshift(chat)
+  await switchChat(chat.id)
+}
+
+async function switchChat(chatId: string) {
+  currentChatId.value = chatId
+  pendingApproval.value = null
+  streamingContent.value = ''
+  liveTimeline.value = []
+  const [savedMessages, timeline] = await Promise.all([
+    agentApi.getMessages(chatId),
+    agentApi.getTimeline(chatId)
+  ])
+  messages.value = savedMessages
+  persistedTimeline.value = timeline
+  scrollToBottom()
+}
+
+async function deleteChat(chatId: string) {
+  if (!window.confirm('确认删除该会话及其 checkpoint 和审计记录？')) return
+  await agentApi.deleteSession(chatId)
+  chatList.value = chatList.value.filter(chat => chat.id !== chatId)
+  if (currentChatId.value === chatId) {
+    if (chatList.value.length) await switchChat(chatList.value[0].id)
+    else await createNewChat()
+  }
+}
+
+async function clearChat() {
+  if (!currentChatId.value) return
+  await agentApi.clearSession(currentChatId.value)
+  messages.value = []
+  persistedTimeline.value = []
+  liveTimeline.value = []
+  pendingApproval.value = null
+}
+
+function apiBase(): string {
+  return (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+}
+
+function handleStreamMessage(message: SSEMessage) {
+  if (['thought', 'action', 'observation', 'check'].includes(message.type)) {
+    if (message.content) {
+      liveTimeline.value.push({ type: message.type as TimelineEvent['type'], content: message.content, node: message.node })
     }
+  } else if (message.type === 'final_answer') {
+    streamingContent.value = message.answer || ''
+  } else if (message.type === 'approval_required') {
+    pendingApproval.value = message
+  } else if (message.type === 'error') {
+    liveTimeline.value.push({ type: 'observation', content: message.message || 'Agent 执行异常', status: 'error' })
+  }
+  scrollToBottom()
+}
+
+async function refreshAfterStream() {
+  if (streamingContent.value) {
+    messages.value.push({ role: 'assistant', content: streamingContent.value })
+  }
+  streamingContent.value = ''
+  loading.value = false
+  isStreaming.value = false
+  if (currentChatId.value) {
+    persistedTimeline.value = await agentApi.getTimeline(currentChatId.value)
+    chatList.value = await agentApi.listSessions()
+  }
+  scrollToBottom()
+}
+
+async function connectStream(url: string, body: Record<string, unknown> = {}) {
+  const token = authStore.token || localStorage.getItem('token') || undefined
+  sseClient.value = new SSEClient()
+  await sseClient.value.connect(url, body, {
+    method: 'POST',
+    token,
+    onMessage: handleStreamMessage,
+    onError: (error) => {
+      loading.value = false
+      isStreaming.value = false
+      messages.value.push({ role: 'assistant', content: `连接 Agent 失败：${error.message}` })
+      scrollToBottom()
+    },
+    onComplete: () => { void refreshAfterStream() }
   })
 }
 
 async function sendMessage() {
-  const message = inputMessage.value.trim()
-  if (!message || loading.value) return
+  const question = inputMessage.value.trim()
+  if (!question || loading.value || pendingApproval.value) return
+  if (!currentChatId.value) await createNewChat()
 
-  messages.value.push({
-    role: 'user',
-    content: message
-  })
-  
+  messages.value.push({ role: 'user', content: question })
   inputMessage.value = ''
-  scrollToBottom()
+  liveTimeline.value = []
+  streamingContent.value = ''
   loading.value = true
   isStreaming.value = true
+  scrollToBottom()
+
+  const params = new URLSearchParams({ question, session_id: currentChatId.value })
+  await connectStream(`${apiBase()}/api/agent/chat/stream?${params.toString()}`)
+}
+
+async function resumeApproval(approved: boolean) {
+  if (!pendingApproval.value || loading.value) return
+  const approval = pendingApproval.value
+  pendingApproval.value = null
   streamingContent.value = ''
-  streamingNotes.value = []
-
-  try {
-    const history = messages.value.slice(-6).map(m => ({
-      role: m.role,
-      content: m.content
-    }))
-
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-    const token = authStore.token || localStorage.getItem('token')
-    
-    const params = new URLSearchParams()
-    params.append('message', message)
-    if (history.length > 0) {
-      params.append('history', JSON.stringify(history))
-    }
-    if (currentChatId.value) {
-      params.append('session_id', currentChatId.value)
-    }
-    
-    const fullUrl = `${apiUrl}/api/search/chat/stream?${params.toString()}`
-    console.log('SSE连接URL:', fullUrl)
-    console.log('Token:', token ? '已设置' : '未设置')
-    
-    sseClient.value = new SSEClient()
-    
-    await sseClient.value.connect(
-      fullUrl,
-      {},
-      {
-        method: 'POST',
-        token: token || undefined,
-        onMessage: (msg: SSEMessage) => {
-          console.log('收到SSE消息:', msg)
-          if (msg.type === 'content' && msg.text) {
-            streamingContent.value += msg.text
-            scrollToBottom()
-          } else if (msg.type === 'sources' && msg.notes) {
-            streamingNotes.value = msg.notes
-          } else if (msg.type === 'error' && msg.message) {
-            streamingContent.value = msg.message
-          }
-        },
-        onError: (error: Error) => {
-          console.error('SSE错误:', error)
-          streamingContent.value = '抱歉，发生了错误：' + error.message
-          isStreaming.value = false
-          loading.value = false
-        },
-        onComplete: () => {
-          console.log('SSE完成')
-          if (streamingContent.value) {
-            messages.value.push({
-              role: 'assistant',
-              content: streamingContent.value,
-              notes: streamingNotes.value.length > 0 ? streamingNotes.value : undefined
-            })
-          }
-          isStreaming.value = false
-          loading.value = false
-          streamingContent.value = ''
-          streamingNotes.value = []
-          scrollToBottom()
-        }
-      }
-    )
-  } catch (error: any) {
-    messages.value.push({
-      role: 'assistant',
-      content: '抱歉，发生了错误：' + (error.message || '未知错误')
-    })
-    isStreaming.value = false
-    loading.value = false
-    scrollToBottom()
-  }
+  loading.value = true
+  isStreaming.value = true
+  liveTimeline.value.push({
+    type: 'action',
+    content: approved ? `用户批准 ${approval.tool_name}` : `用户拒绝 ${approval.tool_name}`,
+    status: approved ? 'success' : 'rejected'
+  })
+  await connectStream(`${apiBase()}/api/agent/resume`, {
+    session_id: approval.session_id || currentChatId.value,
+    approved,
+    reason: approved ? '用户在前端审批卡确认' : '用户在前端审批卡拒绝'
+  })
 }
 
 function stopStreaming() {
-  if (sseClient.value && isStreaming.value) {
-    sseClient.value.abort()
-    isStreaming.value = false
-    loading.value = false
-    
-    if (streamingContent.value) {
-      messages.value.push({
-        role: 'assistant',
-        content: streamingContent.value,
-        notes: streamingNotes.value.length > 0 ? streamingNotes.value : undefined
-      })
-    }
-    
-    streamingContent.value = ''
-    streamingNotes.value = []
-    scrollToBottom()
-  }
+  sseClient.value?.abort()
 }
 
 function sendQuickAction(text: string) {
   inputMessage.value = text
-  sendMessage()
+  void sendMessage()
 }
 
-function clearChat() {
-  messages.value = []
+async function loadPreferences() {
+  preferences.value = await agentApi.getPreferences()
 }
 
-function onRoleChange() {
-  localStorage.setItem('ai_role', selectedRole.value)
+async function savePreference() {
+  const key = preferenceKey.value.trim()
+  const value = preferenceValue.value.trim()
+  if (!key || !value) return
+  await agentApi.putPreference(key, value)
+  preferences.value[key] = value
+  preferenceKey.value = ''
+  preferenceValue.value = ''
+  preferenceStatus.value = '偏好已保存，并会注入后续 Agent 会话。'
 }
 
-onMounted(() => {
+async function removePreference(key: string) {
+  await agentApi.deletePreference(key)
+  delete preferences.value[key]
+  preferenceStatus.value = '偏好已删除。'
+}
+
+onMounted(async () => {
+  await Promise.all([loadSessions(), loadPreferences()])
   inputRef.value?.focus()
-  loadChatList()
-  const savedRole = localStorage.getItem('ai_role')
-  if (savedRole) {
-    selectedRole.value = savedRole
-  }
-  const savedCot = localStorage.getItem('ai_cot_type')
-  if (savedCot) {
-    selectedCotType.value = savedCot === 'null' ? null : savedCot
-  }
-  if (chatList.value.length === 0) {
-    createNewChat()
-  } else {
-    switchChat(chatList.value[0].id)
-  }
 })
 
-onUnmounted(() => {
-  if (sseClient.value && isStreaming.value) {
-    sseClient.value.abort()
-  }
-})
+onUnmounted(() => sseClient.value?.abort())
 </script>
 
 <style scoped lang="scss">
-.ai-assistant {
-  display: flex;
-  height: calc(100vh - 60px);
-  background: var(--bg-primary);
-}
-
-.sidebar {
-  width: 240px;
-  border-right: 1px solid var(--border-subtle);
-  background: var(--bg-secondary);
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-}
-
-.sidebar-header {
-  padding: 16px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.new-chat-btn {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background: var(--primary-color);
-  border: none;
-  border-radius: var(--radius-md);
-  color: #000;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-
-  &:hover {
-    background: var(--primary-hover);
-  }
-}
-
-.chat-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px;
-}
-
-.chat-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  margin-bottom: 4px;
-
-  &:hover {
-    background: var(--bg-hover);
-  }
-
-  &.active {
-    background: var(--primary-muted);
-  }
-}
-
-.chat-item-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1;
-  min-width: 0;
-}
-
-.chat-icon {
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.chat-title {
-  font-size: 13px;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.delete-chat-btn {
-  display: none;
-  padding: 4px;
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
-  cursor: pointer;
-
-  &:hover {
-    background: var(--bg-tertiary);
-    color: var(--danger-color);
-  }
-}
-
-.chat-item:hover .delete-chat-btn {
-  display: flex;
-}
-
-.empty-list {
-  text-align: center;
-  padding: 24px 16px;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.main-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.chat-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 24px;
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-secondary);
-}
-
-.header-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.header-icon {
-  color: var(--primary-color);
-}
-
-.header-text {
-  h1 {
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin: 0;
-  }
-
-  .header-desc {
-    font-size: 13px;
-    color: var(--text-muted);
-    margin: 4px 0 0;
-  }
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.role-select {
-  padding: 8px 12px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  color: var(--text-primary);
-  font-size: 13px;
-  cursor: pointer;
-
-  &:focus {
-    outline: none;
-    border-color: var(--primary-color);
-  }
-
-  option {
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    padding: 8px;
-  }
-}
-
-.cot-select {
-  padding: 8px 12px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  font-size: 13px;
-  cursor: pointer;
-
-  &:hover {
-    border-color: var(--border-default);
-    color: var(--text-primary);
-  }
-
-  &:focus {
-    outline: none;
-    border-color: var(--primary-color);
-  }
-
-  option {
-    background: var(--bg-elevated);
-    color: var(--text-primary);
-    padding: 8px;
-  }
-}
-
-.clear-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  background: transparent;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: 13px;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-
-  &:hover:not(:disabled) {
-    background: var(--bg-hover);
-    border-color: var(--border-strong);
-    color: var(--text-primary);
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-}
-
-.chat-container {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px;
-}
-
-.welcome-message {
-  max-width: 500px;
-  margin: 60px auto;
-  text-align: center;
-
-  .welcome-icon {
-    width: 80px;
-    height: 80px;
-    margin: 0 auto 24px;
-    background: var(--primary-muted);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--primary-color);
-  }
-
-  h2 {
-    font-size: 24px;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin: 0 0 16px;
-  }
-
-  p {
-    font-size: 14px;
-    color: var(--text-secondary);
-    margin: 0 0 12px;
-  }
-
-  ul {
-    list-style: none;
-    padding: 0;
-    margin: 0 0 24px;
-    text-align: left;
-
-    li {
-      padding: 8px 0;
-      font-size: 14px;
-      color: var(--text-secondary);
-      position: relative;
-      padding-left: 20px;
-
-      &::before {
-        content: '•';
-        position: absolute;
-        left: 0;
-        color: var(--primary-color);
-      }
-    }
-  }
-
-  .current-role-info {
-    font-size: 13px;
-    color: var(--text-muted);
-    margin-bottom: 24px;
-  }
-
-  .quick-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    justify-content: center;
-  }
-
-  .quick-action-btn {
-    padding: 10px 16px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-md);
-    color: var(--text-secondary);
-    font-size: 13px;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-
-    &:hover {
-      background: var(--bg-hover);
-      border-color: var(--primary-color);
-      color: var(--text-primary);
-    }
-  }
-}
-
-.message {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 20px;
-  max-width: 800px;
-
-  &.user {
-    flex-direction: row-reverse;
-    margin-left: auto;
-
-    .message-content {
-      background: var(--primary-color);
-      color: #000;
-    }
-  }
-
-  &.assistant {
-    .message-content {
-      background: var(--bg-secondary);
-      border: 1px solid var(--border-subtle);
-    }
-  }
-
-  &.loading {
-    .message-content {
-      background: var(--bg-secondary);
-      border: 1px solid var(--border-subtle);
-    }
-  }
-}
-
-.message-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: var(--bg-tertiary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  color: var(--text-muted);
-}
-
-.message-content {
-  padding: 12px 16px;
-  border-radius: var(--radius-lg);
-  max-width: 70%;
-}
-
-.message-text {
-  font-size: 14px;
-  line-height: 1.6;
-  word-break: break-word;
-
-  strong {
-    color: var(--primary-color);
-  }
-}
-
-.related-notes {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-subtle);
-}
-
-.notes-label {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-bottom: 8px;
-}
-
-.note-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.note-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: var(--bg-hover);
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  color: var(--text-secondary);
-  text-decoration: none;
-  transition: all var(--transition-fast);
-
-  &:hover {
-    background: var(--primary-muted);
-    color: var(--primary-color);
-  }
-}
-
-.typing-indicator {
-  display: flex;
-  gap: 4px;
-  padding: 4px 0;
-
-  span {
-    width: 8px;
-    height: 8px;
-    background: var(--text-muted);
-    border-radius: 50%;
-    animation: typing 1.4s infinite ease-in-out;
-
-    &:nth-child(1) { animation-delay: 0s; }
-    &:nth-child(2) { animation-delay: 0.2s; }
-    &:nth-child(3) { animation-delay: 0.4s; }
-  }
-}
-
-@keyframes typing {
-  0%, 60%, 100% {
-    transform: translateY(0);
-    opacity: 0.4;
-  }
-  30% {
-    transform: translateY(-4px);
-    opacity: 1;
-  }
-}
-
-.input-area {
-  padding: 16px 24px;
-  border-top: 1px solid var(--border-subtle);
-  background: var(--bg-secondary);
-}
-
-.input-container {
-  display: flex;
-  gap: 12px;
-  align-items: flex-end;
-  max-width: 800px;
-  margin: 0 auto;
-
-  textarea {
-    flex: 1;
-    padding: 12px 16px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-md);
-    color: var(--text-primary);
-    font-size: 14px;
-    resize: none;
-    min-height: 44px;
-    max-height: 120px;
-    font-family: inherit;
-
-    &:focus {
-      outline: none;
-      border-color: var(--primary-color);
-    }
-
-    &::placeholder {
-      color: var(--text-muted);
-    }
-
-    &:disabled {
-      opacity: 0.6;
-    }
-  }
-}
-
-.send-btn {
-  width: 44px;
-  height: 44px;
-  background: var(--primary-color);
-  border: none;
-  border-radius: var(--radius-md);
-  color: #000;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all var(--transition-fast);
-
-  &:hover:not(:disabled) {
-    background: var(--primary-hover);
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-}
-
-.stop-btn {
-  width: 44px;
-  height: 44px;
-  background: var(--danger-color);
-  border: none;
-  border-radius: var(--radius-md);
-  color: #fff;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all var(--transition-fast);
-
-  &:hover {
-    background: var(--danger-hover);
-    transform: scale(1.05);
-  }
-
-  &:active {
-    transform: scale(0.98);
-  }
-}
-
-.message.streaming {
-  .message-content {
-    border: 1px solid var(--primary-color);
-    box-shadow: 0 0 0 1px var(--primary-muted);
-  }
-}
-
-.input-hint {
-  text-align: center;
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-top: 8px;
-}
+.ai-assistant { display: flex; height: calc(100vh - 60px); background: var(--bg-primary); }
+.chat-sidebar { width: 230px; border-right: 1px solid var(--border-subtle); background: var(--bg-secondary); display: flex; flex-direction: column; flex-shrink: 0; }
+.sidebar-header { padding: 14px; border-bottom: 1px solid var(--border-subtle); }
+.new-chat-btn { width: 100%; display: flex; justify-content: center; align-items: center; gap: 7px; padding: 9px 12px; border-radius: var(--radius-md); background: var(--primary-color); color: #111; font-size: 13px; font-weight: 600; }
+.chat-list { padding: 8px; overflow-y: auto; }
+.chat-item { width: 100%; color: var(--text-secondary); display: flex; align-items: center; justify-content: space-between; padding: 9px 10px; border-radius: var(--radius-sm); margin-bottom: 3px; text-align: left; &:hover, &.active { background: var(--bg-active); color: var(--text-primary); } }
+.chat-item-info { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.chat-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.delete-chat-btn { display: none; padding: 3px; color: var(--text-muted); }
+.chat-item:hover .delete-chat-btn { display: flex; }
+.empty-list { padding: 24px; text-align: center; color: var(--text-muted); font-size: 12px; }
+
+.main-content { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
+.chat-header { min-height: 70px; padding: 13px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--border-subtle); background: var(--bg-secondary); }
+.header-info { display: flex; align-items: center; gap: 11px; h1 { margin: 0; color: var(--text-primary); font-size: 17px; } p { margin: 2px 0 0; color: var(--text-muted); font-size: 11px; } }
+.header-icon { color: var(--primary-color); }
+.header-actions { display: flex; gap: 7px; }
+.header-btn { display: flex; align-items: center; gap: 6px; padding: 7px 9px; color: var(--text-secondary); border: 1px solid var(--border-default); border-radius: var(--radius-sm); font-size: 11px; &:hover { color: var(--text-primary); background: var(--bg-hover); } &:disabled { opacity: .4; } }
+
+.preferences-panel { position: absolute; z-index: 10; top: 62px; right: 20px; width: min(520px, calc(100% - 40px)); padding: 16px; background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-lg); box-shadow: 0 18px 50px rgba(0,0,0,.35); }
+.preferences-heading { display: flex; justify-content: space-between; gap: 16px; strong { display: block; font-size: 13px; } span { color: var(--text-muted); font-size: 11px; } button { color: var(--text-muted); } }
+.preference-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 13px 0; }
+.preference-tag { display: flex; align-items: center; gap: 5px; padding: 5px 8px; border-radius: 999px; background: var(--primary-muted); color: var(--text-secondary); font-size: 10px; b { color: var(--primary-color); } button { display: flex; color: var(--text-muted); } }
+.preference-empty, .preference-status { color: var(--text-muted); font-size: 10px; }
+.preference-form { display: grid; grid-template-columns: .8fr 1.4fr auto; gap: 7px; input { min-width: 0; padding: 8px 9px; background: var(--bg-primary); border: 1px solid var(--border-default); border-radius: var(--radius-sm); font-size: 11px; } button { padding: 8px 12px; background: var(--primary-color); color: #111; border-radius: var(--radius-sm); font-size: 11px; font-weight: 600; &:disabled { opacity: .4; } } }
+
+.assistant-workspace { flex: 1; min-height: 0; display: flex; }
+.conversation-column { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.chat-container { flex: 1; overflow-y: auto; padding: 22px; }
+.timeline-panel { width: 310px; flex-shrink: 0; border-left: 1px solid var(--border-subtle); background: var(--bg-secondary); display: flex; flex-direction: column; }
+.timeline-header { min-height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid var(--border-subtle); div { display: flex; align-items: center; gap: 7px; color: var(--primary-color); } strong { color: var(--text-primary); font-size: 12px; } span { color: var(--text-muted); font-size: 10px; } }
+.timeline-scroll { padding: 14px; overflow-y: auto; }
+
+.welcome-message { max-width: 520px; margin: 70px auto; text-align: center; h2 { margin: 16px 0 8px; font-size: 22px; } p { color: var(--text-secondary); font-size: 13px; } }
+.welcome-icon { width: 70px; height: 70px; margin: auto; display: flex; align-items: center; justify-content: center; border-radius: 50%; color: var(--primary-color); background: var(--primary-muted); }
+.quick-actions { margin-top: 22px; display: flex; justify-content: center; flex-wrap: wrap; gap: 7px; button { padding: 8px 11px; border: 1px solid var(--border-default); border-radius: var(--radius-md); color: var(--text-secondary); font-size: 11px; &:hover { border-color: var(--primary-color); color: var(--text-primary); } } }
+
+.message { display: flex; gap: 10px; max-width: 760px; margin-bottom: 17px; &.user { flex-direction: row-reverse; margin-left: auto; .message-content { background: var(--primary-color); color: #111; border-color: transparent; } } &.streaming .message-content { border-color: var(--primary-color); } }
+.message-avatar { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--bg-tertiary); color: var(--text-muted); flex-shrink: 0; }
+.message-content { max-width: min(680px, 78%); padding: 11px 14px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); }
+.message-text { font-size: 13px; line-height: 1.7; word-break: break-word; :deep(strong) { color: var(--primary-color); } }
+.typing-indicator { display: flex; gap: 4px; padding: 5px 0; span { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); animation: typing 1.2s infinite; &:nth-child(2) { animation-delay: .15s; } &:nth-child(3) { animation-delay: .3s; } } }
+@keyframes typing { 50% { opacity: .25; transform: translateY(-3px); } }
+
+.input-area { padding: 13px 20px; border-top: 1px solid var(--border-subtle); background: var(--bg-secondary); }
+.input-container { max-width: 800px; margin: auto; display: flex; gap: 9px; align-items: flex-end; textarea { flex: 1; min-height: 42px; max-height: 120px; resize: none; padding: 11px 13px; background: var(--bg-primary); border: 1px solid var(--border-default); border-radius: var(--radius-md); font-size: 13px; &:focus { border-color: var(--primary-color); } &:disabled { opacity: .55; } } }
+.send-btn, .stop-btn { width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-md); }
+.send-btn { color: #111; background: var(--primary-color); &:disabled { opacity: .4; } }
+.stop-btn { color: white; background: var(--danger-color); }
+.input-hint { margin-top: 6px; text-align: center; color: var(--text-muted); font-size: 10px; }
+
+@media (max-width: 1100px) { .timeline-panel { width: 260px; } .header-btn { span { display: none; } } }
+@media (max-width: 850px) { .chat-sidebar { width: 190px; } .timeline-panel { display: none; } .header-actions .header-btn { font-size: 0; } }
 </style>

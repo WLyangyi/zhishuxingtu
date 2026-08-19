@@ -40,9 +40,17 @@ def get_langfuse_handler() -> Optional[Any]:
     return _handler
 
 
-def build_stream_config(thread_id: str) -> dict:
-    """构造 LangGraph stream config,带 Langfuse callbacks(未启用则为空)。"""
-    cfg = {"configurable": {"thread_id": thread_id}}
+def build_stream_config(thread_id: str, user_id: str = "", run_name: str = "agent-chat") -> dict:
+    """构造 LangGraph stream config，并把用户/会话映射到 Langfuse trace。"""
+    cfg = {
+        "configurable": {"thread_id": thread_id},
+        "run_name": run_name,
+        "metadata": {
+            "langfuse_session_id": thread_id,
+            "langfuse_user_id": user_id,
+            "langfuse_tags": ["agentic-rag", "m4-m5"],
+        },
+    }
     handler = get_langfuse_handler()
     if handler:
         cfg["callbacks"] = [handler]

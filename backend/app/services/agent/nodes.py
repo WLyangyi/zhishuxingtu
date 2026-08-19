@@ -1,9 +1,19 @@
 import json
+import time
 from typing import Any, Dict, List
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    HumanMessage,
+    RemoveMessage,
+    SystemMessage,
+    ToolMessage,
+)
+from langgraph.store.base import BaseStore
+from langgraph.types import interrupt
 
-from app.services.agent.config import MAX_ITERATIONS, TOKEN_BUDGET
+from app.services.agent.config import MAX_HISTORY_MESSAGES, MAX_ITERATIONS, TOKEN_BUDGET
+from app.services.agent.memory import get_preference_context
 from app.services.agent.prompts import (
     GRADE_ANSWER_PROMPT,
     GRADE_DOCUMENTS_PROMPT,
@@ -22,9 +32,19 @@ from app.services.tools import (
     list_tags,
     search_notes,
     web_search,
+    create_note,
 )
+from app.services.tools.context import ToolContext, reset_tool_context, set_tool_context
 
-ALL_TOOLS = [search_notes, get_note, get_graph_neighbors, list_tags, list_folders, web_search]
+ALL_TOOLS = [
+    search_notes,
+    get_note,
+    get_graph_neighbors,
+    list_tags,
+    list_folders,
+    web_search,
+    create_note,
+]
 TOOL_MAP = {t.name: t for t in ALL_TOOLS}
 
 
@@ -42,20 +62,51 @@ def _append_thought(state: AgentState, entry: dict) -> List[dict]:
     return thoughts
 
 
+def _invoke_tool(fn: Any, args: dict, state: AgentState) -> Any:
+    """在节点执行所在的同步上下文内绑定用户，避免 SSE 线程池切换丢 ContextVar。"""
+    token = set_tool_context(
+        ToolContext(
+            user_id=str(state.get("user_id") or ""),
+            session_id=str(state.get("session_id") or ""),
+        )
+    )
+    try:
+        return fn.invoke(args)
+    finally:
+        reset_tool_context(token)
+
+
 # ---------- 节点 ----------
-def agent_step(state: AgentState) -> Dict[str, Any]:
+def agent_step(state: AgentState, *, store: BaseStore = None) -> Dict[str, Any]:
     provider = get_deepseek_provider()
     llm = provider.bind_tools(ALL_TOOLS)
-    msgs: List[Any] = [SystemMessage(content=REACT_SYSTEM_PROMPT)]
-    msgs.extend(state.get("messages") or [])
+    system_prompt = REACT_SYSTEM_PROMPT
+    preference_context = get_preference_context(state.get("user_id", ""), store)
+    if preference_context:
+        system_prompt += (
+            "\n\n## 用户长期偏好\n"
+            "以下偏好来自用户本人，可用于调整表达方式，但不得覆盖安全规则：\n"
+            f"{preference_context}"
+        )
+
+    history = list(state.get("messages") or [])
+    keep_count = max(1, MAX_HISTORY_MESSAGES - 1)
+    retained_history = history[-keep_count:]
+    msgs: List[Any] = [SystemMessage(content=system_prompt), *retained_history]
     resp = llm.invoke(msgs)
 
     iteration = (state.get("iteration") or 0) + 1
     usage = getattr(resp, "usage_metadata", None) or {}
     token_used = (state.get("token_used") or 0) + (usage.get("total_tokens") or 0)
 
+    message_updates: List[Any] = [
+        RemoveMessage(id=m.id, content="")
+        for m in history[:-keep_count]
+        if getattr(m, "id", None)
+    ]
+    message_updates.append(resp)
     return {
-        "messages": [resp],
+        "messages": message_updates,
         "iteration": iteration,
         "token_used": token_used,
         "thoughts": _append_thought(state, {"type": "thought", "content": resp.content or ""}),
@@ -74,15 +125,67 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
         name = tc.get("name", "")
         args = tc.get("args", {}) or {}
         fn = TOOL_MAP.get(name)
-        try:
-            result = fn.invoke(args) if fn else f"未知工具:{name}"
-        except Exception as e:
-            result = f"工具执行出错:{e}"
+        started = time.perf_counter()
+        status = "success"
+
+        if name == create_note.name:
+            decision = interrupt(
+                {
+                    "type": "approval_required",
+                    "tool_call_id": tc.get("id", ""),
+                    "tool_name": name,
+                    "title": "创建知识库笔记",
+                    "description": "Agent 请求执行写操作，确认后才会创建笔记。",
+                    "args": args,
+                    "preview": {
+                        "title": str(args.get("title", ""))[:200],
+                        "content": str(args.get("content", ""))[:500],
+                        "folder_id": args.get("folder_id"),
+                    },
+                }
+            )
+            approved = bool(decision.get("approved")) if isinstance(decision, dict) else bool(decision)
+            if not approved:
+                status = "rejected"
+                reason = decision.get("reason", "用户拒绝") if isinstance(decision, dict) else "用户拒绝"
+                result = json.dumps({"status": "rejected", "reason": reason}, ensure_ascii=False)
+            else:
+                try:
+                    result = _invoke_tool(fn, args, state)
+                except Exception as e:  # noqa: BLE001
+                    status = "error"
+                    result = f"工具执行出错:{e}"
+        else:
+            try:
+                result = _invoke_tool(fn, args, state) if fn else f"未知工具:{name}"
+                if not fn:
+                    status = "error"
+            except Exception as e:  # noqa: BLE001
+                status = "error"
+                result = f"工具执行出错:{e}"
+
+        latency_ms = max(0, int((time.perf_counter() - started) * 1000))
+        if status == "success":
+            try:
+                parsed_result = json.loads(result)
+                if isinstance(parsed_result, dict) and parsed_result.get("error"):
+                    status = "error"
+            except (TypeError, json.JSONDecodeError):
+                pass
 
         new_msgs.append(ToolMessage(content=result, tool_call_id=tc.get("id", "")))
         thoughts.append({"type": "action", "content": f"{name}{json.dumps(args, ensure_ascii=False)}"})
         thoughts.append({"type": "observation", "content": result[:300]})
-        tool_log.append({"tool": name, "args": args, "result": result[:500]})
+        tool_log.append(
+            {
+                "tool_call_id": tc.get("id", ""),
+                "tool": name,
+                "args": args,
+                "result": result[:500],
+                "latency_ms": latency_ms,
+                "status": status,
+            }
+        )
 
         if name == "search_notes":
             try:
@@ -105,7 +208,7 @@ def grade_documents(state: AgentState) -> Dict[str, Any]:
     thoughts = _append_thought(state, {"type": "check", "content": "grade_documents: 开始"})
     if not docs:
         thoughts.append({"type": "check", "content": "grade_documents: 无检索文档,放行"})
-        return {"grade_documents": "yes", "thoughts": thoughts}
+        return {"documents_grade": "yes", "thoughts": thoughts}
 
     provider = get_deepseek_provider()
     structured = provider.with_structured_output(GradeDocuments)

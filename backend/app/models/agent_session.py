@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Index, Integer, String, Text
+from sqlalchemy import Column, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 
 from app.db.base import Base, TimestampMixin, generate_uuid
 
@@ -23,3 +23,18 @@ class AgentToolCall(Base, TimestampMixin):
     result_json = Column(Text)
     latency_ms = Column(Integer, default=0)
     status = Column(String(50), default="success")
+
+
+class UserPreference(Base, TimestampMixin):
+    """跨会话长期偏好；LangGraph Store 的持久化事实来源。"""
+
+    __tablename__ = "user_preferences"
+    __table_args__ = (
+        UniqueConstraint("user_id", "preference_key", name="uq_user_preference_key"),
+        Index("idx_user_preferences_user_updated", "user_id", "updated_at"),
+    )
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    preference_key = Column(String(100), nullable=False)
+    preference_value = Column(Text, nullable=False)
