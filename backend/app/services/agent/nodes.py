@@ -76,6 +76,19 @@ def _invoke_tool(fn: Any, args: dict, state: AgentState) -> Any:
         reset_tool_context(token)
 
 
+def _retained_window(history: List[Any], keep_count: int) -> tuple[List[Any], List[Any]]:
+    """按条数裁剪历史，返回 (保留区, 移除区)。
+
+    若裁剪点落在 AIMessage(tool_calls) 与其 ToolMessage 配对中间，保留区会以
+    孤立 ToolMessage 开头，OpenAI 兼容 API 会以 400 拒绝。此处将起点向前扩展
+    到配对的 AIMessage，保证 tool_calls 与 ToolMessage 成对保留。
+    """
+    start = max(0, len(history) - keep_count)
+    while start > 0 and isinstance(history[start], ToolMessage):
+        start -= 1
+    return history[start:], history[:start]
+
+
 # ---------- 节点 ----------
 def agent_step(state: AgentState, *, store: BaseStore = None) -> Dict[str, Any]:
     provider = get_deepseek_provider()
@@ -91,7 +104,7 @@ def agent_step(state: AgentState, *, store: BaseStore = None) -> Dict[str, Any]:
 
     history = list(state.get("messages") or [])
     keep_count = max(1, MAX_HISTORY_MESSAGES - 1)
-    retained_history = history[-keep_count:]
+    retained_history, removed_history = _retained_window(history, keep_count)
     msgs: List[Any] = [SystemMessage(content=system_prompt), *retained_history]
     resp = llm.invoke(msgs)
 
@@ -101,7 +114,7 @@ def agent_step(state: AgentState, *, store: BaseStore = None) -> Dict[str, Any]:
 
     message_updates: List[Any] = [
         RemoveMessage(id=m.id, content="")
-        for m in history[:-keep_count]
+        for m in removed_history
         if getattr(m, "id", None)
     ]
     message_updates.append(resp)

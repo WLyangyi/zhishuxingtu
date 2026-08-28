@@ -211,15 +211,22 @@ async function createNewChat() {
 }
 
 async function switchChat(chatId: string) {
+  // 中止旧会话的流式响应，避免 thought/审批卡等事件串扰到新会话
+  sseClient.value?.abort()
+  sseClient.value = null
   currentChatId.value = chatId
   pendingApproval.value = null
   streamingContent.value = ''
+  loading.value = false
+  isStreaming.value = false
   liveTimeline.value = []
-  const [savedMessages, timeline] = await Promise.all([
+  const [chatData, timeline] = await Promise.all([
     agentApi.getMessages(chatId),
     agentApi.getTimeline(chatId)
   ])
-  messages.value = savedMessages
+  messages.value = chatData.messages
+  // 恢复 checkpoint 中尚未处理的审批请求（如刷新页面/切换会话导致审批卡丢失）
+  pendingApproval.value = chatData.pending_approval
   persistedTimeline.value = timeline
   scrollToBottom()
 }
@@ -236,6 +243,8 @@ async function deleteChat(chatId: string) {
 
 async function clearChat() {
   if (!currentChatId.value) return
+  sseClient.value?.abort()
+  sseClient.value = null
   await agentApi.clearSession(currentChatId.value)
   messages.value = []
   persistedTimeline.value = []
@@ -276,18 +285,40 @@ async function refreshAfterStream() {
   scrollToBottom()
 }
 
-async function connectStream(url: string, body: Record<string, unknown> = {}) {
+async function restorePendingState() {
+  if (!currentChatId.value) return
+  try {
+    const chatData = await agentApi.getMessages(currentChatId.value)
+    messages.value = chatData.messages
+    pendingApproval.value = chatData.pending_approval
+  } catch { /* 恢复失败时保持当前界面状态 */ }
+}
+
+async function connectStream(
+  url: string,
+  body: Record<string, unknown> = {},
+  onConflict?: () => void
+) {
   const token = authStore.token || localStorage.getItem('token') || undefined
   sseClient.value = new SSEClient()
   await sseClient.value.connect(url, body, {
     method: 'POST',
     token,
     onMessage: handleStreamMessage,
-    onError: (error) => {
+    onError: async (error) => {
       loading.value = false
       isStreaming.value = false
-      messages.value.push({ role: 'assistant', content: `连接 Agent 失败：${error.message}` })
-      scrollToBottom()
+      const status = (error as Error & { status?: number }).status
+      if (status === 409) {
+        // 会话存在待审批操作：恢复审批卡，并把未发送的问题放回输入框
+        await restorePendingState()
+        messages.value.push({ role: 'assistant', content: '该会话存在待审批操作，请先在审批卡中确认或拒绝。' })
+        onConflict?.()
+        scrollToBottom()
+      } else {
+        messages.value.push({ role: 'assistant', content: `连接 Agent 失败：${error.message}` })
+        scrollToBottom()
+      }
     },
     onComplete: () => { void refreshAfterStream() }
   })
@@ -307,7 +338,9 @@ async function sendMessage() {
   scrollToBottom()
 
   const params = new URLSearchParams({ question, session_id: currentChatId.value })
-  await connectStream(`${apiBase()}/api/agent/chat/stream?${params.toString()}`)
+  await connectStream(`${apiBase()}/api/agent/chat/stream?${params.toString()}`, {}, () => {
+    inputMessage.value = question
+  })
 }
 
 async function resumeApproval(approved: boolean) {

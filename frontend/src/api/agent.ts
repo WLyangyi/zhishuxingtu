@@ -12,6 +12,22 @@ export interface AgentMessage {
   content: string
 }
 
+export interface PendingApproval {
+  type: 'approval_required'
+  session_id?: string
+  tool_call_id?: string
+  tool_name?: string
+  title?: string
+  description?: string
+  args?: Record<string, unknown>
+  preview?: { title?: string; content?: string; folder_id?: string | null }
+}
+
+export interface SessionMessages {
+  messages: AgentMessage[]
+  pending_approval: PendingApproval | null
+}
+
 export interface TimelineEvent {
   id?: string
   type: 'thought' | 'action' | 'observation' | 'check' | 'tool'
@@ -70,7 +86,7 @@ export const agentApi = {
     await api.delete(`/agent/sessions/${sessionId}/messages`)
   },
 
-  getMessages: async (sessionId: string): Promise<AgentMessage[]> => {
+  getMessages: async (sessionId: string): Promise<SessionMessages> => {
     const response = await api.get(`/agent/sessions/${sessionId}/messages`)
     return response.data.data
   },

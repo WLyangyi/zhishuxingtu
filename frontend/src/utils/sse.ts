@@ -55,7 +55,9 @@ export class SSEClient {
       const response = await fetch(url, fetchOptions)
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        const error: Error & { status?: number } = new Error(`HTTP error! status: ${response.status}`)
+        error.status = response.status
+        throw error
       }
 
       const reader = response.body?.getReader()

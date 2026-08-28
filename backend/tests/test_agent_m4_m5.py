@@ -1,6 +1,6 @@
 import json
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.store.memory import InMemoryStore
@@ -9,6 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.api.routes.agent import _pending_approval_payload
 from app.db.base import Base
 from app.models.agent_session import AgentSession, AgentToolCall
 from app.models.user import User
@@ -18,7 +19,7 @@ from app.services.agent.memory import (
     preference_namespace,
     upsert_preference,
 )
-from app.services.agent.nodes import execute_tool
+from app.services.agent.nodes import _retained_window, execute_tool
 from app.services.agent.state import AgentState
 from app.services.observability import trace_service
 from app.services.observability.trace_service import (
@@ -191,3 +192,53 @@ def test_auto_trace_source_falls_back_when_langfuse_fails(monkeypatch):
     assert result["source"] == "local"
     assert "cloud unavailable" in result["fallback_reason"]
     db.close()
+
+
+def test_retained_window_preserves_tool_pair():
+    """裁剪点落在 tool_calls 配对中间时，保留区应向前扩展到配对的 AIMessage。"""
+    # 构造 30 条：index 0=H，之后 10 组 [A(tool_calls), T]，索引 1+2i=A(ci)、2+2i=T(ci)
+    paired: list = [HumanMessage(content="q0")]
+    for i in range(10):
+        paired.append(
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {"name": "search_notes", "args": {"query": str(i)}, "id": f"c{i}", "type": "tool_call"}
+                ],
+            )
+        )
+        paired.append(ToolMessage(content="r", tool_call_id=f"c{i}"))
+    while len(paired) < 30:
+        paired.append(HumanMessage(content="pad"))
+    assert len(paired) == 30
+
+    # start=30-22=8 → paired[8] 是 ToolMessage(c3)，应回退到配对的 AIMessage(c3) (index 7)
+    retained, removed = _retained_window(paired, 22)
+    assert not isinstance(retained[0], ToolMessage)
+    assert retained[0].tool_calls and retained[0].tool_calls[0]["id"] == "c3"
+    assert removed + retained == paired
+
+    # 裁剪起点不落在配对中时行为与机械裁剪一致
+    plain = [HumanMessage(content=f"q{i}") for i in range(30)]
+    retained_plain, removed_plain = _retained_window(plain, 23)
+    assert len(retained_plain) == 23
+    assert len(removed_plain) == 7
+
+
+def test_pending_approval_roundtrip():
+    """interrupt 挂起时可从 snapshot 恢复审批 payload，resume 后提取为 None。"""
+    graph = _hitl_graph()
+    config = {"configurable": {"thread_id": "restore-thread"}}
+
+    list(graph.stream(_hitl_input(), config=config))
+    snapshot = graph.get_state(config)
+    assert snapshot.next
+
+    payload = _pending_approval_payload(snapshot, "restore-thread")
+    assert payload is not None
+    assert payload["type"] == "approval_required"
+    assert payload["tool_name"] == "create_note"
+    assert payload["session_id"] == "restore-thread"
+
+    list(graph.stream(Command(resume={"approved": False, "reason": "不需要"}), config=config))
+    assert _pending_approval_payload(graph.get_state(config), "restore-thread") is None

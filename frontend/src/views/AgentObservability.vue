@@ -20,6 +20,10 @@
       <CloudOff :size="15" /> Langfuse 暂不可用，已自动回退本地审计数据：{{ fallbackReason }}
     </div>
 
+    <div v-if="loadError" class="fallback-banner error-banner">
+      <ShieldAlert :size="15" /> 加载失败：{{ loadError }}
+    </div>
+
     <section class="metric-grid">
       <article class="metric-card">
         <span class="metric-icon purple"><MessagesSquare :size="18" /></span>
@@ -119,6 +123,7 @@ const source = ref('auto')
 const traces = ref<AgentTrace[]>([])
 const summary = ref<ObservabilitySummary | null>(null)
 const fallbackReason = ref('')
+const loadError = ref('')
 const actualSource = ref<'local' | 'langfuse'>('local')
 const meta = ref({ page: 1, limit: 20, total_items: 0, total_pages: 0 })
 const selectedTrace = ref<AgentTrace | null>(null)
@@ -127,22 +132,37 @@ const selectedTimeline = ref<TimelineEvent[]>([])
 const successRate = computed(() => `${Math.round((summary.value?.success_rate ?? 1) * 100)}%`)
 const traceSourceLabel = computed(() => actualSource.value === 'langfuse' ? 'Langfuse 云端' : '本地审计')
 
+function errorText(error: unknown): string {
+  const err = error as { response?: { data?: { detail?: string } }; message?: string }
+  return err?.response?.data?.detail || err?.message || '请求失败'
+}
+
 async function loadTraces() {
   loading.value = true
+  loadError.value = ''
   try {
     const result = await agentApi.getTraces(source.value, meta.value.page, meta.value.limit)
     traces.value = result.data
     meta.value = result.meta
     actualSource.value = result.source
     fallbackReason.value = result.fallback_reason || ''
+  } catch (error) {
+    // 显式选择 Langfuse 源且云端不可达时后端返回 503；展示错误而不是误导性的空态
+    traces.value = []
+    meta.value = { page: 1, limit: 20, total_items: 0, total_pages: 0 }
+    loadError.value = errorText(error)
   } finally {
     loading.value = false
   }
 }
 
 async function refresh() {
-  const [summaryData] = await Promise.all([agentApi.getObservabilitySummary(), loadTraces()])
-  summary.value = summaryData
+  try {
+    const [summaryData] = await Promise.all([agentApi.getObservabilitySummary(), loadTraces()])
+    summary.value = summaryData
+  } catch (error) {
+    loadError.value = errorText(error)
+  }
 }
 
 async function changePage(page: number) {
@@ -199,6 +219,7 @@ onMounted(refresh)
 .header-controls { display: flex; gap: 8px; select, button { padding: 8px 11px; background: var(--bg-secondary); border: 1px solid var(--border-default); border-radius: var(--radius-sm); color: var(--text-secondary); font-size: 11px; } button { display: flex; align-items: center; gap: 6px; } }
 .spinning { animation: spin .8s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }
 .fallback-banner { margin-bottom: 14px; padding: 9px 12px; display: flex; align-items: center; gap: 7px; color: var(--primary-color); background: var(--primary-muted); border: 1px solid rgba(245,158,11,.25); border-radius: var(--radius-sm); font-size: 11px; }
+.error-banner { color: var(--accent-red); background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.25); }
 
 .metric-grid { display: grid; grid-template-columns: repeat(6, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px; }
 .metric-card { padding: 14px; display: flex; align-items: center; gap: 11px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); }

@@ -157,6 +157,16 @@ def _extract_interrupts(step: Dict[str, Any]) -> List[dict]:
     return payloads
 
 
+def _pending_approval_payload(snapshot: Any, session_id: str) -> Optional[dict]:
+    """从 checkpoint 快照提取待审批 interrupt，用于前端刷新/切换后恢复审批卡。"""
+    for task in getattr(snapshot, "tasks", None) or ():
+        for interrupt_obj in getattr(task, "interrupts", None) or ():
+            value = getattr(interrupt_obj, "value", interrupt_obj)
+            if isinstance(value, dict) and value.get("type") == "approval_required":
+                return {**value, "session_id": session_id}
+    return None
+
+
 def _stream_graph(
     db: Session,
     graph_input: Any,
@@ -241,6 +251,10 @@ async def agent_chat_stream(
         db.commit()
     config = {"configurable": {"thread_id": session.id}}
     snapshot = get_graph().get_state(config)
+    if snapshot.next:
+        # checkpoint 存在 pending interrupt 时拒绝新输入：langgraph 会静默丢弃挂起
+        # 审批任务，并在历史中留下悬挂的 AIMessage(tool_calls)，导致后续轮次持续报错。
+        raise HTTPException(status_code=409, detail="该会话有待审批操作，请先在审批卡中确认或拒绝")
     # Checkpoint 已有消息时不再接受客户端历史，避免每轮重复注入。
     effective_history = [] if snapshot.values.get("messages") else parsed_history
     graph_input = build_input(
@@ -339,7 +353,12 @@ async def get_session_messages(
             messages.append({"role": "user", "content": content})
         elif isinstance(message, AIMessage) and content:
             messages.append({"role": "assistant", "content": content})
-    return {"success": True, "code": 200, "data": messages}
+    pending_approval = _pending_approval_payload(snapshot, session_id)
+    return {
+        "success": True,
+        "code": 200,
+        "data": {"messages": messages, "pending_approval": pending_approval},
+    }
 
 
 @router.delete("/sessions/{session_id}")
