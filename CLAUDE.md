@@ -48,7 +48,7 @@ npm run build
 |------|------|
 | 前端 | Vue 3.4 + TypeScript + Pinia + Naive UI + Tailwind CSS + D3 |
 | 后端 | Python 3.11 + FastAPI + SQLAlchemy + FAISS + LangChain + LangGraph |
-| AI | DeepSeek agent（LangGraph ReAct + 三查）+ qwen Embedding/裁判 + RAG + SSE |
+| AI | DeepSeek agent（LangGraph 意图路由 + ReAct + 三查）+ qwen Embedding/裁判 + RAG + SSE |
 
 ## 架构概览
 
@@ -75,10 +75,11 @@ npm run build
 
 - **笔记管理**: `backend/app/api/routes/notes.py` - 支持双向链接 (`[[标题]]` 语法)
 - **知识图谱**: `backend/app/api/routes/graph.py` - 全局/局部图谱可视化
-- **Agentic RAG**: `backend/app/services/agent/` + `llm/` + `tools/` - LangGraph ReAct 循环 + 三查强制节点（grade_documents / hallucination_check / answer_quality）+ 6 个工具（DeepSeek provider）
+- **Agentic RAG**: `backend/app/services/agent/` + `llm/` + `tools/` - 入口意图识别四分类路由（`intent_classify`：knowledge / direct_answer / web_search / note_write）+ LangGraph ReAct 循环 + 三查强制节点（grade_documents / hallucination_check / answer_quality）+ 7 个工具（DeepSeek provider，含 web_search / create_note HITL）；`direct_answer` 短路直答省 token，`execute_tool` 对重复检索/永久不可用工具熔断防死循环
+- **MCP Server**: `backend/app/services/mcp_server.py` - 知识库 MCP 化（`/mcp` 端点，API Key 认证，与 agent 共享工具层）
 - **AI 问答**: `backend/app/services/rag_chain.py` - RAG 检索 + 流式输出（agent 降级 fallback）
 - **向量检索**: `backend/app/services/vector_store.py` - FAISS 向量索引 + 混合检索
-- **评估体系**: `backend/eval/` + `services/llm/judge_metrics.py` - 50 条 eval set + qwen3.8-max 独立裁判（`run_eval.py` 跑新旧对比，报告在 `eval/reports/`）
+- **评估体系**: `backend/eval/` + `services/llm/judge_metrics.py` - 50 条 eval set + qwen3.7-max-2026-06-08 独立裁判（`run_eval.py` 跑新旧对比，报告在 `eval/reports/`）
 - **Prompt 系统**: PromptLab + Skill Chain + Few-Shot 学习
 
 ## 数据模型
@@ -91,6 +92,7 @@ npm run build
 - Note ↔ Note (双向链接，通过 `linked_note_ids` 字段)
 - agent_sessions / agent_tool_calls - Agent 会话与工具调用审计（M1）
 - eval_sets / eval_runs - 评测题库与成绩单（M2）
+- user_preferences - 用户长期偏好，跨会话记忆（M4）
 
 ## 环境变量
 
@@ -101,8 +103,10 @@ npm run build
 - `FAISS_INDEX_PATH` - 向量索引路径
 - `DEEPSEEK_API_KEY` / `DEEPSEEK_MODEL=deepseek-v4-flash` / `DEEPSEEK_THINKING=disabled` - Agent 推理（M1，P2 必须关思考）
 - `QWEN_EMBEDDING_MODEL=qwen3.7-text-embedding` - Embedding（M0）
-- `QWEN_JUDGE_MODEL=qwen3.8-max` - 评估裁判（M2，P16 需 `enable_thinking:false`）
+- `QWEN_JUDGE_MODEL=qwen3.7-max-2026-06-08` - 评估裁判（M2/M6，P16 需 `enable_thinking:false`）
 - `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL` - 可观测（M2，fail-silent；trace 上报遗留，需干净 `.venv-clean`）
+- `MCP_API_KEY` - MCP Server `/mcp` 认证（M3，为空则 fail-closed 拒绝所有请求）
+- `TAVILY_API_KEY` - web_search 联网搜索（M3，为空则工具优雅降级）
 
 ## API 路由前缀
 
@@ -125,4 +129,5 @@ npm run build
 - [技术架构](docs/superpowers/specs/技术架构.md)
 - [开发实施文档](docs/superpowers/specs/开发实施文档.md)
 - [Agentic RAG 升级笔记](docs/agentic-rag-upgrade/升级笔记.md) — Agentic RAG 升级的决策/踩坑/进展（持续维护）
-- [Agentic RAG 实施计划](docs/agentic-rag-upgrade/实施计划.md) — M0-M5 执行步骤清单（M0/M1/M2 已细化）
+- [Agentic RAG 实施计划](docs/agentic-rag-upgrade/实施计划.md) — M0-M6 执行步骤清单（M0/M1/M2 已细化，M6 意图识别）
+- [Agentic RAG 待做清单](docs/agentic-rag-upgrade/待做清单.md) — M0-M5 收尾遗留与新发现缺陷（2026-08-28 盘点）
