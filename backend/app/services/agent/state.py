@@ -20,3 +20,4 @@ class AgentState(TypedDict, total=False):
     documents_grade: str
     hallucination_ok: str
     answer_ok: str
+    intent: str

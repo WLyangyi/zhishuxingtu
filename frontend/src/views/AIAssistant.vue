@@ -257,7 +257,7 @@ function apiBase(): string {
 }
 
 function handleStreamMessage(message: SSEMessage) {
-  if (['thought', 'action', 'observation', 'check'].includes(message.type)) {
+  if (['thought', 'action', 'observation', 'check', 'intent'].includes(message.type)) {
     if (message.content) {
       liveTimeline.value.push({ type: message.type as TimelineEvent['type'], content: message.content, node: message.node })
     }

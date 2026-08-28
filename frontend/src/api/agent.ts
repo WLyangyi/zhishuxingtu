@@ -30,7 +30,7 @@ export interface SessionMessages {
 
 export interface TimelineEvent {
   id?: string
-  type: 'thought' | 'action' | 'observation' | 'check' | 'tool'
+  type: 'thought' | 'action' | 'observation' | 'check' | 'tool' | 'intent'
   content?: string
   node?: string
   tool_name?: string

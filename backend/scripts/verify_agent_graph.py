@@ -60,6 +60,9 @@ def main() -> int:
             if v.get("answer"):
                 final_answer = v["answer"]
 
+    final_values = graph.get_state({"configurable": {"thread_id": thread_id}}).values or {}
+    print(f"[意图] {final_values.get('intent', 'knowledge')}\n")
+
     print("\n" + "=" * 50)
     print(f"[最终答案]\n{final_answer}")
     return 0

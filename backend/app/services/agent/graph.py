@@ -10,15 +10,18 @@ from app.services.agent.memory import get_memory_store
 from app.services.agent.nodes import (
     agent_step,
     answer_quality,
+    direct_answer,
     execute_tool,
     generate,
     grade_documents,
     hallucination_check,
+    intent_classify,
     output,
     rewrite_question,
     route_answer_quality,
     route_grade_documents,
     route_hallucination,
+    route_intent,
     should_continue,
 )
 from app.services.agent.state import AgentState
@@ -36,9 +39,17 @@ def build_graph():
     g.add_node("generate", generate)
     g.add_node("hallucination_check", hallucination_check)
     g.add_node("answer_quality", answer_quality)
+    g.add_node("intent_classify", intent_classify)
+    g.add_node("direct_answer", direct_answer)
     g.add_node("output", output)
 
-    g.add_edge(START, "agent_step")
+    g.add_edge(START, "intent_classify")
+    g.add_conditional_edges(
+        "intent_classify",
+        route_intent,
+        {"agent_step": "agent_step", "direct_answer": "direct_answer"},
+    )
+    g.add_edge("direct_answer", "output")
     g.add_conditional_edges(
         "agent_step",
         should_continue,

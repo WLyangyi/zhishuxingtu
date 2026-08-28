@@ -4,8 +4,8 @@ M2-4 评估脚本:旧基线(baseline RAG) vs 新 agent(ReAct) 跑 eval set,输�
 
 指标:
   recall@k       确定性,纯计算(相关文档在检索 top-k 里的覆盖率)
-  faithfulness   qwen3.8-max 裁判,答案声明是否 grounded 于检索证据
-  answer_relevancy qwen3.8-max 裁判,答案是否回应问题
+  faithfulness   qwen3.7-max 裁判,答案声明是否 grounded 于检索证据
+  answer_relevancy qwen3.7-max 裁判,答案是否回应问题
 
 用法:
     .venv\\Scripts\\python.exe eval/run_eval.py [--limit N] [--skip-judge] [--agent-version agent-v1]
@@ -15,6 +15,7 @@ import json
 import os
 import sys
 import time
+from collections import Counter
 from datetime import datetime
 from statistics import mean
 from typing import Any, Dict, List, Optional
@@ -51,7 +52,7 @@ def run_baseline(question: str, db):
 
 
 def run_agent(question: str, user_id: str):
-    """新链路: graph.stream, 收集 final answer + 检索到的 documents。"""
+    """新链路: graph.stream, 收集 final answer + 检索到的 documents + 意图 + 工具调用数。"""
     from app.services.agent.graph import build_input, get_graph
     from app.services.observability.langfuse_trace import build_stream_config
     from app.services.tools.context import ToolContext, set_tool_context
@@ -63,19 +64,23 @@ def run_agent(question: str, user_id: str):
 
     final_answer = ""
     documents: List[dict] = []
+    tool_calls = 0
     seen: set = set()
     for step in graph.stream(input_data, config=build_stream_config(thread_id)):
         for _, v in step.items():
             if v.get("answer"):
                 final_answer = v["answer"]
+            tool_calls = max(tool_calls, len(v.get("tool_calls_log") or []))
             for d in v.get("documents") or []:
                 did = d.get("id")
                 if did and did not in seen:
                     seen.add(did)
                     documents.append(d)
 
+    config = {"configurable": {"thread_id": thread_id}}
+    intent = (graph.get_state(config).values or {}).get("intent") or "knowledge"
     retrieved_ids = [d["id"] for d in documents]
-    return retrieved_ids, final_answer or "", documents
+    return retrieved_ids, final_answer or "", documents, intent, tool_calls
 
 
 def get_full_sources(note_ids: List[str], db) -> List[dict]:
@@ -143,6 +148,15 @@ def write_report(report_path: str, version: str, results: List[dict], agg_b: dic
             f"{fmt(mean_b('faithfulness'))}/{fmt(mean_a('faithfulness'))} | "
             f"{fmt(mean_b('relevancy'))}/{fmt(mean_a('relevancy'))} |"
         )
+
+    lines += [
+        "",
+        "## Agent 意图分布与成本",
+        "",
+        f"- 意图分布: {dict(Counter(r['agent'].get('intent') for r in results))}",
+        f"- agent 平均工具调用次数: {mean([r['agent'].get('tool_calls') or 0 for r in results]):.2f}",
+        "",
+    ]
 
     lines += ["", "## 逐条明细", "", "| id | 分类 | recall(b/a) | faithful(b/a) | relevancy(b/a) | 问题 |", "|---|---|---|---|---|---|"]
     for r in results:
@@ -233,7 +247,7 @@ def main() -> int:
             print(f"[{i}/{len(data)}] {qid} {question[:30]} ...")
 
             b_ids, b_answer, b_sources = run_baseline(question, db)
-            a_ids, a_answer, a_sources = run_agent(question, uid)
+            a_ids, a_answer, a_sources, a_intent, a_tool_calls = run_agent(question, uid)
 
             row = {
                 "id": qid,
@@ -242,7 +256,12 @@ def main() -> int:
                 "expected_answer": item.get("expected_answer", ""),
                 "rel_ids": rel_ids,
                 "baseline": {"recall": recall_at_k(b_ids, rel_ids, TOP_K), "retrieved": b_ids},
-                "agent": {"recall": recall_at_k(a_ids, rel_ids, TOP_K), "retrieved": a_ids},
+                "agent": {
+                    "recall": recall_at_k(a_ids, rel_ids, TOP_K),
+                    "retrieved": a_ids,
+                    "intent": a_intent,
+                    "tool_calls": a_tool_calls,
+                },
             }
 
             if judge_faithfulness:

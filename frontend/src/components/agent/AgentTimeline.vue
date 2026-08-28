@@ -9,6 +9,7 @@
         <Play v-else-if="event.type === 'action'" :size="14" />
         <Eye v-else-if="event.type === 'observation'" :size="14" />
         <ShieldCheck v-else-if="event.type === 'check'" :size="14" />
+        <Compass v-else-if="event.type === 'intent'" :size="14" />
         <Wrench v-else :size="14" />
       </div>
       <div class="timeline-content">
@@ -24,7 +25,7 @@
 </template>
 
 <script setup lang="ts">
-import { Brain, Eye, Play, ShieldCheck, Wrench } from 'lucide-vue-next'
+import { Brain, Compass, Eye, Play, ShieldCheck, Wrench } from 'lucide-vue-next'
 import type { TimelineEvent } from '@/api/agent'
 
 defineProps<{ events: TimelineEvent[] }>()
@@ -35,7 +36,8 @@ function eventLabel(event: TimelineEvent): string {
     thought: '思考',
     action: '行动',
     observation: '观察',
-    check: '质量检查'
+    check: '质量检查',
+    intent: '意图识别'
   }
   return labels[event.type] || event.type
 }
@@ -110,6 +112,7 @@ function statusLabel(status: string): string {
   &.action, &.tool { color: var(--accent-blue); }
   &.observation { color: var(--accent-green); }
   &.check { color: var(--primary-color); }
+  &.intent { color: var(--accent-purple); }
 }
 
 .timeline-content {

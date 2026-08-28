@@ -15,13 +15,17 @@ from langgraph.types import interrupt
 from app.services.agent.config import MAX_HISTORY_MESSAGES, MAX_ITERATIONS, TOKEN_BUDGET
 from app.services.agent.memory import get_preference_context
 from app.services.agent.prompts import (
+    DIRECT_ANSWER_PROMPT,
     GRADE_ANSWER_PROMPT,
     GRADE_DOCUMENTS_PROMPT,
     GRADE_HALLUCINATIONS_PROMPT,
+    INTENT_CLASSIFY_PROMPT,
+    INTENT_HINTS,
     REACT_SYSTEM_PROMPT,
     GradeAnswer,
     GradeDocuments,
     GradeHallucinations,
+    QueryIntent,
 )
 from app.services.agent.state import AgentState
 from app.services.llm.deepseek_provider import get_deepseek_provider
@@ -94,6 +98,11 @@ def agent_step(state: AgentState, *, store: BaseStore = None) -> Dict[str, Any]:
     provider = get_deepseek_provider()
     llm = provider.bind_tools(ALL_TOOLS)
     system_prompt = REACT_SYSTEM_PROMPT
+    # 意图提示只在首轮注入一次:持续注入会把 agent 反复推回同一条路由(如 web_search 不可用时死循环)。
+    if (state.get("iteration") or 0) == 0:
+        hint = INTENT_HINTS.get(state.get("intent") or "")
+        if hint:
+            system_prompt += "\n\n" + hint
     preference_context = get_preference_context(state.get("user_id", ""), store)
     if preference_context:
         system_prompt += (
@@ -169,13 +178,27 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
                     status = "error"
                     result = f"工具执行出错:{e}"
         else:
-            try:
-                result = _invoke_tool(fn, args, state) if fn else f"未知工具:{name}"
-                if not fn:
-                    status = "error"
-            except Exception as e:  # noqa: BLE001
+            # 熔断:web_search 本轮已确认"永久未启用"后,后续请求直接短路,不再真调工具/烧 token。
+            if name == "web_search" and any(
+                lg.get("tool") == "web_search" and "永久未启用" in (lg.get("result") or "")
+                for lg in tool_log
+            ):
+                result = json.dumps(
+                    {
+                        "error": "web_search 已确认永久不可用(未配置 TAVILY_API_KEY),禁止再次调用。"
+                        "请直接基于已有信息回答,或明确告知用户联网搜索未启用。"
+                    },
+                    ensure_ascii=False,
+                )
                 status = "error"
-                result = f"工具执行出错:{e}"
+            else:
+                try:
+                    result = _invoke_tool(fn, args, state) if fn else f"未知工具:{name}"
+                    if not fn:
+                        status = "error"
+                except Exception as e:  # noqa: BLE001
+                    status = "error"
+                    result = f"工具执行出错:{e}"
 
         latency_ms = max(0, int((time.perf_counter() - started) * 1000))
         if status == "success":
@@ -205,6 +228,15 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
                 docs = json.loads(result)
                 if isinstance(docs, list):
                     documents.extend(docs)
+            except Exception:
+                pass
+
+        if name == "web_search":
+            # 联网结果同样作为证据进入 documents,供三查核对;失败结果(error dict)不收集。
+            try:
+                web_docs = json.loads(result)
+                if isinstance(web_docs, list):
+                    documents.extend(web_docs)
             except Exception:
                 pass
 
@@ -327,3 +359,62 @@ def route_hallucination(state: AgentState) -> str:
 
 def route_answer_quality(state: AgentState) -> str:
     return "output" if state.get("answer_ok") != "no" else "rewrite_question"
+
+
+# ---------- 意图识别 ----------
+def intent_classify(state: AgentState) -> Dict[str, Any]:
+    """意图识别节点。分类失败时 fail-safe 默认 knowledge，不让主流程被阻塞。"""
+    question = state.get("question") or ""
+    intent = "knowledge"
+    reason = "fail-safe 默认走知识库检索"
+    try:
+        provider = get_deepseek_provider()
+        structured = provider.with_structured_output(QueryIntent)
+        resp = structured.invoke(
+            [
+                SystemMessage(content=INTENT_CLASSIFY_PROMPT),
+                HumanMessage(content=question),
+            ]
+        )
+        candidate = (getattr(resp, "intent", "") or "").strip().lower()
+        if candidate in ("knowledge", "direct_answer", "web_search", "note_write"):
+            intent = candidate
+            reason = (getattr(resp, "reason", "") or "")[:120]
+        else:
+            reason = f"模型返回非法意图 {candidate!r},默认 knowledge"
+    except Exception as exc:  # noqa: BLE001 分类只是路由提示,失败不阻断
+        reason = f"分类失败,默认 knowledge: {exc}"
+    return {
+        "intent": intent,
+        "thoughts": _append_thought(state, {"type": "intent", "content": f"意图识别: {intent} | {reason}"}),
+    }
+
+
+def direct_answer(state: AgentState, *, store: BaseStore = None) -> Dict[str, Any]:
+    """直答分支:通用常识/闲聊,跳过工具循环与三查,省 token 且避免简单题掉链。"""
+    provider = get_deepseek_provider()
+    system_prompt = DIRECT_ANSWER_PROMPT
+    preference_context = get_preference_context(state.get("user_id", ""), store)
+    if preference_context:
+        system_prompt += "\n\n## 用户长期偏好\n" f"{preference_context}"
+    question = state.get("question") or ""
+    resp = provider.get_chat_model().invoke(
+        [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=question),
+        ]
+    )
+    answer = (resp.content or "").strip() or "抱歉,我暂时无法回答这个问题。"
+    return {
+        # 同步写入 checkpoint,保证多轮会话上下文连续
+        "messages": [HumanMessage(content=question), AIMessage(content=answer)],
+        "answer": answer,
+        "thoughts": _append_thought(
+            state, {"type": "thought", "content": "direct_answer: 通用知识/闲聊,跳过检索直接作答"}
+        ),
+    }
+
+
+def route_intent(state: AgentState) -> str:
+    """条件边:按意图返回下一节点。direct_answer 走直答,其余走 agent_step。"""
+    return "direct_answer" if (state.get("intent") == "direct_answer") else "agent_step"

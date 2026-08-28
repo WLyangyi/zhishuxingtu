@@ -62,10 +62,11 @@ def web_search(query: str) -> str:
 
     api_key = settings.TAVILY_API_KEY
     if not api_key:
+        # 永久不可用:明确告知 agent 不要再重试,应改从知识库检索或直接说明无法获取实时信息。
         return json.dumps(
             {
-                "error": "web_search 未启用: .env 缺少 TAVILY_API_KEY"
-                "(在 https://tavily.com 免费注册获取并填入,重启后端后生效)"
+                "error": "web_search 永久未启用(.env 缺少 TAVILY_API_KEY)。"
+                "请勿再次调用 web_search;应改从知识库检索,或直接告知用户联网搜索未启用。"
             },
             ensure_ascii=False,
         )
