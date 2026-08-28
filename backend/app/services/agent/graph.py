@@ -126,4 +126,5 @@ def build_input(question: str, session_id: str, user_id: str, history: Optional[
         "documents": [],
         "thoughts": [],
         "tool_calls_log": [],
+        "searched_queries": [],
     }

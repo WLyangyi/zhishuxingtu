@@ -60,6 +60,34 @@ def _doc_text(docs: List[dict], limit: int = 5) -> str:
     return "\n".join(lines) if lines else "(无)"
 
 
+def _full_doc_text(docs: List[dict], limit: int = 5) -> str:
+    """用完整笔记内容做评审证据(病灶A,与 P18 同类坑):snippet 截断会导致
+    grade_documents 误判相关文档不相关→无辜触发 rewrite 把好答案改废。
+    DB 查不到(如联网结果)的文档回退用 snippet。"""
+    from app.db.session import SessionLocal
+    from app.models.note import Note
+
+    ids = [d.get("id") for d in docs[:limit] if d.get("id")]
+    notes: dict = {}
+    try:
+        db = SessionLocal()
+        try:
+            for n in db.query(Note).filter(Note.id.in_(ids)).all():
+                notes[n.id] = n
+        finally:
+            db.close()
+    except Exception:
+        notes = {}
+    lines = []
+    for d in docs[:limit]:
+        n = notes.get(d.get("id"))
+        if n is not None:
+            lines.append(f"- 《{n.title}》: {(n.content or '')[:2000]}")
+        else:
+            lines.append(f"- 《{d.get('title', '')}》: {(d.get('snippet') or '')[:500]}")
+    return "\n".join(lines) if lines else "(无)"
+
+
 def _append_thought(state: AgentState, entry: dict) -> List[dict]:
     thoughts = list(state.get("thoughts") or [])
     thoughts.append(entry)
@@ -141,6 +169,7 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
     thoughts = _append_thought(state, {"type": "action", "content": "执行工具"})
     tool_log = list(state.get("tool_calls_log") or [])
     documents = list(state.get("documents") or [])
+    searched_queries = set(state.get("searched_queries") or [])
     new_msgs: List[Any] = []
 
     for tc in tool_calls:
@@ -178,8 +207,30 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
                     status = "error"
                     result = f"工具执行出错:{e}"
         else:
+            if name == "search_notes":
+                # 病灶B:同一轮内重复相同的检索词直接短路,防多跳检索死循环烧迭代。
+                query = str((args or {}).get("query") or "").strip()
+                if query and query in searched_queries:
+                    result = json.dumps(
+                        {
+                            "error": "该检索词已在本轮执行过且结果已提供,请勿重复检索。"
+                            "请基于已有结果直接作答,或换一个不同的检索词。"
+                        },
+                        ensure_ascii=False,
+                    )
+                    status = "error"
+                else:
+                    try:
+                        result = _invoke_tool(fn, args, state) if fn else f"未知工具:{name}"
+                        if not fn:
+                            status = "error"
+                    except Exception as e:  # noqa: BLE001
+                        status = "error"
+                        result = f"工具执行出错:{e}"
+                    if query:
+                        searched_queries.add(query)
             # 熔断:web_search 本轮已确认"永久未启用"后,后续请求直接短路,不再真调工具/烧 token。
-            if name == "web_search" and any(
+            elif name == "web_search" and any(
                 lg.get("tool") == "web_search" and "永久未启用" in (lg.get("result") or "")
                 for lg in tool_log
             ):
@@ -231,6 +282,27 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
             except Exception:
                 pass
 
+        if name == "get_note":
+            # 病灶A:get_note 读到的完整内容并入 documents,保证 grade_documents/三查
+            # 能看到 agent 实际读过的证据(与 P18 同理:snippet 截断会误判)。
+            try:
+                note = json.loads(result)
+                if isinstance(note, dict) and note.get("id"):
+                    doc = {
+                        "id": note["id"],
+                        "title": note.get("title") or "",
+                        "snippet": (note.get("content") or "")[:300],
+                        "full_content": note.get("content") or "",
+                    }
+                    for i, d in enumerate(documents):
+                        if d.get("id") == note["id"]:
+                            documents[i] = doc
+                            break
+                    else:
+                        documents.append(doc)
+            except Exception:
+                pass
+
         if name == "web_search":
             # 联网结果同样作为证据进入 documents,供三查核对;失败结果(error dict)不收集。
             try:
@@ -245,6 +317,7 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
         "thoughts": thoughts,
         "tool_calls_log": tool_log,
         "documents": documents,
+        "searched_queries": sorted(searched_queries),
     }
 
 
@@ -260,7 +333,7 @@ def grade_documents(state: AgentState) -> Dict[str, Any]:
     resp = structured.invoke(
         [
             SystemMessage(content=GRADE_DOCUMENTS_PROMPT),
-            HumanMessage(content=f"问题:{state['question']}\n\n文档:\n{_doc_text(docs)}"),
+            HumanMessage(content=f"问题:{state['question']}\n\n文档:\n{_full_doc_text(docs)}"),
         ]
     )
     score = (resp.binary_score or "").lower()
@@ -268,13 +341,20 @@ def grade_documents(state: AgentState) -> Dict[str, Any]:
     return {"documents_grade": score, "thoughts": thoughts}
 
 
+def _best_answer(messages: List[Any]) -> str:
+    """取内容最长的 AIMessage 作为答案(病灶B):rewrite/迭代循环后最后一条可能是
+    退化短句,最长内容通常是最实质的答案;带 tool_calls 的消息 content 多为空,已排除。"""
+    best = ""
+    for m in messages or []:
+        if isinstance(m, AIMessage) and not getattr(m, "tool_calls", None):
+            content = m.content or ""
+            if len(content) > len(best):
+                best = content
+    return best
+
+
 def generate(state: AgentState) -> Dict[str, Any]:
-    answer = ""
-    for m in reversed(state.get("messages") or []):
-        if isinstance(m, AIMessage):
-            answer = m.content or ""
-            break
-    return {"answer": answer}
+    return {"answer": _best_answer(state.get("messages") or [])}
 
 
 def hallucination_check(state: AgentState) -> Dict[str, Any]:
@@ -328,10 +408,7 @@ def rewrite_question(state: AgentState) -> Dict[str, Any]:
 def output(state: AgentState) -> Dict[str, Any]:
     answer = state.get("answer")
     if not answer:
-        for m in reversed(state.get("messages") or []):
-            if isinstance(m, AIMessage):
-                answer = m.content or ""
-                break
+        answer = _best_answer(state.get("messages") or [])
     if not answer:
         answer = "已达到最大迭代次数,未能生成满意答案。"
     return {"answer": answer}

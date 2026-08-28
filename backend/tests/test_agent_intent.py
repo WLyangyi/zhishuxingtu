@@ -8,6 +8,7 @@ from langgraph.graph import END, START, StateGraph
 from app.services.agent.nodes import (
     direct_answer,
     execute_tool,
+    generate,
     intent_classify,
     route_intent,
 )
@@ -146,3 +147,63 @@ def test_web_search_circuit_breaker_blocks_after_permanent_unavailable(monkeypat
     log2 = second[-1]["execute_tool"]["tool_calls_log"]
     assert "已确认永久不可用" in log2[-1]["result"]
     assert log2[-1]["status"] == "error"
+
+
+def test_generate_picks_longest_answer():
+    """rewrite 循环后最后一条可能是退化短句,应取内容最长的 AIMessage 作为答案。"""
+    from langchain_core.messages import HumanMessage
+
+    msgs = [
+        HumanMessage(content="q"),
+        AIMessage(content="好答案,内容足够长,覆盖了问题全部要点并给出依据和结论。"),
+        AIMessage(content="以上回答基于知识库中的三篇笔记。"),  # 退化的尾部短句
+        AIMessage(content="", tool_calls=[{"name": "search_notes", "args": {"query": "x"}, "id": "c", "type": "tool_call"}]),
+    ]
+    out = generate({"messages": msgs})
+    assert "好答案" in out["answer"]
+    assert "以上回答基于" not in out["answer"]
+
+
+def test_search_notes_dedup_blocks_repeat_query(monkeypatch):
+    """同一轮内重复相同的 search_notes 检索词应被短路,防多跳检索死循环。"""
+    calls = []
+
+    class FakeSearchNotes:
+        def invoke(self, args):
+            calls.append(args)
+            return json.dumps([{"id": "n1", "title": "笔记1", "snippet": "内容"}], ensure_ascii=False)
+
+    monkeypatch.setitem(execute_tool.__globals__["TOOL_MAP"], "search_notes", FakeSearchNotes())
+
+    def _tool_input(call_id, searched=None):
+        return {
+            "messages": [
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {"name": "search_notes", "args": {"query": "吴浩阳 项目"}, "id": call_id, "type": "tool_call"}
+                    ],
+                )
+            ],
+            "thoughts": [],
+            "tool_calls_log": [],
+            "documents": [],
+            "searched_queries": searched or [],
+        }
+
+    builder = StateGraph(AgentState)
+    builder.add_node("execute_tool", execute_tool)
+    builder.add_edge(START, "execute_tool")
+    builder.add_edge("execute_tool", END)
+    graph = builder.compile(checkpointer=MemorySaver())
+    config = {"configurable": {"thread_id": "search-dedup"}}
+
+    first = list(graph.stream(_tool_input("c1"), config=config))
+    assert len(calls) == 1
+    searched = first[-1]["execute_tool"]["searched_queries"]
+    assert "吴浩阳 项目" in searched
+
+    second = list(graph.stream(_tool_input("c2", searched=searched), config=config))
+    assert len(calls) == 1  # 重复检索被短路,不新增真实调用
+    log2 = second[-1]["execute_tool"]["tool_calls_log"]
+    assert "请勿重复检索" in log2[-1]["result"]

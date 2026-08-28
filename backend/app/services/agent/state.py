@@ -17,6 +17,7 @@ class AgentState(TypedDict, total=False):
     answer: str
     thoughts: List[dict]
     tool_calls_log: List[dict]
+    searched_queries: List[str]
     documents_grade: str
     hallucination_ok: str
     answer_ok: str
