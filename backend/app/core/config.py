@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     DASHSCOPE_API_KEY: str = ""
     DASHSCOPE_EMBEDDING_MODEL: str = "text-embedding-v3"
     QWEN_EMBEDDING_MODEL: str = "qwen3.7-text-embedding"
-    QWEN_JUDGE_MODEL: str = "qwen3.8-max"      # M2: 评估独立裁判（与推理模型不同源）
+    QWEN_JUDGE_MODEL: str = "qwen3.7-max-2026-06-08"      # M2: 评估独立裁判（与推理模型不同源）
 
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     HF_MIRROR_URL: str = "https://hf-mirror.com"

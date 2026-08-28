@@ -1,4 +1,4 @@
-"""M2-3 评估指标:faithfulness / answer_relevancy,由 qwen3.8-max 独立裁判打分。"""
+"""M2-3 评估指标:faithfulness / answer_relevancy,由 qwen3.7-max 独立裁判打分。"""
 from typing import Any, Dict, List, Union
 
 from pydantic import BaseModel, Field

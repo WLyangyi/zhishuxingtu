@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-M2-3 验证:确认 qwen3.8-max 独立裁判可用(普通对话 + 结构化输出 function_calling)。
+M2-3 验证:确认 qwen3.7-max 独立裁判可用(普通对话 + 结构化输出 function_calling)。
 
 用法:
     .venv\\Scripts\\python.exe scripts/verify_qwen_judge.py
@@ -27,11 +27,11 @@ class FaithfulnessGrade(BaseModel):
 
 def get_judge_llm() -> ChatOpenAI:
     return ChatOpenAI(
-        model=settings.QWEN_JUDGE_MODEL or "qwen3.8-max",
+        model=settings.QWEN_JUDGE_MODEL or "qwen3.7-max-2026-06-08",
         api_key=settings.DASHSCOPE_API_KEY,
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
         temperature=0,
-        # P16: qwen3.8-max 默认 thinking mode 拒绝强制 tool_choice(400),必须显式关思考
+        # P16: qwen 裁判默认 thinking mode 拒绝强制 tool_choice(400),必须显式关思考
         extra_body={"enable_thinking": False},
     )
 
