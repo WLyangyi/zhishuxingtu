@@ -24,6 +24,15 @@ REACT_SYSTEM_PROMPT = """你是「知枢星图」个人知识库的智能助手,
 """
 
 
+# M7.2:knowledge_agent 专属 prompt = ReAct 主干 + 职责边界(检索问答专职,写入诉求告知单独发起)
+KNOWLEDGE_AGENT_PROMPT = REACT_SYSTEM_PROMPT + """
+## 职责边界(M7 多 Agent)
+你只负责【检索与问答】,不执行任何写入操作。
+用户提出保存/记录/创建笔记类诉求时,不要尝试调用写入工具,明确告知:
+"写入操作请在对话中单独发起(例如:'把……保存为笔记'),我会交给写入助手处理。"
+"""
+
+
 # ---------- 三查结构化输出模型 ----------
 class GradeDocuments(BaseModel):
     binary_score: str = Field(description="yes/no:检索到的文档是否与问题相关")

@@ -215,6 +215,21 @@ def test_multi_agent_graph_compiles_and_routes():
     assert {"intent_classify", "direct_answer", "agent_step", "output"} <= node_names
 
 
+def test_agent_configs_knowledge_specialized():
+    """M7.2:knowledge_agent 工具集移出 create_note(HITL 专职 note_write),
+    web_search 保留作回退(拍板),专属 prompt 声明职责边界;
+    note_write 配置保留写入能力(M7.3 前由现配置承载)。"""
+    from app.services.agent.nodes import AGENT_CONFIGS
+
+    k_tools = {t.name for t in AGENT_CONFIGS["knowledge"]["tools"]}
+    assert "create_note" not in k_tools
+    assert "web_search" in k_tools  # 拍板:保留回退
+    assert k_tools == {"search_notes", "get_note", "get_graph_neighbors", "list_tags", "list_folders", "web_search"}
+    assert "职责边界" in AGENT_CONFIGS["knowledge"]["system_prompt"]
+    assert "不执行任何写入操作" in AGENT_CONFIGS["knowledge"]["system_prompt"]
+    assert "create_note" in {t.name for t in AGENT_CONFIGS["note_write"]["tools"]}
+
+
 def test_direct_answer_returns_answer_and_writes_checkpoint(monkeypatch):
     class FakeResp:
         content = "你好!有什么可以帮你?"

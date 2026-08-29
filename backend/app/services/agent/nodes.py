@@ -21,6 +21,7 @@ from app.services.agent.prompts import (
     GRADE_HALLUCINATIONS_PROMPT,
     INTENT_CLASSIFY_PROMPT,
     INTENT_HINTS,
+    KNOWLEDGE_AGENT_PROMPT,
     REACT_SYSTEM_PROMPT,
     GradeAnswer,
     GradeDocuments,
@@ -52,11 +53,14 @@ ALL_TOOLS = [
 TOOL_MAP = {t.name: t for t in ALL_TOOLS}
 
 # ---------- A′ 多 Agent 策略表(M7) ----------
-# 按 current_agent 查表绑定工具子集与 system prompt。spike(M7.0)阶段各 agent 配置与现状
-# 完全一致,先落地查表机制并验证行为不变;M7.2/M7.3 在此差异化(移除 create_note、web 专职等)。
+# 按 current_agent 查表绑定工具子集与 system prompt。
+# M7.2 起 knowledge 先行差异化:移出 create_note(HITL 写入专职给 note_write 意图),
+# web_search 保留作意图误判回退(拍板);web_search/note_write 两配置 M7.3 专职化。
 # chat_agent 走 direct_answer 节点,无工具,不入表。
+KNOWLEDGE_TOOLS = [t for t in ALL_TOOLS if t.name != "create_note"]
+
 AGENT_CONFIGS: Dict[str, Dict[str, Any]] = {
-    "knowledge": {"tools": ALL_TOOLS, "system_prompt": REACT_SYSTEM_PROMPT},
+    "knowledge": {"tools": KNOWLEDGE_TOOLS, "system_prompt": KNOWLEDGE_AGENT_PROMPT},
     "web_search": {"tools": ALL_TOOLS, "system_prompt": REACT_SYSTEM_PROMPT},
     "note_write": {"tools": ALL_TOOLS, "system_prompt": REACT_SYSTEM_PROMPT},
 }
