@@ -103,7 +103,8 @@ npm run build
 - `FAISS_INDEX_PATH` - 向量索引路径
 - `DEEPSEEK_API_KEY` / `DEEPSEEK_MODEL=deepseek-v4-flash` / `DEEPSEEK_THINKING=disabled` - Agent 推理（M1，P2 必须关思考）
 - `QWEN_EMBEDDING_MODEL=qwen3.7-text-embedding` - Embedding（M0）
-- `QWEN_JUDGE_MODEL=qwen3.7-max-2026-06-08` - 评估裁判（M2/M6，P16 需 `enable_thinking:false`）
+- `QWEN_JUDGE_MODEL=qwen3.7-plus` - 评估裁判（M2/M6/M7；qwen3.7-max-2026-06-08 免费额度耗尽 403 后于 2026-08-30 切换，勿切回）
+- `AGENT_MULTI_AGENT=false` - M7 A′ 多 Agent 图开关（true=编排器路由 4 子 Agent 的平铺图，false=单 Agent 图回退位）
 - `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL` - 可观测（M2，fail-silent；trace 上报遗留，需干净 `.venv-clean`）
 - `MCP_API_KEY` - MCP Server `/mcp` 认证（M3，为空则 fail-closed 拒绝所有请求）
 - `TAVILY_API_KEY` - web_search 联网搜索（M3，为空则工具优雅降级）
