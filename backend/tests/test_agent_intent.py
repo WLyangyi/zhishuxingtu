@@ -11,6 +11,7 @@ from app.services.agent.nodes import (
     generate,
     intent_classify,
     route_intent,
+    route_intent_multi,
 )
 from app.services.agent.state import AgentState
 
@@ -77,6 +78,66 @@ def test_intent_classify_rejects_invalid_intent(monkeypatch):
     monkeypatch.setitem(intent_classify.__globals__, "get_deepseek_provider", lambda: FakeProvider())
     out = intent_classify(_state())
     assert out["intent"] == "knowledge"
+
+
+def test_intent_classify_sets_current_agent_and_turn_start(monkeypatch):
+    """M7 A′:intent_classify 需写入 current_agent 与 turn_start_index(本轮起点)。"""
+    from langchain_core.messages import HumanMessage
+
+    class FakeResp:
+        intent = "web_search"
+        reason = "需要实时信息"
+
+    class FakeStructured:
+        def invoke(self, msgs):
+            return FakeResp()
+
+    class FakeProvider:
+        def with_structured_output(self, model):
+            return FakeStructured()
+
+    monkeypatch.setitem(intent_classify.__globals__, "get_deepseek_provider", lambda: FakeProvider())
+    msgs = [AIMessage(content="上一轮的旧答案"), HumanMessage(content="今天有什么AI新闻")]
+    out = intent_classify(_state(question="今天有什么AI新闻", messages=msgs))
+    assert out["intent"] == "web_search"
+    assert out["current_agent"] == "web_search"
+    assert out["turn_start_index"] == 1  # 最后一条(本轮新问题)在通道中的下标
+
+
+def test_best_answer_scoped_to_current_turn():
+    """M7.0 跨轮污染修复:上一轮长答案不得盖掉本轮短答案;
+    不带 turn_start_index 时保持旧行为(全通道取最长)。"""
+    from langchain_core.messages import HumanMessage
+
+    msgs = [
+        HumanMessage(content="旧问题"),
+        AIMessage(content="这是一轮非常非常长的旧答案,长度远超本轮答案,若不限定本轮范围会被误选为答案。"),
+        HumanMessage(content="新问题"),
+        AIMessage(content="短答案"),
+    ]
+    # 旧行为(无 turn_start_index):全通道取最长
+    assert "非常非常长" in generate({"messages": msgs})["answer"]
+    # 新行为(M7.0):只在本轮范围内取
+    out = generate({"messages": msgs, "turn_start_index": 2})
+    assert out["answer"] == "短答案"
+
+
+def test_route_intent_multi_maps_intent_to_agent_names():
+    """M7 A′ 多 Agent 路由:意图 → agent 名,未知意图 fail-safe 回 knowledge_agent。"""
+    assert route_intent_multi({"intent": "direct_answer"}) == "chat_agent"
+    assert route_intent_multi({"intent": "knowledge"}) == "knowledge_agent"
+    assert route_intent_multi({"intent": "web_search"}) == "web_research_agent"
+    assert route_intent_multi({"intent": "note_write"}) == "note_write_agent"
+    assert route_intent_multi({}) == "knowledge_agent"
+
+
+def test_multi_agent_graph_compiles_and_routes():
+    """A′ 多 Agent 图可编译,路由语义:chat→direct_answer,其余→agent_step。"""
+    from app.services.agent.graph import build_multi_agent_graph
+
+    graph = build_multi_agent_graph().compile()
+    node_names = set(graph.get_graph().nodes)
+    assert {"intent_classify", "direct_answer", "agent_step", "output"} <= node_names
 
 
 def test_direct_answer_returns_answer_and_writes_checkpoint(monkeypatch):

@@ -80,6 +80,8 @@ class Settings(BaseSettings):
     AGENT_TOKEN_BUDGET: int = 10000
     AGENT_MAX_HISTORY_MESSAGES: int = 24
     AGENT_CHECKPOINT_DB: str = os.path.join("data", "langgraph_checkpoints.db")
+    # M7: A′ 多 Agent 图开关(false=单 Agent 图回退位,双图共存支持一键回滚与 eval 同进程对比)
+    AGENT_MULTI_AGENT: bool = False
 
     USE_RERANKER: bool = True
     RERANKER_TOP_K: int = 5

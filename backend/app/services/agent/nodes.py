@@ -51,6 +51,22 @@ ALL_TOOLS = [
 ]
 TOOL_MAP = {t.name: t for t in ALL_TOOLS}
 
+# ---------- A′ 多 Agent 策略表(M7) ----------
+# 按 current_agent 查表绑定工具子集与 system prompt。spike(M7.0)阶段各 agent 配置与现状
+# 完全一致,先落地查表机制并验证行为不变;M7.2/M7.3 在此差异化(移除 create_note、web 专职等)。
+# chat_agent 走 direct_answer 节点,无工具,不入表。
+AGENT_CONFIGS: Dict[str, Dict[str, Any]] = {
+    "knowledge": {"tools": ALL_TOOLS, "system_prompt": REACT_SYSTEM_PROMPT},
+    "web_search": {"tools": ALL_TOOLS, "system_prompt": REACT_SYSTEM_PROMPT},
+    "note_write": {"tools": ALL_TOOLS, "system_prompt": REACT_SYSTEM_PROMPT},
+}
+
+
+def _agent_config(current_agent: Any) -> Dict[str, Any]:
+    """按 current_agent 查表;缺省/未知值回退 knowledge 全能配置(与意图 fail-safe 同源)。"""
+    cfg = AGENT_CONFIGS.get(str(current_agent or "knowledge"))
+    return cfg or AGENT_CONFIGS["knowledge"]
+
 
 def _doc_text(docs: List[dict], limit: int = 5) -> str:
     lines = []
@@ -124,8 +140,10 @@ def _retained_window(history: List[Any], keep_count: int) -> tuple[List[Any], Li
 # ---------- 节点 ----------
 def agent_step(state: AgentState, *, store: BaseStore = None) -> Dict[str, Any]:
     provider = get_deepseek_provider()
-    llm = provider.bind_tools(ALL_TOOLS)
-    system_prompt = REACT_SYSTEM_PROMPT
+    # M7 A′:按 current_agent 查表绑定工具子集与 system prompt(spike 阶段与现状一致)
+    agent_cfg = _agent_config(state.get("current_agent"))
+    llm = provider.bind_tools(agent_cfg["tools"])
+    system_prompt = agent_cfg["system_prompt"]
     # 意图提示只在首轮注入一次:持续注入会把 agent 反复推回同一条路由(如 web_search 不可用时死循环)。
     if (state.get("iteration") or 0) == 0:
         hint = INTENT_HINTS.get(state.get("intent") or "")
@@ -341,11 +359,15 @@ def grade_documents(state: AgentState) -> Dict[str, Any]:
     return {"documents_grade": score, "thoughts": thoughts}
 
 
-def _best_answer(messages: List[Any]) -> str:
-    """取内容最长的 AIMessage 作为答案(病灶B):rewrite/迭代循环后最后一条可能是
-    退化短句,最长内容通常是最实质的答案;带 tool_calls 的消息 content 多为空,已排除。"""
+def _best_answer(messages: List[Any], turn_start_index: int = 0) -> str:
+    """取本轮(自 turn_start_index 起)内容最长的 AIMessage 作为答案。
+    (病灶B)rewrite/迭代循环后最后一条可能是退化短句,最长内容通常是最实质的答案;
+    (M7.0 修复跨轮污染)限定本轮范围——checkpoint 保留近 24 条历史,若不限定,
+    之前轮次的长答案会盖掉本轮较精炼的答案;多 agent 后 chat 冗长直答与知识答案同池,误选概率更大。
+    带 tool_calls 的消息 content 多为空,已排除。"""
+    start = max(0, int(turn_start_index or 0))
     best = ""
-    for m in messages or []:
+    for m in (messages or [])[start:]:
         if isinstance(m, AIMessage) and not getattr(m, "tool_calls", None):
             content = m.content or ""
             if len(content) > len(best):
@@ -354,7 +376,11 @@ def _best_answer(messages: List[Any]) -> str:
 
 
 def generate(state: AgentState) -> Dict[str, Any]:
-    return {"answer": _best_answer(state.get("messages") or [])}
+    return {
+        "answer": _best_answer(
+            state.get("messages") or [], state.get("turn_start_index") or 0
+        )
+    }
 
 
 def hallucination_check(state: AgentState) -> Dict[str, Any]:
@@ -408,7 +434,9 @@ def rewrite_question(state: AgentState) -> Dict[str, Any]:
 def output(state: AgentState) -> Dict[str, Any]:
     answer = state.get("answer")
     if not answer:
-        answer = _best_answer(state.get("messages") or [])
+        answer = _best_answer(
+            state.get("messages") or [], state.get("turn_start_index") or 0
+        )
     if not answer:
         answer = "已达到最大迭代次数,未能生成满意答案。"
     return {"answer": answer}
@@ -463,6 +491,10 @@ def intent_classify(state: AgentState) -> Dict[str, Any]:
         reason = f"分类失败,默认 knowledge: {exc}"
     return {
         "intent": intent,
+        # M7 A′:记录命中的子 Agent + 本轮起点(修复 _best_answer 跨轮污染:
+        # 消息通道最后一条是本轮新问题,本轮答案只能从它之后产生)
+        "current_agent": intent,
+        "turn_start_index": max(0, len(state.get("messages") or []) - 1),
         "thoughts": _append_thought(state, {"type": "intent", "content": f"意图识别: {intent} | {reason}"}),
     }
 
@@ -495,3 +527,19 @@ def direct_answer(state: AgentState, *, store: BaseStore = None) -> Dict[str, An
 def route_intent(state: AgentState) -> str:
     """条件边:按意图返回下一节点。direct_answer 走直答,其余走 agent_step。"""
     return "direct_answer" if (state.get("intent") == "direct_answer") else "agent_step"
+
+
+# ---------- M7 A′ 多 Agent 路由 ----------
+_INTENT_TO_AGENT = {
+    "direct_answer": "chat_agent",
+    "knowledge": "knowledge_agent",
+    "web_search": "web_research_agent",
+    "note_write": "note_write_agent",
+}
+
+
+def route_intent_multi(state: AgentState) -> str:
+    """A′ 多 Agent 路由:意图 → agent 名。chat_agent 复用 direct_answer 节点,
+    其余复用 agent_step 节点(策略由 AGENT_CONFIGS 查表决定);
+    未知意图 fail-safe 回 knowledge_agent,与意图分类 fail-safe 同源。"""
+    return _INTENT_TO_AGENT.get(state.get("intent") or "knowledge", "knowledge_agent")
