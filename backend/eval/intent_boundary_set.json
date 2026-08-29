@@ -1,0 +1,86 @@
+[
+  {
+    "id": "b01",
+    "question": "需要联网搜索：今天有什么AI新闻？",
+    "expected_intent": "web_search",
+    "note": "明确要求联网"
+  },
+  {
+    "id": "b02",
+    "question": "帮我上网查一下 FastAPI 官方最新版本号",
+    "expected_intent": "web_search",
+    "note": "明确要求上网"
+  },
+  {
+    "id": "b03",
+    "question": "现在的最新股价是多少？",
+    "expected_intent": "web_search",
+    "note": "实时信息,知识库不可能有"
+  },
+  {
+    "id": "b04",
+    "question": "5月10日有哪些科技产品发布？",
+    "expected_intent": "knowledge",
+    "note": "历史日期,知识库笔记已有(M6 规则回归)"
+  },
+  {
+    "id": "b05",
+    "question": "安装克劳德code之前需要先安装什么？",
+    "expected_intent": "knowledge",
+    "note": "q007 实锤边界:工具安装配置细节,知识库有安装指南笔记,不得归 direct_answer"
+  },
+  {
+    "id": "b06",
+    "question": "知识库里的 Cloud Code 技巧笔记都讲了什么？",
+    "expected_intent": "knowledge",
+    "note": "明确指向笔记内容"
+  },
+  {
+    "id": "b07",
+    "question": "吴浩阳的简历提到哪些技术栈？",
+    "expected_intent": "knowledge",
+    "note": "个人资料"
+  },
+  {
+    "id": "b08",
+    "question": "什么是 Python 装饰器？",
+    "expected_intent": "direct_answer",
+    "note": "通用概念解释"
+  },
+  {
+    "id": "b09",
+    "question": "你好呀,今天天气不错心情很好",
+    "expected_intent": "direct_answer",
+    "note": "闲聊寒暄"
+  },
+  {
+    "id": "b10",
+    "question": "用一句话解释一下什么是 RAG",
+    "expected_intent": "direct_answer",
+    "note": "通用概念,不涉及个人知识库"
+  },
+  {
+    "id": "b11",
+    "question": "把这段话记到知识库：LangGraph 是一个用于构建状态机 Agent 的图编排框架",
+    "expected_intent": "note_write",
+    "note": "明确写入"
+  },
+  {
+    "id": "b12",
+    "question": "帮我保存一条笔记,标题是'测试',内容是'hello world'",
+    "expected_intent": "note_write",
+    "note": "口语化写入"
+  },
+  {
+    "id": "b13",
+    "question": "搜一下网络上的 LangGraph 最新版本,然后把结果保存成笔记",
+    "expected_intent": "web_search",
+    "note": "混合意图:方案 A 已知局限,按信息获取优先归 web_search(写入诉求由 knowledge/web prompt 告知单独发起);M7.5 Supervisor 顺序派单后重新评估"
+  },
+  {
+    "id": "b14",
+    "question": "帮我查查 React 19 有什么新特性,然后写进我的笔记",
+    "expected_intent": "web_search",
+    "note": "混合意图:同 b13 规则"
+  }
+]

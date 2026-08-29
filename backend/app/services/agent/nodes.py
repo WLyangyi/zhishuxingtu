@@ -149,6 +149,10 @@ def agent_step(state: AgentState, *, store: BaseStore = None) -> Dict[str, Any]:
         hint = INTENT_HINTS.get(state.get("intent") or "")
         if hint:
             system_prompt += "\n\n" + hint
+        # M7.1:编排器任务简报首轮注入,为空不注入(防错误简报误导子 Agent)
+        task_brief = (state.get("task_brief") or "").strip()
+        if task_brief:
+            system_prompt += f"\n\n## 编排器任务简报\n{task_brief}"
     preference_context = get_preference_context(state.get("user_id", ""), store)
     if preference_context:
         system_prompt += (
@@ -472,6 +476,7 @@ def intent_classify(state: AgentState) -> Dict[str, Any]:
     question = state.get("question") or ""
     intent = "knowledge"
     reason = "fail-safe 默认走知识库检索"
+    task_brief = ""  # M7.1:编排器任务简报,分类失败时留空(为空不注入)
     try:
         provider = get_deepseek_provider()
         structured = provider.with_structured_output(QueryIntent)
@@ -487,6 +492,7 @@ def intent_classify(state: AgentState) -> Dict[str, Any]:
             reason = (getattr(resp, "reason", "") or "")[:120]
         else:
             reason = f"模型返回非法意图 {candidate!r},默认 knowledge"
+        task_brief = (getattr(resp, "task_brief", "") or "").strip()[:200]
     except Exception as exc:  # noqa: BLE001 分类只是路由提示,失败不阻断
         reason = f"分类失败,默认 knowledge: {exc}"
     return {
@@ -495,6 +501,8 @@ def intent_classify(state: AgentState) -> Dict[str, Any]:
         # 消息通道最后一条是本轮新问题,本轮答案只能从它之后产生)
         "current_agent": intent,
         "turn_start_index": max(0, len(state.get("messages") or []) - 1),
+        # M7.1:编排器任务简报,为空不注入(防错误简报误导子 Agent)
+        "task_brief": task_brief,
         "thoughts": _append_thought(state, {"type": "intent", "content": f"意图识别: {intent} | {reason}"}),
     }
 

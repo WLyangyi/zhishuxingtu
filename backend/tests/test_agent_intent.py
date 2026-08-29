@@ -6,6 +6,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from app.services.agent.nodes import (
+    agent_step,
     direct_answer,
     execute_tool,
     generate,
@@ -102,6 +103,80 @@ def test_intent_classify_sets_current_agent_and_turn_start(monkeypatch):
     assert out["intent"] == "web_search"
     assert out["current_agent"] == "web_search"
     assert out["turn_start_index"] == 1  # 最后一条(本轮新问题)在通道中的下标
+    assert out["task_brief"] == ""  # 模型未返回 task_brief 时为空(为空不注入)
+
+
+def test_intent_classify_writes_task_brief(monkeypatch):
+    """M7.1:分类器返回的任务简报要写入 state,为空/缺失时不编造。"""
+    class FakeResp:
+        intent = "knowledge"
+        reason = "知识库内容"
+        task_brief = "查询克劳德code安装的前置条件"
+
+    class FakeStructured:
+        def invoke(self, msgs):
+            return FakeResp()
+
+    class FakeProvider:
+        def with_structured_output(self, model):
+            return FakeStructured()
+
+    monkeypatch.setitem(intent_classify.__globals__, "get_deepseek_provider", lambda: FakeProvider())
+    out = intent_classify(_state(question="安装克劳德code之前需要先安装什么？"))
+    assert out["task_brief"] == "查询克劳德code安装的前置条件"
+
+    class FakeRespNoBrief:
+        intent = "knowledge"
+        reason = "知识库内容"
+
+    class FakeStructuredNoBrief:
+        def invoke(self, msgs):
+            return FakeRespNoBrief()
+
+    class FakeProviderNoBrief:
+        def with_structured_output(self, model):
+            return FakeStructuredNoBrief()
+
+    monkeypatch.setitem(
+        intent_classify.__globals__, "get_deepseek_provider", lambda: FakeProviderNoBrief()
+    )
+    out2 = intent_classify(_state(question="测试"))
+    assert out2["task_brief"] == ""
+
+
+def test_agent_step_injects_task_brief_first_round_only(monkeypatch):
+    """M7.1:任务简报首轮注入 system prompt(为空不注入),次轮不重复注入(同意图提示的防死循环逻辑)。"""
+    from langchain_core.messages import HumanMessage
+
+    captured = {}
+
+    class FakeLLM:
+        def invoke(self, msgs):
+            captured["system"] = msgs[0].content
+            return AIMessage(content="ok")
+
+    class FakeProvider:
+        def bind_tools(self, tools):
+            return FakeLLM()
+
+    monkeypatch.setitem(agent_step.__globals__, "get_deepseek_provider", lambda: FakeProvider())
+    monkeypatch.setitem(agent_step.__globals__, "get_preference_context", lambda *a, **k: "")
+
+    base = {
+        "messages": [HumanMessage(content="问题")],
+        "thoughts": [],
+        "current_agent": "knowledge",
+        "intent": "knowledge",
+    }
+    agent_step({**base, "iteration": 0, "task_brief": "查询克劳德code安装的前置条件"})
+    assert "编排器任务简报" in captured["system"]
+    assert "克劳德code" in captured["system"]
+
+    agent_step({**base, "iteration": 0, "task_brief": ""})
+    assert "编排器任务简报" not in captured["system"]  # 为空不注入
+
+    agent_step({**base, "iteration": 1, "task_brief": "查询克劳德code安装的前置条件"})
+    assert "编排器任务简报" not in captured["system"]  # 次轮不重复注入
 
 
 def test_best_answer_scoped_to_current_turn():

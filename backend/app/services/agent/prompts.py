@@ -61,6 +61,10 @@ class QueryIntent(BaseModel):
         description="问题意图分类"
     )
     reason: str = Field(description="分类理由,一句话")
+    task_brief: str = Field(
+        default="",
+        description="可选任务简报:对本次用户诉求的一句话具体描述,没有把握就留空",
+    )
 
 
 INTENT_CLASSIFY_PROMPT = """你是查询意图识别器。把用户问题归类到以下四类之一:
@@ -74,8 +78,12 @@ INTENT_CLASSIFY_PROMPT = """你是查询意图识别器。把用户问题归类�
 - 提到具体笔记、个人经历、项目、简历等个性化内容,一律 knowledge。
 - 事件带明确历史日期(如"5月10日""上周""2024年")时归 knowledge——这类信息可能已在知识库笔记里,不要因日期像新闻就归 web_search。
 - 只有用户明确要"当下/最新/实时"的信息,或明确要求联网/上网搜索,才选 web_search。
+- 询问某工具/软件的安装、配置、使用细节(如"安装X前需要装什么""X怎么配置"),知识库可能收录了相关指南笔记,一律归 knowledge,不得因"像通用技术问题"就归 direct_answer。
+- 用户既要求联网获取信息、又要求保存/写入笔记时,按信息获取优先归 web_search(写入诉求由后续流程提示用户单独发起)。
 
-只输出结构化结果 intent + reason。"""
+task_brief(可选):当你对用户本次诉求有具体理解时,用一句话描述要完成什么(如"查询X的前置安装条件""获取Y的最新版本并整理");没有把握就留空,不要编造。
+
+只输出结构化结果 intent + reason + task_brief(可为空)。"""
 
 DIRECT_ANSWER_PROMPT = """你是「知枢星图」的智能助手。这条问题无需检索知识库,请直接回答。
 
