@@ -55,7 +55,12 @@ def build_graph():
     g.add_conditional_edges(
         "agent_step",
         should_continue,
-        {"execute_tool": "execute_tool", "grade_documents": "grade_documents", "output": "output"},
+        {
+            "execute_tool": "execute_tool",
+            "grade_documents": "grade_documents",
+            "generate": "generate",  # M7.3:web_research 跳过文档评级直达 generate
+            "output": "output",
+        },
     )
     g.add_edge("execute_tool", "agent_step")
     g.add_conditional_edges(
@@ -68,7 +73,7 @@ def build_graph():
     g.add_conditional_edges(
         "hallucination_check",
         route_hallucination,
-        {"answer_quality": "answer_quality", "rewrite_question": "rewrite_question"},
+        {"answer_quality": "answer_quality", "output": "output", "rewrite_question": "rewrite_question"},
     )
     g.add_conditional_edges(
         "answer_quality",
@@ -112,7 +117,12 @@ def build_multi_agent_graph():
     g.add_conditional_edges(
         "agent_step",
         should_continue,
-        {"execute_tool": "execute_tool", "grade_documents": "grade_documents", "output": "output"},
+        {
+            "execute_tool": "execute_tool",
+            "grade_documents": "grade_documents",
+            "generate": "generate",  # M7.3:web_research 跳过文档评级直达 generate
+            "output": "output",
+        },
     )
     g.add_edge("execute_tool", "agent_step")
     g.add_conditional_edges(
@@ -125,7 +135,7 @@ def build_multi_agent_graph():
     g.add_conditional_edges(
         "hallucination_check",
         route_hallucination,
-        {"answer_quality": "answer_quality", "rewrite_question": "rewrite_question"},
+        {"answer_quality": "answer_quality", "output": "output", "rewrite_question": "rewrite_question"},
     )
     g.add_conditional_edges(
         "answer_quality",

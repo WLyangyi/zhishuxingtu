@@ -230,6 +230,52 @@ def test_agent_configs_knowledge_specialized():
     assert "create_note" in {t.name for t in AGENT_CONFIGS["note_write"]["tools"]}
 
 
+def test_agent_configs_specialists_m73():
+    """M7.3:web_research/note_write 专职化——工具面收窄,提示词职责明确。"""
+    from app.services.agent.nodes import AGENT_CONFIGS
+
+    w_tools = {t.name for t in AGENT_CONFIGS["web_search"]["tools"]}
+    n_tools = {t.name for t in AGENT_CONFIGS["note_write"]["tools"]}
+    assert w_tools == {"web_search", "search_notes"}
+    assert n_tools == {"create_note", "search_notes"}
+    # web_research:信源引用要求
+    assert "来源" in AGENT_CONFIGS["web_search"]["system_prompt"]
+    # note_write:查重流程 + 审批提示
+    assert "search_notes" in AGENT_CONFIGS["note_write"]["system_prompt"]
+    assert "审批" in AGENT_CONFIGS["note_write"]["system_prompt"]
+
+
+def test_three_check_routing_by_agent():
+    """M7.3:三查按 current_agent 分叉——web_research 跳文档评级且无 answer_quality;
+    note_write 无三查;knowledge 行为不变。"""
+    from langchain_core.messages import AIMessage
+
+    from app.services.agent.nodes import (
+        route_grade_documents,
+        route_hallucination,
+        should_continue,
+    )
+
+    # web_search:should_continue 直接分流到 generate,绕过 grade_documents 节点
+    # (route_grade_documents 是节点之后的条件边,在那里"跳过"为时已晚——M7.3 实测踩坑)
+    msgs = [AIMessage(content="done")]
+    assert should_continue({"messages": msgs, "current_agent": "web_search", "iteration": 1}) == "generate"
+    assert route_grade_documents({"current_agent": "web_search", "documents_grade": "no"}) == "rewrite_question"  # 防御兜底
+    # knowledge:行为不变
+    assert should_continue({"messages": msgs, "current_agent": "knowledge", "iteration": 1}) == "grade_documents"
+    assert route_grade_documents({"documents_grade": "no"}) == "rewrite_question"
+    assert route_grade_documents({"documents_grade": "yes"}) == "generate"
+
+    # web_search:幻觉查通过直接 output,不进 answer_quality(明示取舍)
+    assert route_hallucination({"current_agent": "web_search", "hallucination_ok": "yes"}) == "output"
+    assert route_hallucination({"current_agent": "web_search", "hallucination_ok": "no"}) == "rewrite_question"
+    # knowledge:幻觉查通过仍进 answer_quality
+    assert route_hallucination({"hallucination_ok": "yes"}) == "answer_quality"
+
+    # note_write:ReAct 结束直接 output(无三查,人工审批即质量关)
+    assert should_continue({"messages": msgs, "current_agent": "note_write", "iteration": 1}) == "output"
+
+
 def test_direct_answer_returns_answer_and_writes_checkpoint(monkeypatch):
     class FakeResp:
         content = "你好!有什么可以帮你?"

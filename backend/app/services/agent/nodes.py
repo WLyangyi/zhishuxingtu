@@ -22,7 +22,9 @@ from app.services.agent.prompts import (
     INTENT_CLASSIFY_PROMPT,
     INTENT_HINTS,
     KNOWLEDGE_AGENT_PROMPT,
+    NOTE_WRITE_AGENT_PROMPT,
     REACT_SYSTEM_PROMPT,
+    WEB_RESEARCH_AGENT_PROMPT,
     GradeAnswer,
     GradeDocuments,
     GradeHallucinations,
@@ -54,15 +56,17 @@ TOOL_MAP = {t.name: t for t in ALL_TOOLS}
 
 # ---------- A′ 多 Agent 策略表(M7) ----------
 # 按 current_agent 查表绑定工具子集与 system prompt。
-# M7.2 起 knowledge 先行差异化:移出 create_note(HITL 写入专职给 note_write 意图),
-# web_search 保留作意图误判回退(拍板);web_search/note_write 两配置 M7.3 专职化。
+# M7.2 knowledge 差异化(移出 create_note,web_search 保留作回退);
+# M7.3 web_research/note_write 专职化(工具面收窄到各自职责)。
 # chat_agent 走 direct_answer 节点,无工具,不入表。
 KNOWLEDGE_TOOLS = [t for t in ALL_TOOLS if t.name != "create_note"]
+WEB_RESEARCH_TOOLS = [web_search, search_notes]
+NOTE_WRITE_TOOLS = [create_note, search_notes]
 
 AGENT_CONFIGS: Dict[str, Dict[str, Any]] = {
     "knowledge": {"tools": KNOWLEDGE_TOOLS, "system_prompt": KNOWLEDGE_AGENT_PROMPT},
-    "web_search": {"tools": ALL_TOOLS, "system_prompt": REACT_SYSTEM_PROMPT},
-    "note_write": {"tools": ALL_TOOLS, "system_prompt": REACT_SYSTEM_PROMPT},
+    "web_search": {"tools": WEB_RESEARCH_TOOLS, "system_prompt": WEB_RESEARCH_AGENT_PROMPT},
+    "note_write": {"tools": NOTE_WRITE_TOOLS, "system_prompt": NOTE_WRITE_AGENT_PROMPT},
 }
 
 
@@ -206,32 +210,44 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
         status = "success"
 
         if name == create_note.name:
-            decision = interrupt(
-                {
-                    "type": "approval_required",
-                    "tool_call_id": tc.get("id", ""),
-                    "tool_name": name,
-                    "title": "创建知识库笔记",
-                    "description": "Agent 请求执行写操作，确认后才会创建笔记。",
-                    "args": args,
-                    "preview": {
-                        "title": str(args.get("title", ""))[:200],
-                        "content": str(args.get("content", ""))[:500],
-                        "folder_id": args.get("folder_id"),
-                    },
-                }
-            )
-            approved = bool(decision.get("approved")) if isinstance(decision, dict) else bool(decision)
-            if not approved:
-                status = "rejected"
-                reason = decision.get("reason", "用户拒绝") if isinstance(decision, dict) else "用户拒绝"
-                result = json.dumps({"status": "rejected", "reason": reason}, ensure_ascii=False)
+            # M7.3:note_write 专职流程强制查重前置——实测 deepseek-flash 无视 prompt 的
+            # "先查重再创建"流程指令,由结构兜底:本会话未执行过 search_notes 就请求写入,
+            # 直接拒绝并要求先查重(错误恢复遵从性远高于预防性指令遵从性)
+            if state.get("current_agent") == "note_write" and not any(
+                lg.get("tool") == "search_notes" for lg in tool_log
+            ):
+                status = "error"
+                result = json.dumps(
+                    {"error": "写入前必须先调用 search_notes 查重。请先用标题关键词检索,确认无重复笔记后再调用 create_note。"},
+                    ensure_ascii=False,
+                )
             else:
-                try:
-                    result = _invoke_tool(fn, args, state)
-                except Exception as e:  # noqa: BLE001
-                    status = "error"
-                    result = f"工具执行出错:{e}"
+                decision = interrupt(
+                    {
+                        "type": "approval_required",
+                        "tool_call_id": tc.get("id", ""),
+                        "tool_name": name,
+                        "title": "创建知识库笔记",
+                        "description": "Agent 请求执行写操作，确认后才会创建笔记。",
+                        "args": args,
+                        "preview": {
+                            "title": str(args.get("title", ""))[:200],
+                            "content": str(args.get("content", ""))[:500],
+                            "folder_id": args.get("folder_id"),
+                        },
+                    }
+                )
+                approved = bool(decision.get("approved")) if isinstance(decision, dict) else bool(decision)
+                if not approved:
+                    status = "rejected"
+                    reason = decision.get("reason", "用户拒绝") if isinstance(decision, dict) else "用户拒绝"
+                    result = json.dumps({"status": "rejected", "reason": reason}, ensure_ascii=False)
+                else:
+                    try:
+                        result = _invoke_tool(fn, args, state)
+                    except Exception as e:  # noqa: BLE001
+                        status = "error"
+                        result = f"工具执行出错:{e}"
         else:
             if name == "search_notes":
                 # 病灶B:同一轮内重复相同的检索词直接短路,防多跳检索死循环烧迭代。
@@ -459,6 +475,13 @@ def should_continue(state: AgentState) -> str:
     last = state["messages"][-1]
     if getattr(last, "tool_calls", None):
         return "execute_tool"
+    # M7.3:note_write 专职无三查(人工审批即质量关),ReAct 结束直接输出
+    if state.get("current_agent") == "note_write":
+        return "output"
+    # M7.3:web_research 跳过文档评级——必须在这里分流绕过节点,
+    # route_grade_documents 是节点之后的条件边,到那里"跳过"为时已晚(节点已烧一次 LLM 调用)
+    if state.get("current_agent") == "web_search":
+        return "generate"
     return "grade_documents"
 
 
@@ -467,7 +490,11 @@ def route_grade_documents(state: AgentState) -> str:
 
 
 def route_hallucination(state: AgentState) -> str:
-    return "answer_quality" if state.get("hallucination_ok") != "no" else "rewrite_question"
+    ok = state.get("hallucination_ok") != "no"
+    # M7.3:web_research 无 answer_quality(明示取舍,见计划 §七),幻觉查通过即输出
+    if state.get("current_agent") == "web_search":
+        return "output" if ok else "rewrite_question"
+    return "answer_quality" if ok else "rewrite_question"
 
 
 def route_answer_quality(state: AgentState) -> str:

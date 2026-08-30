@@ -84,9 +84,11 @@ def run_agent(question: str, user_id: str):
     latency_ms = int((time.perf_counter() - started) * 1000)
 
     config = {"configurable": {"thread_id": thread_id}}
-    intent = (graph.get_state(config).values or {}).get("intent") or "knowledge"
+    state_values = graph.get_state(config).values or {}
+    intent = state_values.get("intent") or "knowledge"
+    token_used = state_values.get("token_used") or 0
     retrieved_ids = [d["id"] for d in documents]
-    return retrieved_ids, final_answer or "", documents, intent, tool_calls, latency_ms
+    return retrieved_ids, final_answer or "", documents, intent, tool_calls, latency_ms, token_used
 
 
 def get_full_sources(note_ids: List[str], db) -> List[dict]:
@@ -161,6 +163,7 @@ def write_report(report_path: str, version: str, results: List[dict], agg_b: dic
         "",
         f"- 意图分布: {dict(Counter(r['agent'].get('intent') for r in results))}",
         f"- agent 平均工具调用次数: {mean([r['agent'].get('tool_calls') or 0 for r in results]):.2f}",
+        f"- agent 平均 token 消耗: {mean([r['agent'].get('token_used') or 0 for r in results]):.0f}",
         "",
     ]
 
@@ -233,7 +236,8 @@ def write_eval_runs(db, results: List[dict], agent_version: str) -> None:
                 metrics_json=json.dumps(
                     {"recall@k": m.get("recall"), "faithfulness": m.get("faithfulness"),
                      "answer_relevancy": m.get("relevancy"), "latency_ms": m.get("latency_ms"),
-                     "intent": m.get("intent"), "tool_calls": m.get("tool_calls")},
+                     "intent": m.get("intent"), "tool_calls": m.get("tool_calls"),
+                     "token_used": m.get("token_used")},
                     ensure_ascii=False,
                 ),
             ))
@@ -282,7 +286,10 @@ def main() -> int:
             print(f"[{i}/{len(data)}] {qid} {question[:30]} ...")
 
             b_ids, b_answer, b_sources, b_latency = run_baseline(question, db)
-            a_ids, a_answer, a_sources, a_intent, a_tool_calls, a_latency = run_agent(question, uid)
+            (
+                a_ids, a_answer, a_sources,
+                a_intent, a_tool_calls, a_latency, a_tokens,
+            ) = run_agent(question, uid)
 
             row = {
                 "id": qid,
@@ -301,6 +308,7 @@ def main() -> int:
                     "intent": a_intent,
                     "tool_calls": a_tool_calls,
                     "latency_ms": a_latency,
+                    "token_used": a_tokens,
                     "expected_intent": item.get("expected_intent", ""),
                 },
             }
