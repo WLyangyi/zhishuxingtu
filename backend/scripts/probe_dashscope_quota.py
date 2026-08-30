@@ -28,3 +28,16 @@ for label, model in MODELS:
         print(f"[OK]   {label}: {model}")
     except Exception as exc:  # noqa: BLE001
         print(f"[FAIL] {label}: {model} -> {str(exc)[:140]}")
+
+# DeepSeek 直连通道(agent 推理,M7.2 曾因 402 余额阻塞)
+try:
+    ds = OpenAI(api_key=settings.DEEPSEEK_API_KEY, base_url=settings.DEEPSEEK_BASE_URL)
+    ds.chat.completions.create(
+        model=settings.DEEPSEEK_MODEL,
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=1,
+        extra_body={"thinking": {"type": "disabled"}} if settings.DEEPSEEK_THINKING == "disabled" else None,
+    )
+    print(f"[OK]   deepseek agent: {settings.DEEPSEEK_MODEL}")
+except Exception as exc:  # noqa: BLE001
+    print(f"[FAIL] deepseek agent: {settings.DEEPSEEK_MODEL} -> {str(exc)[:140]}")
