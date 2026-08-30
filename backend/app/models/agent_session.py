@@ -10,6 +10,9 @@ class AgentSession(Base, TimestampMixin):
     id = Column(String(36), primary_key=True, default=generate_uuid)  # = LangGraph thread_id
     user_id = Column(String(36), index=True)
     title = Column(String(500), default="新会话")
+    # M7.4:本会话最近一轮命中的子 Agent 路由(knowledge/web_search/note_write/direct_answer,
+    # 由 _stream_graph 从图终态回写;本地审计的 agent 维度,供路由准确率分析)
+    agent_route = Column(String(32), default="")
 
 
 class AgentToolCall(Base, TimestampMixin):

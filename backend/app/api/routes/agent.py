@@ -219,6 +219,13 @@ def _stream_graph(
             yield _sse({"type": "final_answer", "answer": fallback})
             emitted_fallback = True
 
+    # M7.4:从图终态回写命中 agent 路由到会话(本地审计的 agent 维度,供路由准确率分析)
+    try:
+        _snapshot = get_graph().get_state(config)
+        session.agent_route = ((_snapshot.values or {}).get("current_agent") or "")[:32]
+    except Exception:  # noqa: BLE001 审计回写失败不影响主流程
+        session.agent_route = session.agent_route or ""
+
     _persist_tool_logs(db, session.id, tool_logs)
     session.updated_at = datetime.now(timezone.utc)
     db.add(session)

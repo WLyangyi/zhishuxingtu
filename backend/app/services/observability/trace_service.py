@@ -158,10 +158,12 @@ def list_traces(
 
 
 def observability_summary(db: Session, user_id: str) -> Dict[str, Any]:
-    session_ids = [
-        row[0]
-        for row in db.query(AgentSession.id).filter(AgentSession.user_id == user_id).all()
-    ]
+    session_rows = (
+        db.query(AgentSession.id, AgentSession.agent_route)
+        .filter(AgentSession.user_id == user_id)
+        .all()
+    )
+    session_ids = [row[0] for row in session_rows]
     calls = (
         db.query(AgentToolCall)
         .filter(AgentToolCall.session_id.in_(session_ids))
@@ -174,6 +176,8 @@ def observability_summary(db: Session, user_id: str) -> Dict[str, Any]:
     total_calls = len(calls)
     successful = statuses.get("success", 0)
     avg_latency = round(sum(call.latency_ms or 0 for call in calls) / total_calls) if total_calls else 0
+    # M7.4:agent 路由分布(最近一轮命中的子 Agent;空串为 M7 前的旧会话)
+    route_counter = Counter(row[1] or "" for row in session_rows)
     return {
         "sessions": len(session_ids),
         "tool_calls": total_calls,
@@ -185,6 +189,10 @@ def observability_summary(db: Session, user_id: str) -> Dict[str, Any]:
         "tool_distribution": [
             {"name": name, "count": count}
             for name, count in distribution.most_common()
+        ],
+        "agent_route_distribution": [
+            {"name": name or "legacy", "count": count}
+            for name, count in route_counter.most_common()
         ],
         "langfuse_configured": langfuse_configured(),
     }
