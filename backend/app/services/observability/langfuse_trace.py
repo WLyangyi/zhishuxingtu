@@ -42,13 +42,19 @@ def get_langfuse_handler() -> Optional[Any]:
 
 def build_stream_config(thread_id: str, user_id: str = "", run_name: str = "agent-chat") -> dict:
     """构造 LangGraph stream config，并把用户/会话映射到 Langfuse trace。"""
+    # M7.4:静态标识多 Agent 图(A′)。agent 维度无法做成动态 tag——intent 在图内运行时才确定,
+    # LangGraph config 不可中途修改;云端 trace 的 agent 维度由 intent_classify span 承载,
+    # 本地审计的 agent 维度以 agent_sessions.agent_route 为准。
+    from app.services.agent.config import MULTI_AGENT
+
+    tags = ["agentic-rag", "m4-m5"] + (["multi-agent"] if MULTI_AGENT else [])
     cfg = {
         "configurable": {"thread_id": thread_id},
         "run_name": run_name,
         "metadata": {
             "langfuse_session_id": thread_id,
             "langfuse_user_id": user_id,
-            "langfuse_tags": ["agentic-rag", "m4-m5"],
+            "langfuse_tags": tags,
         },
     }
     handler = get_langfuse_handler()

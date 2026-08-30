@@ -69,7 +69,10 @@ def judge_faithfulness(
     answer: str,
     sources: List[Source],
 ) -> Dict[str, Any]:
-    """答案每条事实声明是否 grounded 于检索证据。返回 {score, claims:[{claim, grounded}]}。"""
+    """答案每条事实声明是否 grounded 于检索证据。返回 {score, claims:[{claim, grounded}]}。
+
+    M7.2 容错:裁判结构化输出偶发字段缺失/拼写漂移(实测 flash 把 grounded 拼成 groundened),
+    单条坏输出不应崩掉整轮 eval——重试一次,仍失败返回 score=None(eval 聚合跳过 None,不污染指标)。"""
     provider = get_qwen_judge_provider()
     prompt = FAITHFULNESS_PROMPT.format(
         question=question,
@@ -77,17 +80,31 @@ def judge_faithfulness(
         answer=answer,
     )
     structured = provider.with_structured_output(FaithfulnessGrade)
-    out = structured.invoke(prompt)
-    return {
-        "score": out.score,
-        "claims": [{"claim": c.claim, "grounded": c.grounded} for c in out.claims],
-    }
+    last_err: Exception | None = None
+    for _ in range(2):
+        try:
+            out = structured.invoke(prompt)
+            return {
+                "score": out.score,
+                "claims": [{"claim": c.claim, "grounded": c.grounded} for c in out.claims],
+            }
+        except Exception as exc:  # noqa: BLE001 裁判坏输出容错
+            last_err = exc
+    print(f"[judge] faithfulness 裁判失败(重试后仍失败),该项留空: {str(last_err)[:200]}")
+    return {"score": None, "claims": [], "error": str(last_err)[:200]}
 
 
 def judge_answer_relevancy(question: str, answer: str) -> Dict[str, Any]:
-    """答案是否回应了用户问题。返回 {score, reason}。"""
+    """答案是否回应了用户问题。返回 {score, reason}。容错策略同 judge_faithfulness。"""
     provider = get_qwen_judge_provider()
     prompt = RELEVANCY_PROMPT.format(question=question, answer=answer)
     structured = provider.with_structured_output(RelevancyGrade)
-    out = structured.invoke(prompt)
-    return {"score": out.score, "reason": out.reason}
+    last_err: Exception | None = None
+    for _ in range(2):
+        try:
+            out = structured.invoke(prompt)
+            return {"score": out.score, "reason": out.reason}
+        except Exception as exc:  # noqa: BLE001 裁判坏输出容错
+            last_err = exc
+    print(f"[judge] answer_relevancy 裁判失败(重试后仍失败),该项留空: {str(last_err)[:200]}")
+    return {"score": None, "reason": "", "error": str(last_err)[:200]}

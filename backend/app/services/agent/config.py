@@ -8,3 +8,5 @@ MAX_HISTORY_MESSAGES = int(getattr(settings, "AGENT_MAX_HISTORY_MESSAGES", 24))
 CHECKPOINT_DB = getattr(
     settings, "AGENT_CHECKPOINT_DB", os.path.join("data", "langgraph_checkpoints.db")
 )
+# M7 A′ 多 Agent 图开关(false=单 Agent 图回退位)
+MULTI_AGENT = bool(getattr(settings, "AGENT_MULTI_AGENT", False))

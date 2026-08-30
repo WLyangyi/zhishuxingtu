@@ -12,6 +12,7 @@ M2-4 评估脚本:旧基线(baseline RAG) vs 新 agent(ReAct) 跑 eval set,输�
 """
 import argparse
 import json
+import math
 import os
 import sys
 import time
@@ -37,22 +38,25 @@ def recall_at_k(retrieved_ids: List[str], relevant_ids: List[str], k: int) -> Op
 
 
 def run_baseline(question: str, db):
-    """旧基线: 与 /api/search/ai 同链路(hybrid_search_notes + rag_chain.invoke_with_custom_context)。"""
+    """旧基线: 与 /api/search/ai 同链路(hybrid_search_notes + rag_chain.invoke_with_custom_context)。
+    M7.2 起附带延迟测量(ms),供报告聚合 mean/P95。"""
     from app.api.routes.search import hybrid_search_notes
     from app.services.rag_chain import get_rag_chain
 
+    started = time.perf_counter()
     notes = hybrid_search_notes(question, db, k=TOP_K, use_reranker=True)
     retrieved_ids = [n.id for n, _ in notes]
     result = get_rag_chain().invoke_with_custom_context(question, notes)
+    latency_ms = int((time.perf_counter() - started) * 1000)
     sources = [
         {"id": n.id, "title": n.title, "content": (n.content or "")[:2000]}
         for n, _ in notes
     ]
-    return retrieved_ids, result["answer"] or "", sources
+    return retrieved_ids, result["answer"] or "", sources, latency_ms
 
 
 def run_agent(question: str, user_id: str):
-    """新链路: graph.stream, 收集 final answer + 检索到的 documents + 意图 + 工具调用数。"""
+    """新链路: graph.stream, 收集 final answer + 检索到的 documents + 意图 + 工具调用数 + 延迟(ms)。"""
     from app.services.agent.graph import build_input, get_graph
     from app.services.observability.langfuse_trace import build_stream_config
     from app.services.tools.context import ToolContext, set_tool_context
@@ -66,6 +70,7 @@ def run_agent(question: str, user_id: str):
     documents: List[dict] = []
     tool_calls = 0
     seen: set = set()
+    started = time.perf_counter()
     for step in graph.stream(input_data, config=build_stream_config(thread_id)):
         for _, v in step.items():
             if v.get("answer"):
@@ -76,11 +81,14 @@ def run_agent(question: str, user_id: str):
                 if did and did not in seen:
                     seen.add(did)
                     documents.append(d)
+    latency_ms = int((time.perf_counter() - started) * 1000)
 
     config = {"configurable": {"thread_id": thread_id}}
-    intent = (graph.get_state(config).values or {}).get("intent") or "knowledge"
+    state_values = graph.get_state(config).values or {}
+    intent = state_values.get("intent") or "knowledge"
+    token_used = state_values.get("token_used") or 0
     retrieved_ids = [d["id"] for d in documents]
-    return retrieved_ids, final_answer or "", documents, intent, tool_calls
+    return retrieved_ids, final_answer or "", documents, intent, tool_calls, latency_ms, token_used
 
 
 def get_full_sources(note_ids: List[str], db) -> List[dict]:
@@ -155,8 +163,36 @@ def write_report(report_path: str, version: str, results: List[dict], agg_b: dic
         "",
         f"- 意图分布: {dict(Counter(r['agent'].get('intent') for r in results))}",
         f"- agent 平均工具调用次数: {mean([r['agent'].get('tool_calls') or 0 for r in results]):.2f}",
+        f"- agent 平均 token 消耗: {mean([r['agent'].get('token_used') or 0 for r in results]):.0f}",
         "",
     ]
+
+    def p95(vals: List[int]) -> Optional[int]:
+        if not vals:
+            return None
+        s = sorted(vals)
+        return s[max(0, math.ceil(0.95 * len(s)) - 1)]
+
+    def ms(x):
+        return "—" if x is None else f"{x}"
+
+    b_lat = [r["baseline"].get("latency_ms") for r in results if r["baseline"].get("latency_ms") is not None]
+    a_lat = [r["agent"].get("latency_ms") for r in results if r["agent"].get("latency_ms") is not None]
+    lines += [
+        "## 延迟(M7.2 口径,graph.stream 端到端)",
+        "",
+        "| 链路 | 均值 ms | P95 ms |",
+        "|---|---|---|",
+        f"| baseline | {ms(round(mean(b_lat))) if b_lat else '—'} | {ms(p95(b_lat))} |",
+        f"| agent | {ms(round(mean(a_lat))) if a_lat else '—'} | {ms(p95(a_lat))} |",
+        "",
+    ]
+
+    # 路由准确率(eval set 有 expected_intent 时输出)
+    routed = [r for r in results if r["agent"].get("expected_intent")]
+    if routed:
+        hits = sum(1 for r in routed if r["agent"].get("intent") == r["agent"]["expected_intent"])
+        lines += [f"- 路由准确率(vs expected_intent): {hits}/{len(routed)} = {hits / len(routed):.1%}", ""]
 
     lines += ["", "## 逐条明细", "", "| id | 分类 | recall(b/a) | faithful(b/a) | relevancy(b/a) | 问题 |", "|---|---|---|---|---|---|"]
     for r in results:
@@ -199,7 +235,10 @@ def write_eval_runs(db, results: List[dict], agent_version: str) -> None:
                 agent_version=label,
                 metrics_json=json.dumps(
                     {"recall@k": m.get("recall"), "faithfulness": m.get("faithfulness"),
-                     "answer_relevancy": m.get("relevancy")}, ensure_ascii=False,
+                     "answer_relevancy": m.get("relevancy"), "latency_ms": m.get("latency_ms"),
+                     "intent": m.get("intent"), "tool_calls": m.get("tool_calls"),
+                     "token_used": m.get("token_used")},
+                    ensure_ascii=False,
                 ),
             ))
     db.commit()
@@ -246,8 +285,11 @@ def main() -> int:
             rel_ids = item.get("relevant_doc_ids") or []
             print(f"[{i}/{len(data)}] {qid} {question[:30]} ...")
 
-            b_ids, b_answer, b_sources = run_baseline(question, db)
-            a_ids, a_answer, a_sources, a_intent, a_tool_calls = run_agent(question, uid)
+            b_ids, b_answer, b_sources, b_latency = run_baseline(question, db)
+            (
+                a_ids, a_answer, a_sources,
+                a_intent, a_tool_calls, a_latency, a_tokens,
+            ) = run_agent(question, uid)
 
             row = {
                 "id": qid,
@@ -255,12 +297,19 @@ def main() -> int:
                 "question": question,
                 "expected_answer": item.get("expected_answer", ""),
                 "rel_ids": rel_ids,
-                "baseline": {"recall": recall_at_k(b_ids, rel_ids, TOP_K), "retrieved": b_ids},
+                "baseline": {
+                    "recall": recall_at_k(b_ids, rel_ids, TOP_K),
+                    "retrieved": b_ids,
+                    "latency_ms": b_latency,
+                },
                 "agent": {
                     "recall": recall_at_k(a_ids, rel_ids, TOP_K),
                     "retrieved": a_ids,
                     "intent": a_intent,
                     "tool_calls": a_tool_calls,
+                    "latency_ms": a_latency,
+                    "token_used": a_tokens,
+                    "expected_intent": item.get("expected_intent", ""),
                 },
             }
 
