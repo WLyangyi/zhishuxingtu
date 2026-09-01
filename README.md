@@ -59,7 +59,7 @@ flowchart TD
 | 平均 token 消耗 | 9370 | **9239** |
 | 平均工具调用 | 3.68 | 3.52 |
 
-> 口径说明：主表 = M6 评测（裁判 qwen3.7-max）；M7 表 = 同裁判双图对比。多 Agent 相对单 Agent **行为等价**（职责隔离与工具收窄不伤效果，token 反而更省），相对 M6 基线 faithfulness / relevancy 不降。评测驱动修复实录：两类 0 分 case（证据截断误判 / 答案退化 / 重复检索烧迭代）修复至 1.000；意图边界抖动（工具安装类问题被误判直答）经边界规则修复至 14/14 稳定，详见[升级笔记](docs/agentic-rag-upgrade/升级笔记.md)。
+> 口径说明：主表 = M6 评测（裁判 qwen3.7-max）；M7 表 = 同裁判双图对比。多 Agent 相对单 Agent **行为等价**（职责隔离与工具收窄不伤效果，token 反而更省），相对 M6 基线 faithfulness / relevancy 不降。评测驱动修复实录：两类 0 分 case（证据截断误判 / 答案退化 / 重复检索烧迭代）修复至 1.000；意图边界抖动（工具安装类问题被误判直答）经边界规则修复至 14/14 稳定。
 
 ## ✨ 功能特性
 
@@ -95,7 +95,7 @@ flowchart TD
 ## 🚀 快速开始
 
 ### 环境要求
-- Python 3.11+（推荐用 uv 管理依赖，见 [启动文档](docs/启动文档.md)）
+- Python 3.11+（推荐用 uv 管理依赖）
 - Node.js 18+
 
 ### 1. 克隆与后端配置
@@ -185,16 +185,6 @@ GET  /api/graph/global          GET /api/graph/local/:id
 # MCP Server（API Key 认证，Claude Desktop / Cursor 直连）
 POST /mcp
 ```
-
-## 📚 文档
-
-- [Agentic RAG 升级笔记](docs/agentic-rag-upgrade/升级笔记.md) — 13 项架构决策 + 22 个踩坑 + M0-M7 全过程
-- [Agentic RAG 实施计划](docs/agentic-rag-upgrade/实施计划.md) — M0-M7 执行步骤清单（含验收标准与 eval 硬门槛）
-- [M7 多 Agent 协作计划](docs/agentic-rag-upgrade/多Agent协作计划.md) — 三方案对比 / A′ 平铺图定稿 / P0 风险清单 / 决策拍板
-- [Agentic RAG 待做清单](docs/agentic-rag-upgrade/待做清单.md) — 收尾遗留与新发现缺陷
-- [MCP 集成指南](docs/MCP_INTEGRATION.md) — Claude Desktop / Cursor 接入配置
-- [启动文档](docs/启动文档.md) — Windows / Anaconda 环境启动与故障排查
-- [CODE WIKI](docs/CODE_WIKI.md) — 代码架构全览
 
 ## 🗺️ 版本演进
 
