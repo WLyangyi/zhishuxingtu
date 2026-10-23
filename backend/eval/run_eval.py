@@ -23,6 +23,20 @@ from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# 本机 torch 导入会长时间卡死(transformers → torch 原生 DLL 加载),而本项目链路不需要
+# transformers(embedding 走 DashScope 远程 API)。langchain_core 在 import 时会尝试
+# `from transformers import GPT2TokenizerFast`(仅 token 计数兜底),这里把它标记为不可用,
+# 让它走 except ImportError 分支,避免 eval 卡死在 import 阶段。
+sys.modules.setdefault("transformers", None)
+
+# 本机 Windows 的 WMI 查询会卡死(platform 模块的 _wmi_query),而 faiss(判断 CPU 指令集)、
+# pkg_resources/jieba(import 时取 platform.system())都会在 import 阶段触发它,导致 eval 启动卡住。
+# 项目只跑 x86_64,直接给固定值绕过 WMI 探测。
+import platform as _platform  # noqa: E402
+
+_platform.win32_ver = lambda *a, **k: ("", "", "", "")
+_platform.machine = lambda: os.environ.get("PROCESSOR_ARCHITECTURE") or "AMD64"
+
 from app.core.config import settings  # noqa: E402  P11: 先缓存健康 pydantic
 from app.services import init_hybrid_search, init_vector_store  # noqa: E402
 
@@ -35,6 +49,45 @@ def recall_at_k(retrieved_ids: List[str], relevant_ids: List[str], k: int) -> Op
         return None
     hit = set(retrieved_ids[:k]) & set(relevant_ids)
     return len(hit) / len(relevant_ids)
+
+
+# Phase 3 口径:通过判定阈值与失败归因(先按阈值近似,后续可用人工标注校准)
+PASS_FAITHFULNESS = 0.7
+PASS_RELEVANCY = 0.7
+PASS_RECALL = 0.6
+# 成本估算口径:粗估值,只用于报告趋势对比,不作结算依据
+COST_PER_1K_TOKENS_CNY = 0.002
+
+
+def classify_failure(
+    agent_row: Dict[str, Any], rel_ids: List[str], judged: bool = True
+) -> tuple:
+    """返回 (pass, failure_type, first_error_step)。
+
+    检查顺序按链路上游到下游,first_error_step 取最早出问题的环节:
+    routing(意图路由错) -> retrieval_miss(相关文档没召回) -> judge_error(裁判没给分)
+    -> generation_hallucination(答案不 grounded) -> answer_incomplete(没回应问题)
+    """
+    intent, expected = agent_row.get("intent"), agent_row.get("expected_intent")
+    if expected and intent != expected:
+        return False, "routing", "router"
+
+    recall = agent_row.get("recall")
+    if rel_ids and recall is not None and recall < PASS_RECALL:
+        return False, "retrieval_miss", "retrieval"
+
+    if not judged:
+        return True, "", ""
+
+    faith, relev = agent_row.get("faithfulness"), agent_row.get("relevancy")
+    if faith is None or relev is None:
+        return False, "judge_error", "judge"
+    if faith < PASS_FAITHFULNESS:
+        return False, "generation_hallucination", "generation"
+    if relev < PASS_RELEVANCY:
+        return False, "answer_incomplete", "answer"
+
+    return True, "", ""
 
 
 def run_baseline(question: str, db):
@@ -146,6 +199,11 @@ def write_report(report_path: str, version: str, results: List[dict], agg_b: dic
     for label, key in (("recall@k", "recall"), ("faithfulness", "faithfulness"), ("answer_relevancy", "relevancy")):
         lines.append(f"| {label} | {fmt(agg_b['total'].get(key))} | {fmt(agg_a['total'].get(key))} |")
 
+    passes = [r["agent"]["pass"] for r in results if r["agent"].get("pass") is not None]
+    if passes:
+        hit = sum(1 for p in passes if p)
+        lines.append(f"| pass 率 | — | {hit}/{len(passes)} = {hit / len(passes):.1%} |")
+
     lines += ["", "## 按分类分桶", "", "| 分类 | 条数 | recall(b/a) | faithful(b/a) | relevancy(b/a) |", "|---|---|---|---|---|"]
     cats = sorted(set(r["category"] for r in results))
     for cat in cats:
@@ -165,8 +223,21 @@ def write_report(report_path: str, version: str, results: List[dict], agg_b: dic
         f"- 意图分布: {dict(Counter(r['agent'].get('intent') for r in results))}",
         f"- agent 平均工具调用次数: {mean([r['agent'].get('tool_calls') or 0 for r in results]):.2f}",
         f"- agent 平均 token 消耗: {mean([r['agent'].get('token_used') or 0 for r in results]):.0f}",
+        f"- agent 平均成本(估算): ¥{mean([r['agent'].get('cost_cny') or 0 for r in results]):.4f}/条",
         "",
     ]
+
+    # Phase 3 失败归因分布(按链路上游到下游排序)
+    order = ["routing", "retrieval_miss", "judge_error", "generation_hallucination", "answer_incomplete"]
+    dist = Counter(r["agent"].get("failure_type") or "pass" for r in results)
+    lines += ["## 失败归因分布", "", "| 归因 | 条数 |", "|---|---|", f"| pass | {dist.pop('pass', 0)} |"]
+    for key in order:
+        if dist.get(key):
+            lines.append(f"| {key} | {dist[key]} |")
+    for key, cnt in dist.items():
+        if key not in order:
+            lines.append(f"| {key} | {cnt} |")
+    lines.append("")
 
     def p95(vals: List[int]) -> Optional[int]:
         if not vals:
@@ -195,13 +266,15 @@ def write_report(report_path: str, version: str, results: List[dict], agg_b: dic
         hits = sum(1 for r in routed if r["agent"].get("intent") == r["agent"]["expected_intent"])
         lines += [f"- 路由准确率(vs expected_intent): {hits}/{len(routed)} = {hits / len(routed):.1%}", ""]
 
-    lines += ["", "## 逐条明细", "", "| id | 分类 | recall(b/a) | faithful(b/a) | relevancy(b/a) | 问题 |", "|---|---|---|---|---|---|"]
+    lines += ["", "## 逐条明细", "", "| id | 分类 | recall(b/a) | faithful(b/a) | relevancy(b/a) | 判定 | 失败归因 | 问题 |", "|---|---|---|---|---|---|---|---|"]
     for r in results:
         b, a = r["baseline"], r["agent"]
+        verdict = "通过" if a.get("pass") else "未通过"
         lines.append(
             f"| {r['id']} | {r['category']} | {fmt(b.get('recall'))}/{fmt(a.get('recall'))} | "
             f"{fmt(b.get('faithfulness'))}/{fmt(a.get('faithfulness'))} | "
-            f"{fmt(b.get('relevancy'))}/{fmt(a.get('relevancy'))} | {r['question'][:40]} |"
+            f"{fmt(b.get('relevancy'))}/{fmt(a.get('relevancy'))} | {verdict} | "
+            f"{a.get('failure_type') or '—'} | {r['question'][:40]} |"
         )
     lines.append("")
     with open(report_path, "w", encoding="utf-8") as f:
@@ -238,7 +311,11 @@ def write_eval_runs(db, results: List[dict], agent_version: str, judge_desc: str
                     {"recall@k": m.get("recall"), "faithfulness": m.get("faithfulness"),
                      "answer_relevancy": m.get("relevancy"), "latency_ms": m.get("latency_ms"),
                      "intent": m.get("intent"), "tool_calls": m.get("tool_calls"),
-                     "token_used": m.get("token_used"), "judge": judge_desc},
+                     "token_used": m.get("token_used"),
+                     "pass": m.get("pass"), "failure_type": m.get("failure_type"),
+                     "first_error_step": m.get("first_error_step"),
+                     "steps": m.get("steps"), "cost_cny": m.get("cost_cny"),
+                     "judge": judge_desc},
                     ensure_ascii=False,
                 ),
             ))
@@ -328,6 +405,15 @@ def main() -> int:
                     row["baseline"]["relevancy"] = judge_answer_relevancy(question, b_answer)["score"]
                 if a_answer:
                     row["agent"]["relevancy"] = judge_answer_relevancy(question, a_answer)["score"]
+
+            # Phase 3 结果结构:通过判定 + 失败归因 + 执行步数 + 成本估算
+            judged = bool(judge_faithfulness)
+            passed, failure_type, first_error_step = classify_failure(row["agent"], rel_ids, judged)
+            row["agent"]["pass"] = passed
+            row["agent"]["failure_type"] = failure_type
+            row["agent"]["first_error_step"] = first_error_step
+            row["agent"]["steps"] = a_tool_calls
+            row["agent"]["cost_cny"] = round(a_tokens / 1000 * COST_PER_1K_TOKENS_CNY, 4)
 
             results.append(row)
     finally:
