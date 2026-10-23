@@ -4,8 +4,8 @@ M2-4 评估脚本:旧基线(baseline RAG) vs 新 agent(ReAct) 跑 eval set,输�
 
 指标:
   recall@k       确定性,纯计算(相关文档在检索 top-k 里的覆盖率)
-  faithfulness   qwen3.7-max 裁判,答案声明是否 grounded 于检索证据
-  answer_relevancy qwen3.7-max 裁判,答案是否回应问题
+  faithfulness   独立裁判(默认 GLM-5.3-Flash),答案声明是否 grounded 于检索证据
+  answer_relevancy 独立裁判(默认 GLM-5.3-Flash),答案是否回应问题
 
 用法:
     .venv\\Scripts\\python.exe eval/run_eval.py [--limit N] [--skip-judge] [--agent-version agent-v1]
@@ -126,12 +126,13 @@ def aggregate(results: List[dict]) -> Dict[str, Any]:
     return {"total": total, "by_category": by_cat}
 
 
-def write_report(report_path: str, version: str, results: List[dict], agg_b: dict, agg_a: dict) -> None:
+def write_report(report_path: str, version: str, results: List[dict], agg_b: dict, agg_a: dict, judge_desc: str) -> None:
     os.makedirs(os.path.dirname(report_path), exist_ok=True)
     lines = [
         f"# Agentic RAG 对比报告({version})",
         "",
         f"生成时间:{datetime.now().strftime('%Y-%m-%d %H:%M')}  评测条数:{len(results)}",
+        f"裁判口径:{judge_desc}",
         "",
         "## 总体指标",
         "",
@@ -208,7 +209,7 @@ def write_report(report_path: str, version: str, results: List[dict], agg_b: dic
     print(f"[报告已写入] {report_path}")
 
 
-def write_eval_runs(db, results: List[dict], agent_version: str) -> None:
+def write_eval_runs(db, results: List[dict], agent_version: str, judge_desc: str) -> None:
     from app.models.eval import EvalSet, EvalRun
 
     existing = {s.eval_id: s for s in db.query(EvalSet).all()}
@@ -237,7 +238,7 @@ def write_eval_runs(db, results: List[dict], agent_version: str) -> None:
                     {"recall@k": m.get("recall"), "faithfulness": m.get("faithfulness"),
                      "answer_relevancy": m.get("relevancy"), "latency_ms": m.get("latency_ms"),
                      "intent": m.get("intent"), "tool_calls": m.get("tool_calls"),
-                     "token_used": m.get("token_used")},
+                     "token_used": m.get("token_used"), "judge": judge_desc},
                     ensure_ascii=False,
                 ),
             ))
@@ -257,8 +258,12 @@ def main() -> int:
 
     if not args.skip_judge:
         from app.services.llm.judge_metrics import judge_faithfulness, judge_answer_relevancy
+        from app.services.llm.judge_provider import judge_label
+        judge_desc = judge_label()
     else:
         judge_faithfulness = judge_answer_relevancy = None
+        judge_desc = "skip-judge"
+    print(f"[eval] 裁判口径: {judge_desc}")
 
     init_vector_store(settings.FAISS_INDEX_PATH)
     init_hybrid_search()
@@ -332,11 +337,11 @@ def main() -> int:
     agg_a = aggregate([dict(r["agent"], category=r["category"]) for r in results])
 
     report_path = os.path.join(settings.EVAL_REPORT_DIR, f"{datetime.now().strftime('%Y-%m-%d')}-comparison.md")
-    write_report(report_path, args.agent_version, results, agg_b, agg_a)
+    write_report(report_path, args.agent_version, results, agg_b, agg_a, judge_desc)
 
     db = SessionLocal()
     try:
-        write_eval_runs(db, results, args.agent_version)
+        write_eval_runs(db, results, args.agent_version, judge_desc)
     finally:
         db.close()
 

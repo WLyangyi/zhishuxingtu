@@ -1,9 +1,9 @@
-"""M2-3 评估指标:faithfulness / answer_relevancy,由 qwen3.7-max 独立裁判打分。"""
+"""M2-3 评估指标:faithfulness / answer_relevancy,由独立裁判打分（默认 GLM-5.3-Flash）。"""
 from typing import Any, Dict, List, Union
 
 from pydantic import BaseModel, Field
 
-from app.services.llm.qwen_judge_provider import get_qwen_judge_provider
+from app.services.llm.judge_provider import get_judge_provider
 
 # 证据给裁判看时防爆上下文(只给检索到的来源,不给全库)
 EVIDENCE_MAX_CHARS = 6000
@@ -38,7 +38,10 @@ FAITHFULNESS_PROMPT = """你是 RAG 回答质量裁判。判断答案中的每�
 用户答案：
 {answer}
 
-请把答案拆成独立的"事实声明",逐条判断是否 grounded 于检索证据,并给出总体 score(0-1)。"""
+请把答案拆成独立的"事实声明",逐条判断是否 grounded 于检索证据,并给出总体 score(0-1)。
+
+只输出一个 JSON 对象，不要 markdown 代码块或额外解释。字段：
+{{"score": 0到1的数字, "claims": [{{"claim": "事实声明原文", "grounded": true或false}}]}}"""
 
 RELEVANCY_PROMPT = """你是 RAG 回答质量裁判。判断答案是否真正回应了用户问题(answer_relevancy),而不是跑题或答非所问。
 
@@ -47,7 +50,10 @@ RELEVANCY_PROMPT = """你是 RAG 回答质量裁判。判断答案是否真正�
 用户答案：
 {answer}
 
-请给出 score(0-1):1 表示完全回应了问题,0 表示完全跑题。并给出简短理由。"""
+请给出 score(0-1):1 表示完全回应了问题,0 表示完全跑题。并给出简短理由。
+
+只输出一个 JSON 对象，不要 markdown 代码块或额外解释。字段：
+{{"score": 0到1的数字, "reason": "简短理由"}}"""
 
 
 def _format_sources(sources: List[Source]) -> str:
@@ -73,7 +79,7 @@ def judge_faithfulness(
 
     M7.2 容错:裁判结构化输出偶发字段缺失/拼写漂移(实测 flash 把 grounded 拼成 groundened),
     单条坏输出不应崩掉整轮 eval——重试一次,仍失败返回 score=None(eval 聚合跳过 None,不污染指标)。"""
-    provider = get_qwen_judge_provider()
+    provider = get_judge_provider()
     prompt = FAITHFULNESS_PROMPT.format(
         question=question,
         evidence=_format_sources(sources),
@@ -96,7 +102,7 @@ def judge_faithfulness(
 
 def judge_answer_relevancy(question: str, answer: str) -> Dict[str, Any]:
     """答案是否回应了用户问题。返回 {score, reason}。容错策略同 judge_faithfulness。"""
-    provider = get_qwen_judge_provider()
+    provider = get_judge_provider()
     prompt = RELEVANCY_PROMPT.format(question=question, answer=answer)
     structured = provider.with_structured_output(RelevancyGrade)
     last_err: Exception | None = None

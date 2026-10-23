@@ -45,7 +45,13 @@ class Settings(BaseSettings):
     DASHSCOPE_API_KEY: str = ""
     DASHSCOPE_EMBEDDING_MODEL: str = "text-embedding-v3"
     QWEN_EMBEDDING_MODEL: str = "qwen3.7-text-embedding"
-    QWEN_JUDGE_MODEL: str = "qwen3.7-max-2026-06-08"      # M2: 评估独立裁判（与推理模型不同源）
+
+    # M2: 评估独立裁判（与推理模型不同源）。JUDGE_PROVIDER=glm / qwen
+    JUDGE_PROVIDER: str = "glm"
+    GLM_API_KEY: str = ""
+    GLM_BASE_URL: str = "https://open.bigmodel.cn/api/paas/v4/"
+    GLM_JUDGE_MODEL: str = "glm-5.3-flash"
+    QWEN_JUDGE_MODEL: str = "qwen3.7-max-2026-06-08"      # 仅 JUDGE_PROVIDER=qwen 时使用
 
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     HF_MIRROR_URL: str = "https://hf-mirror.com"
