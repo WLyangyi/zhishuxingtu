@@ -152,6 +152,13 @@ class Settings(BaseSettings):
     # M3: MCP Server 认证（Authorization: Bearer <MCP_API_KEY>；为空则 /mcp 拒绝所有请求）
     MCP_API_KEY: str = ""
 
+    # Phase 4: MCP 权限分级。默认只暴露只读工具；写工具需显式开启并绑定写入用户。
+    # MCP_DRY_RUN 默认 True：即便开了写权限，首次也只演练不落库，确认后再关。
+    MCP_ENABLE_WRITE: bool = False
+    MCP_DRY_RUN: bool = True
+    # 通过 MCP 写笔记时归属的用户 id（users.id）；为空则拒发写权限（fail-closed）
+    MCP_WRITE_USER_ID: str = ""
+
     # M3-2: web_search 联网搜索（Tavily；key 为空则工具优雅降级返回未启用提示）
     TAVILY_API_KEY: str = ""
     TAVILY_MAX_RESULTS: int = 5     # 每次搜索返回条数
