@@ -175,6 +175,18 @@ def write_report(names) -> str:
                 f"{fmt(m.get('context_recall'))} | {fmt(m.get('answer_coverage'))} | "
                 f"{fmt(pr * 100 if pr is not None else None, 1)}% |"
             )
+        # 裁判失败(超时/限流/余额不足)会让该条指标留空:不进均值,但 pass 率仍计为未通过。
+        # 不标出这一点,带裁判组的 pass 率会被误读成生成质量结论。
+        uncovered = {
+            n: (summaries[n].get("failure_distribution") or {}).get("judge_error", 0) for n in judged
+        }
+        failed = [f"{n} {c} 条" for n, c in uncovered.items() if c]
+        if failed:
+            lines += [
+                "",
+                f"> 判分失败(judge_error):{'、'.join(failed)}。这些条目的裁判字段留空、不进指标均值;"
+                "pass 率仍把它们计为未通过,故带裁判组的 pass 率不能直接当生成质量结论。",
+            ]
 
     memory = load_memory_summary()
     if memory:
