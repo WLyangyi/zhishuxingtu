@@ -21,8 +21,12 @@ class GLMJudgeProvider(BaseLLMProvider):
             temperature=0,
             # 裁判调用必须有上界：不设 timeout 时 openai 客户端默认等 600s，
             # 一次端点卡住就能让整轮批跑停在某条用例上（实测 4 分钟无进展）。
-            timeout=30,
-            max_retries=2,
+            # 实测 GLM-5.3-flash 给 6000 字证据打分约 10~14s，长答案会再慢一些，
+            # 30s 偏紧会误杀正常调用，故给 60s。
+            # max_retries 必须为 0：judge_metrics 每个指标自己已重试 2 次，
+            # 客户端再重试会叠乘成更多次 × timeout，单指标最坏等待成倍放大。
+            timeout=60,
+            max_retries=0,
         )
 
     def get_chat_model(self) -> ChatOpenAI:

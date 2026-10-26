@@ -1,6 +1,9 @@
+import contextvars
 import json
 import time
-from typing import Any, Dict, List
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
+from typing import Any, Dict, List, Optional
 
 from langchain_core.messages import (
     AIMessage,
@@ -16,7 +19,9 @@ from app.services.agent.config import (
     MAX_HISTORY_MESSAGES,
     MAX_ITERATIONS,
     MAX_SEARCHES_PER_TURN,
+    MAX_TOOL_FAILURES,
     TOKEN_BUDGET,
+    TOOL_TIMEOUT_SECONDS,
 )
 from app.services.agent.memory import get_preference_context
 from app.services.agent.prompts import (
@@ -37,7 +42,7 @@ from app.services.agent.prompts import (
 )
 from app.services.agent.state import AgentState
 from app.core.config import settings
-from app.services.llm.deepseek_provider import get_deepseek_provider
+from app.services.llm.deepseek_provider import get_deepseek_provider, invoke_with_retry
 from app.services.tools import (
     get_graph_neighbors,
     get_note,
@@ -124,18 +129,79 @@ def _append_thought(state: AgentState, entry: dict) -> List[dict]:
     return thoughts
 
 
-def _invoke_tool(fn: Any, args: dict, state: AgentState) -> Any:
-    """在节点执行所在的同步上下文内绑定用户，避免 SSE 线程池切换丢 ContextVar。"""
-    token = set_tool_context(
-        ToolContext(
-            user_id=str(state.get("user_id") or ""),
-            session_id=str(state.get("session_id") or ""),
+class ToolTimeoutError(RuntimeError):
+    """工具执行超过硬超时被中止。"""
+
+
+# 超时的工具线程无法安全杀死(同步函数没有抢占点),用常驻线程池避免每次调用新建线程
+# 后永久泄漏。上限 4:同一轮最多几十次工具调用,并发实际为 1。
+_TOOL_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="tool-call")
+
+
+def _invoke_tool(
+    fn: Any, args: dict, state: AgentState, *, timeout: Optional[float] = None
+) -> Any:
+    """在节点执行所在的同步上下文内绑定用户，避免 SSE 线程池切换丢 ContextVar。
+
+    timeout 非空时把调用丢到线程池并限时等待。线程内用 contextvars.copy_context()
+    显式带入当前上下文,否则工具里的 ToolContext 会丢失(线程不继承 ContextVar)。
+    """
+
+    def _call() -> Any:
+        token = set_tool_context(
+            ToolContext(
+                user_id=str(state.get("user_id") or ""),
+                session_id=str(state.get("session_id") or ""),
+            )
         )
-    )
+        try:
+            return fn.invoke(args)
+        finally:
+            reset_tool_context(token)
+
+    if not timeout:
+        return _call()
+    ctx = contextvars.copy_context()
+    future = _TOOL_EXECUTOR.submit(ctx.run, _call)
     try:
-        return fn.invoke(args)
-    finally:
-        reset_tool_context(token)
+        return future.result(timeout=timeout)
+    except FutureTimeoutError as exc:
+        # 注意:超时只是"不再等它",线程本身仍在跑;工具内部的 HTTP 超时才是兜底。
+        raise ToolTimeoutError(f"工具执行超时({timeout:.0f}s)") from exc
+
+
+def _call_tool(
+    fn: Any,
+    name: str,
+    args: dict,
+    state: AgentState,
+    *,
+    timeout: Optional[float] = None,
+) -> tuple:
+    """统一工具调用出口,返回 (status, result)。"""
+    if not fn:
+        return "error", f"未知工具:{name}"
+    try:
+        return "success", _invoke_tool(fn, args, state, timeout=timeout)
+    except ToolTimeoutError as exc:
+        return "timeout", json.dumps(
+            {
+                "error": f"{exc}。本次调用已中止,禁止重试同一工具;"
+                "请基于已有信息作答,或改用其他工具。"
+            },
+            ensure_ascii=False,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return "error", f"工具执行出错:{exc}"
+
+
+def _failed_calls(tool_log: List[dict], name: str) -> int:
+    """本轮该工具已失败(含超时)的次数。"""
+    return sum(
+        1
+        for lg in tool_log
+        if lg.get("tool") == name and lg.get("status") in ("error", "timeout")
+    )
 
 
 def _retained_window(history: List[Any], keep_count: int) -> tuple[List[Any], List[Any]]:
@@ -179,7 +245,7 @@ def agent_step(state: AgentState, *, store: BaseStore = None) -> Dict[str, Any]:
     keep_count = max(1, MAX_HISTORY_MESSAGES - 1)
     retained_history, removed_history = _retained_window(history, keep_count)
     msgs: List[Any] = [SystemMessage(content=system_prompt), *retained_history]
-    resp = llm.invoke(msgs)
+    resp = invoke_with_retry(llm, msgs, label="agent_step")
 
     iteration = (state.get("iteration") or 0) + 1
     usage = getattr(resp, "usage_metadata", None) or {}
@@ -317,13 +383,22 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
                     reason = decision.get("reason", "用户拒绝") if isinstance(decision, dict) else "用户拒绝"
                     result = json.dumps({"status": "rejected", "reason": reason}, ensure_ascii=False)
                 else:
-                    try:
-                        result = _invoke_tool(fn, args, state)
-                    except Exception as e:  # noqa: BLE001
-                        status = "error"
-                        result = f"工具执行出错:{e}"
+                    # 审批在主线程完成,写入不带超时:本地 DB 操作不会卡死,而 interrupt
+                    # 依赖主线程上下文,不能挪进超时线程池。
+                    status, result = _call_tool(fn, name, args, state)
         else:
-            if name == "search_notes":
+            if _failed_calls(tool_log, name) >= MAX_TOOL_FAILURES:
+                # Phase 4:同一工具本轮失败/超时达到阈值即熔断,后续请求直接短路,
+                # 不再真调工具、不再烧 token,并明确要求模型换路子或直接作答。
+                status = "error"
+                result = json.dumps(
+                    {
+                        "error": f"{name} 本轮已失败 {MAX_TOOL_FAILURES} 次,已熔断:"
+                        "禁止继续调用该工具,请基于已有信息作答或改用其他工具。"
+                    },
+                    ensure_ascii=False,
+                )
+            elif name == "search_notes":
                 # 病灶B:重复检索短路(完全相同 + 语义重复),防多跳检索死循环烧满迭代。
                 query = str((args or {}).get("query") or "").strip()
                 successful_searches = sum(
@@ -351,13 +426,9 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
                     result = json.dumps({"error": dup_reason}, ensure_ascii=False)
                     status = "error"
                 else:
-                    try:
-                        result = _invoke_tool(fn, args, state) if fn else f"未知工具:{name}"
-                        if not fn:
-                            status = "error"
-                    except Exception as e:  # noqa: BLE001
-                        status = "error"
-                        result = f"工具执行出错:{e}"
+                    status, result = _call_tool(
+                        fn, name, args, state, timeout=TOOL_TIMEOUT_SECONDS
+                    )
                     if query:
                         searched_queries.add(query)
             # 熔断:web_search 本轮已确认"永久未启用"后,后续请求直接短路,不再真调工具/烧 token。
@@ -374,13 +445,9 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
                 )
                 status = "error"
             else:
-                try:
-                    result = _invoke_tool(fn, args, state) if fn else f"未知工具:{name}"
-                    if not fn:
-                        status = "error"
-                except Exception as e:  # noqa: BLE001
-                    status = "error"
-                    result = f"工具执行出错:{e}"
+                status, result = _call_tool(
+                    fn, name, args, state, timeout=TOOL_TIMEOUT_SECONDS
+                )
 
         latency_ms = max(0, int((time.perf_counter() - started) * 1000))
         if status == "success":
@@ -461,11 +528,13 @@ def grade_documents(state: AgentState) -> Dict[str, Any]:
 
     provider = get_deepseek_provider()
     structured = provider.with_structured_output(GradeDocuments)
-    resp = structured.invoke(
+    resp = invoke_with_retry(
+        structured,
         [
             SystemMessage(content=GRADE_DOCUMENTS_PROMPT),
             HumanMessage(content=f"问题:{state['question']}\n\n文档:\n{_full_doc_text(docs)}"),
-        ]
+        ],
+        label="grade_documents",
     )
     score = (resp.binary_score or "").lower()
     thoughts.append({"type": "check", "content": f"grade_documents: {score} ({resp.reason})"})
@@ -511,11 +580,13 @@ def hallucination_check(state: AgentState) -> Dict[str, Any]:
 
     provider = get_deepseek_provider()
     structured = provider.with_structured_output(GradeHallucinations)
-    resp = structured.invoke(
+    resp = invoke_with_retry(
+        structured,
         [
             SystemMessage(content=GRADE_HALLUCINATIONS_PROMPT),
             HumanMessage(content=f"答案:\n{answer}\n\n检索证据:\n{_doc_text(docs)}"),
-        ]
+        ],
+        label="hallucination_check",
     )
     score = (resp.binary_score or "").lower()
     thoughts.append({"type": "check", "content": f"hallucination_check: {score} ({resp.reason})"})
@@ -533,11 +604,13 @@ def answer_quality(state: AgentState) -> Dict[str, Any]:
 
     provider = get_deepseek_provider()
     structured = provider.with_structured_output(GradeAnswer)
-    resp = structured.invoke(
+    resp = invoke_with_retry(
+        structured,
         [
             SystemMessage(content=GRADE_ANSWER_PROMPT),
             HumanMessage(content=f"用户问题:{state['question']}\n\n模型答案:\n{answer}"),
-        ]
+        ],
+        label="answer_quality",
     )
     score = (resp.binary_score or "").lower()
     thoughts.append({"type": "check", "content": f"answer_quality: {score} ({resp.reason})"})
@@ -546,8 +619,10 @@ def answer_quality(state: AgentState) -> Dict[str, Any]:
 
 def rewrite_question(state: AgentState) -> Dict[str, Any]:
     provider = get_deepseek_provider()
-    resp = provider.get_chat_model().invoke(
-        f"把下面的问题改写成更适合知识库检索的查询(保留原意,可拆成多个关键词):\n{state['question']}"
+    resp = invoke_with_retry(
+        provider.get_chat_model(),
+        f"把下面的问题改写成更适合知识库检索的查询(保留原意,可拆成多个关键词):\n{state['question']}",
+        label="rewrite_question",
     )
     new_q = (resp.content or "").strip()
     thoughts = _append_thought(state, {"type": "thought", "content": f"改写问题: {state['question']} -> {new_q}"})
@@ -631,11 +706,13 @@ def intent_classify(state: AgentState) -> Dict[str, Any]:
     try:
         provider = get_deepseek_provider()
         structured = provider.with_structured_output(QueryIntent)
-        resp = structured.invoke(
+        resp = invoke_with_retry(
+            structured,
             [
                 SystemMessage(content=INTENT_CLASSIFY_PROMPT),
                 HumanMessage(content=question),
-            ]
+            ],
+            label="intent_classify",
         )
         candidate = (getattr(resp, "intent", "") or "").strip().lower()
         if candidate in ("knowledge", "direct_answer", "web_search", "note_write"):
@@ -666,11 +743,13 @@ def direct_answer(state: AgentState, *, store: BaseStore = None) -> Dict[str, An
     if preference_context:
         system_prompt += "\n\n## 用户长期偏好\n" f"{preference_context}"
     question = state.get("question") or ""
-    resp = provider.get_chat_model().invoke(
+    resp = invoke_with_retry(
+        provider.get_chat_model(),
         [
             SystemMessage(content=system_prompt),
             HumanMessage(content=question),
-        ]
+        ],
+        label="direct_answer",
     )
     answer = (resp.content or "").strip() or "抱歉,我暂时无法回答这个问题。"
     return {

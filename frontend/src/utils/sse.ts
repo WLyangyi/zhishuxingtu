@@ -1,6 +1,7 @@
 export interface SSEMessage {
   type: 'content' | 'sources' | 'disclaimer' | 'error' | 'done' |
-    'thought' | 'action' | 'observation' | 'check' | 'final_answer' | 'approval_required'
+    'thought' | 'action' | 'observation' | 'check' | 'final_answer' | 'approval_required' |
+    'usage' | 'budget_exceeded'
   text?: string
   notes?: Array<{ id: string; title: string }>
   message?: string
@@ -14,6 +15,13 @@ export interface SSEMessage {
   description?: string
   args?: Record<string, unknown>
   preview?: { title?: string; content?: string; folder_id?: string | null }
+  /** usage / budget_exceeded 事件带的会话用量 */
+  turn_tokens?: number
+  turn_cost_cny?: number
+  session_tokens?: number
+  session_cost_cny?: number
+  token_budget?: number
+  cost_budget_cny?: number
 }
 
 export interface SSEOptions {

@@ -92,6 +92,21 @@ class Settings(BaseSettings):
     USE_THREE_CHECK: bool = True   # false=跳过 grade_documents / hallucination_check / answer_quality 三查
     FORCE_INTENT: str = ""         # 非空=意图路由短路为指定意图(如 knowledge),用于消融"去意图路由"
 
+    # Phase 4 可靠性:单次工具调用硬超时(秒)。工具内部各自有 HTTP 超时,这里防的是
+    # embedding / DB / 未来接入的第三方工具卡死,把整条 SSE 链路的单轮拖到不可控。
+    AGENT_TOOL_TIMEOUT_SECONDS: float = 30.0
+    # 同一工具本轮失败(含超时)达到该次数即熔断,后续调用直接短路,不再真调、不再烧 token
+    AGENT_MAX_TOOL_FAILURES: int = 2
+    # Phase 4 可靠性:LLM 指数退避(只重试瞬时错误:超时/连接/限流/5xx)
+    LLM_TIMEOUT_SECONDS: float = 60.0
+    LLM_MAX_ATTEMPTS: int = 3
+    LLM_RETRY_BASE_DELAY: float = 1.0
+    # Phase 4:每会话跨轮累计预算。超出后下一次请求直接硬停并返回降级答复,不再调用 LLM。
+    AGENT_SESSION_TOKEN_BUDGET: int = 200000
+    AGENT_SESSION_COST_BUDGET_CNY: float = 1.0
+    # 成本换算口径(与 eval 的 COST_PER_1K_TOKENS_CNY 保持一致,便于横向对比)
+    AGENT_COST_PER_1K_TOKENS_CNY: float = 0.002
+
     USE_RERANKER: bool = True
     RERANKER_TOP_K: int = 5
     RERANKER_CANDIDATES: int = 15

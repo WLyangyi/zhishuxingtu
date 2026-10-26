@@ -3,6 +3,9 @@ import api from './index'
 export interface AgentSession {
   id: string
   title: string
+  /** Phase 4:跨轮累计用量，用于成本展示 */
+  total_tokens?: number
+  total_cost_cny?: number
   created_at?: string
   updated_at?: string
 }

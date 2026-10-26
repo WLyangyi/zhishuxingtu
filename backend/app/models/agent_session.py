@@ -1,4 +1,4 @@
-from sqlalchemy import Column, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Column, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 
 from app.db.base import Base, TimestampMixin, generate_uuid
 
@@ -13,6 +13,9 @@ class AgentSession(Base, TimestampMixin):
     # M7.4:本会话最近一轮命中的子 Agent 路由(knowledge/web_search/note_write/direct_answer,
     # 由 _stream_graph 从图终态回写;本地审计的 agent 维度,供路由准确率分析)
     agent_route = Column(String(32), default="")
+    # Phase 4:跨轮累计用量(turn 结束由 _stream_graph 累加)。用于每会话预算硬停与成本展示。
+    total_tokens = Column(Integer, default=0)
+    total_cost_cny = Column(Float, default=0.0)
 
 
 class AgentToolCall(Base, TimestampMixin):

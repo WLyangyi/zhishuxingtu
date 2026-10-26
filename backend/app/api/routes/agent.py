@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.agent_session import AgentSession, AgentToolCall
 from app.models.user import User
@@ -50,6 +51,53 @@ class PreferenceUpdate(BaseModel):
 
 def _sse(data: dict) -> str:
     return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+# ---------- Phase 4:每会话用量预算 ----------
+def _turn_cost_cny(tokens: int) -> float:
+    return round(tokens / 1000 * float(settings.AGENT_COST_PER_1K_TOKENS_CNY), 6)
+
+
+def _session_budget_exhausted(session: AgentSession) -> Optional[str]:
+    """返回超预算原因；未超出返回 None。"""
+    tokens = int(session.total_tokens or 0)
+    cost = float(session.total_cost_cny or 0.0)
+    token_budget = int(settings.AGENT_SESSION_TOKEN_BUDGET)
+    cost_budget = float(settings.AGENT_SESSION_COST_BUDGET_CNY)
+    if token_budget > 0 and tokens >= token_budget:
+        return f"累计 token {tokens} 已达会话上限 {token_budget}"
+    if cost_budget > 0 and cost >= cost_budget:
+        return f"累计花费 ¥{cost:.4f} 已达会话上限 ¥{cost_budget:.2f}"
+    return None
+
+
+def _budget_usage_payload(session: AgentSession, turn_tokens: int, turn_cost: float) -> dict:
+    """用量字段(不含 type,由调用方决定是 usage 还是 budget_exceeded)。"""
+    return {
+        "turn_tokens": turn_tokens,
+        "turn_cost_cny": round(turn_cost, 6),
+        "session_tokens": int(session.total_tokens or 0),
+        "session_cost_cny": round(float(session.total_cost_cny or 0.0), 6),
+        "token_budget": int(settings.AGENT_SESSION_TOKEN_BUDGET),
+        "cost_budget_cny": float(settings.AGENT_SESSION_COST_BUDGET_CNY),
+    }
+
+
+def _budget_exceeded_stream(session: AgentSession, reason: str) -> Iterator[str]:
+    """预算耗尽时的硬停流:不调 LLM、不调工具,只回一条降级答复。"""
+    usage = _budget_usage_payload(session, 0, 0.0)
+    yield _sse({**usage, "type": "budget_exceeded", "message": f"会话预算已用尽:{reason}"})
+    yield _sse(
+        {
+            "type": "final_answer",
+            "answer": (
+                f"本会话的用量预算已用尽（{reason}），已停止继续调用模型。\n\n"
+                "你可以新建一个会话继续提问，或清空当前会话重新开始；"
+                "如需长期使用请调高 AGENT_SESSION_TOKEN_BUDGET / AGENT_SESSION_COST_BUDGET_CNY。"
+            ),
+        }
+    )
+    yield "data: [DONE]\n\n"
 
 
 def _fallback_answer(db: Session, question: str) -> str:
@@ -182,6 +230,7 @@ def _stream_graph(
     final_answer = ""
     interrupted = False
     emitted_fallback = False
+    turn_tokens = 0
 
     try:
         config = build_stream_config(session.id, user_id=user_id)
@@ -211,6 +260,9 @@ def _stream_graph(
                     final_answer = value["answer"]
                 if value.get("tool_calls_log"):
                     tool_logs = value["tool_calls_log"]
+                # token_used 是本轮累计值(每轮 build_input 清零),取 max 兼容中断恢复
+                if isinstance(value.get("token_used"), int):
+                    turn_tokens = max(turn_tokens, value["token_used"])
     except Exception as exc:  # noqa: BLE001
         yield _sse({"type": "error", "message": f"Agent 执行出错：{exc}"})
         if fallback_question:
@@ -229,12 +281,17 @@ def _stream_graph(
         session.agent_route = session.agent_route or ""
 
     _persist_tool_logs(db, session.id, tool_logs)
+    # Phase 4:跨轮累计用量,供每会话预算硬停与前端成本展示
+    turn_cost = _turn_cost_cny(turn_tokens)
+    session.total_tokens = int(session.total_tokens or 0) + turn_tokens
+    session.total_cost_cny = round(float(session.total_cost_cny or 0.0) + turn_cost, 6)
     session.updated_at = datetime.now(timezone.utc)
     db.add(session)
     db.commit()
 
     if final_answer and not interrupted and not emitted_fallback:
         yield _sse({"type": "final_answer", "answer": final_answer})
+    yield _sse({"type": "usage", **_budget_usage_payload(session, turn_tokens, turn_cost)})
     yield "data: [DONE]\n\n"
 
 
@@ -259,6 +316,14 @@ async def agent_chat_stream(
         db.add(session)
         db.commit()
     config = {"configurable": {"thread_id": session.id}}
+    # Phase 4:会话预算已用尽则硬停,不调模型不调工具,直接回降级答复
+    budget_reason = _session_budget_exhausted(session)
+    if budget_reason:
+        return StreamingResponse(
+            _budget_exceeded_stream(session, budget_reason),
+            media_type="text/event-stream",
+            headers=SSE_HEADERS,
+        )
     snapshot = get_graph().get_state(config)
     if snapshot.next:
         # checkpoint 存在 pending interrupt 时拒绝新输入：langgraph 会静默丢弃挂起
@@ -287,6 +352,13 @@ async def resume_agent(
 ):
     session = _get_owned_session(db, current_user.id, request.session_id)
     config = {"configurable": {"thread_id": session.id}}
+    budget_reason = _session_budget_exhausted(session)
+    if budget_reason:
+        return StreamingResponse(
+            _budget_exceeded_stream(session, budget_reason),
+            media_type="text/event-stream",
+            headers=SSE_HEADERS,
+        )
     snapshot = get_graph().get_state(config)
     if not snapshot.next:
         raise HTTPException(status_code=409, detail="该会话没有待审批操作")
@@ -326,6 +398,8 @@ async def list_agent_sessions(
             {
                 "id": session.id,
                 "title": session.title,
+                "total_tokens": int(session.total_tokens or 0),
+                "total_cost_cny": round(float(session.total_cost_cny or 0.0), 6),
                 "created_at": session.created_at.isoformat() if session.created_at else None,
                 "updated_at": session.updated_at.isoformat() if session.updated_at else None,
             }

@@ -34,6 +34,9 @@
           </div>
         </div>
         <div class="header-actions">
+          <span v-if="usageLabel" class="usage-badge" :title="usageTitle">
+            <Gauge :size="14" /> {{ usageLabel }}
+          </span>
           <button class="header-btn" @click="showPreferences = !showPreferences">
             <SlidersHorizontal :size="16" /> 长期偏好
           </button>
@@ -147,7 +150,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import {
-  Activity, Bot, MessageSquare, Plus, Send, SlidersHorizontal,
+  Activity, Bot, Gauge, MessageSquare, Plus, Send, SlidersHorizontal,
   Sparkles, Square, Trash2, User, X
 } from 'lucide-vue-next'
 import { agentApi, type AgentMessage, type AgentSession, type TimelineEvent } from '@/api/agent'
@@ -179,6 +182,28 @@ const preferenceStatus = ref('')
 
 const quickActions = ['我有哪些笔记？', '帮我总结一下知识库', '对比最近的两篇笔记']
 const combinedTimeline = computed(() => [...persistedTimeline.value, ...liveTimeline.value])
+
+// Phase 4:会话累计用量(后端 usage 事件 / 会话列表回填),用于顶栏成本展示
+interface SessionUsage { tokens: number; cost: number; tokenBudget: number; costBudget: number }
+const sessionUsage = ref<SessionUsage | null>(null)
+
+function formatTokens(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)
+}
+
+const usageLabel = computed(() => {
+  const usage = sessionUsage.value
+  if (!usage || (!usage.tokens && !usage.cost)) return ''
+  return `${formatTokens(usage.tokens)} tokens · ¥${usage.cost.toFixed(4)}`
+})
+
+const usageTitle = computed(() => {
+  const usage = sessionUsage.value
+  if (!usage) return ''
+  const base = `本会话累计 ${usage.tokens} tokens / ¥${usage.cost.toFixed(4)}`
+  if (!usage.tokenBudget && !usage.costBudget) return base
+  return `${base}，上限 ${formatTokens(usage.tokenBudget)} tokens / ¥${usage.costBudget.toFixed(2)}`
+})
 
 function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -216,6 +241,11 @@ async function switchChat(chatId: string) {
   sseClient.value = null
   currentChatId.value = chatId
   pendingApproval.value = null
+  // 切会话时按会话列表里的累计用量回填；精确预算上限等本轮 usage 事件再补
+  const chatMeta = chatList.value.find(item => item.id === chatId)
+  sessionUsage.value = chatMeta && (chatMeta.total_tokens || chatMeta.total_cost_cny)
+    ? { tokens: chatMeta.total_tokens || 0, cost: chatMeta.total_cost_cny || 0, tokenBudget: 0, costBudget: 0 }
+    : null
   streamingContent.value = ''
   loading.value = false
   isStreaming.value = false
@@ -263,6 +293,15 @@ function handleStreamMessage(message: SSEMessage) {
     }
   } else if (message.type === 'final_answer') {
     streamingContent.value = message.answer || ''
+  } else if (message.type === 'usage') {
+    sessionUsage.value = {
+      tokens: message.session_tokens || 0,
+      cost: message.session_cost_cny || 0,
+      tokenBudget: message.token_budget || 0,
+      costBudget: message.cost_budget_cny || 0
+    }
+  } else if (message.type === 'budget_exceeded') {
+    liveTimeline.value.push({ type: 'observation', content: message.message || '会话预算已用尽', status: 'error' })
   } else if (message.type === 'approval_required') {
     pendingApproval.value = message
   } else if (message.type === 'error') {
@@ -418,6 +457,7 @@ onUnmounted(() => sseClient.value?.abort())
 .header-info { display: flex; align-items: center; gap: 11px; h1 { margin: 0; color: var(--text-primary); font-size: 17px; } p { margin: 2px 0 0; color: var(--text-muted); font-size: 11px; } }
 .header-icon { color: var(--primary-color); }
 .header-actions { display: flex; gap: 7px; }
+.usage-badge { display: flex; align-items: center; gap: 5px; padding: 6px 9px; color: var(--text-secondary); background: var(--bg-hover); border: 1px solid var(--border-subtle); border-radius: 999px; font-size: 10px; font-variant-numeric: tabular-nums; cursor: default; }
 .header-btn { display: flex; align-items: center; gap: 6px; padding: 7px 9px; color: var(--text-secondary); border: 1px solid var(--border-default); border-radius: var(--radius-sm); font-size: 11px; &:hover { color: var(--text-primary); background: var(--bg-hover); } &:disabled { opacity: .4; } }
 
 .preferences-panel { position: absolute; z-index: 10; top: 62px; right: 20px; width: min(520px, calc(100% - 40px)); padding: 16px; background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-lg); box-shadow: 0 18px 50px rgba(0,0,0,.35); }
