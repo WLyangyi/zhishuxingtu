@@ -1,0 +1,76 @@
+{
+  "agent_version": "ablation-full",
+  "judge": "skip-judge",
+  "generated_at": "2026-10-27T03:23:35",
+  "count": 50,
+  "metrics": {
+    "count": 50,
+    "recall": 0.983,
+    "faithfulness": null,
+    "relevancy": null,
+    "context_recall": null,
+    "answer_coverage": null
+  },
+  "pass_rate": 0.98,
+  "pass_count": 49,
+  "pass_total": 50,
+  "routing_accuracy": 1.0,
+  "failure_distribution": {
+    "pass": 49,
+    "retrieval_miss": 1
+  },
+  "avg_tool_calls": 3.32,
+  "avg_token_used": 8599.9,
+  "avg_cost_cny": 0.0172,
+  "avg_latency_ms": 8705.6,
+  "by_category": {
+    "simple_fact": {
+      "count": 10,
+      "recall": 1.0,
+      "faithfulness": null,
+      "relevancy": null,
+      "context_recall": null,
+      "answer_coverage": null
+    },
+    "single_doc": {
+      "count": 10,
+      "recall": 1.0,
+      "faithfulness": null,
+      "relevancy": null,
+      "context_recall": null,
+      "answer_coverage": null
+    },
+    "multi_hop": {
+      "count": 10,
+      "recall": 1.0,
+      "faithfulness": null,
+      "relevancy": null,
+      "context_recall": null,
+      "answer_coverage": null
+    },
+    "comparison": {
+      "count": 10,
+      "recall": 0.917,
+      "faithfulness": null,
+      "relevancy": null,
+      "context_recall": null,
+      "answer_coverage": null
+    },
+    "temporal": {
+      "count": 5,
+      "recall": 1.0,
+      "faithfulness": null,
+      "relevancy": null,
+      "context_recall": null,
+      "answer_coverage": null
+    },
+    "edge_case": {
+      "count": 5,
+      "recall": 1.0,
+      "faithfulness": null,
+      "relevancy": null,
+      "context_recall": null,
+      "answer_coverage": null
+    }
+  }
+}

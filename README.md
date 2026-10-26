@@ -38,6 +38,7 @@ flowchart TD
 - **✍️ 写入人工审批（HITL）** - 笔记写入走 LangGraph interrupt，SSE 审批卡 + POST resume，中断状态可恢复（409 防串扰），工具调用全量审计
 - **🧠 双层记忆** - 短期 checkpoint（会话内多轮）+ 长期 store（跨会话用户偏好），LangGraph 官方标准模型
 - **👁️ 双源可观测** - Langfuse 云端优先 + 本地审计自动降级，前端实时展示 Thought / Action / Observation / Check 推理时间线
+- **🔬 差异化方案先验证再上线** - GraphRAG-lite（双向链接 1 跳邻居 + RRF，落在工具层、一键回退）与 Contextual Retrieval（LLM 生成定位前缀后重索引，独立对照索引）都已实现并各自配了消融/对照实验；在本机语料（18 篇笔记、0 条双向链接、9 条向量）上两者对 recall 均**无可测增益**（top-5 命中集不变），故不切换生产索引、只保留可复现实验——"做了但不上线"同样是结论
 
 ### 📈 评测结果（50 条六类离线评测集，报告可复现）
 
