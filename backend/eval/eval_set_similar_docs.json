@@ -1,0 +1,46 @@
+[
+  {
+    "id": "s01",
+    "question": "知识库里两篇标题都叫《Test PDF》的笔记内容完全相同吗？各自来源是什么？",
+    "expected_answer": "不完全相同：两篇都是测试用 PDF（文件名 test_paper.pdf），但关键要点与标签有差异，导入时间分别为 2026-04-09T09:15 和 2026-04-09T13:28，属于重复导入的两份测试文档。",
+    "relevant_doc_ids": [
+      "18b54f48-6dbd-4989-8e41-b6d777b00f85",
+      "0506fb4c-8323-4945-a02d-3ac47fdd8da4"
+    ],
+    "category": "similar_docs",
+    "expected_intent": "knowledge"
+  },
+  {
+    "id": "s02",
+    "question": "《Cloud Code六个小技巧》和《Cloud Code六技巧》是同一篇笔记的两个副本吗？来源是否相同？",
+    "expected_answer": "两篇高度重复但并非完全相同：来源是同一个 B 站视频（BV1YQhgzjE9r），正文相差约 70 字，其中一篇标注时长 8分18秒、标签少「AI辅助开发」，导入时间相差约 1 分钟，属同一视频的两次导入。",
+    "relevant_doc_ids": [
+      "62dc6357-b5ca-41f9-8b32-fcd45f6aa48a",
+      "0a659255-a04c-431c-ab8c-81791398870b"
+    ],
+    "category": "similar_docs",
+    "expected_intent": "knowledge"
+  },
+  {
+    "id": "s03",
+    "question": "两篇标题同为《5月10日科技行业动态与产品发布》的笔记内容一致吗？各自包含哪些动态？",
+    "expected_answer": "不一致：两篇来源同为 sspai.com/post/73145，但一篇包含 7 条动态（含天猫精灵小红盒Pro投影仪、拳头游戏起诉沐瞳抄袭等），另一篇只保留 3 条（iPod touch 停产、大疆 DJI Mini 3 Pro、雷蛇毒蝰V2专业版鼠标），导入时间也不同。",
+    "relevant_doc_ids": [
+      "307bdc71-5215-473a-b0b6-91a13cea4a76",
+      "abb1f912-4994-4a25-a06c-eac60c644246"
+    ],
+    "category": "similar_docs",
+    "expected_intent": "knowledge"
+  },
+  {
+    "id": "s04",
+    "question": "《克劳德code安装与配置指南》和《15个Cloud Code实用技巧与优化方法》都讲 Cloud Code，各自解决哪个阶段的问题？",
+    "expected_answer": "两篇是不同阶段：前者是安装与配置指南（装 Node 与 Git、配镜像/代理、验证配置成功），后者是使用阶段的 15 个提效技巧与优化方法。",
+    "relevant_doc_ids": [
+      "ab11270b-d216-4f3a-bfb8-65c26cc319f9",
+      "05bf3ed3-322c-4b75-b927-daea5d0a8789"
+    ],
+    "category": "similar_docs",
+    "expected_intent": "knowledge"
+  }
+]

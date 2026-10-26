@@ -1,0 +1,35 @@
+{
+  "agent_version": "agent-v1",
+  "judge": "skip-judge",
+  "generated_at": "2026-10-27T04:54:16",
+  "count": 4,
+  "metrics": {
+    "count": 4,
+    "recall": 1.0,
+    "faithfulness": null,
+    "relevancy": null,
+    "context_recall": null,
+    "answer_coverage": null
+  },
+  "pass_rate": 1.0,
+  "pass_count": 4,
+  "pass_total": 4,
+  "routing_accuracy": 1.0,
+  "failure_distribution": {
+    "pass": 4
+  },
+  "avg_tool_calls": 3.5,
+  "avg_token_used": 9994.5,
+  "avg_cost_cny": 0.02,
+  "avg_latency_ms": 10013.2,
+  "by_category": {
+    "similar_docs": {
+      "count": 4,
+      "recall": 1.0,
+      "faithfulness": null,
+      "relevancy": null,
+      "context_recall": null,
+      "answer_coverage": null
+    }
+  }
+}
