@@ -39,6 +39,25 @@ class AgentToolCall(Base, TimestampMixin):
     status = Column(String(50), default="success")
 
 
+class AgentToolArtifact(Base, TimestampMixin):
+    """Phase 4:大工具结果原文存档。消息里只留压缩预览,模型可凭 id 取回全文。
+
+    id 用 uuid5(session_id, tool_call_id) 确定性生成,重放同一请求只落一行。
+    """
+
+    __tablename__ = "agent_tool_artifacts"
+    __table_args__ = (
+        Index("idx_agent_tool_artifacts_session", "session_id", "created_at"),
+    )
+
+    id = Column(String(36), primary_key=True)
+    session_id = Column(String(36), index=True)
+    tool_call_id = Column(String(64))
+    tool_name = Column(String(100))
+    content = Column(Text)
+    length = Column(Integer, default=0)
+
+
 class UserPreference(Base, TimestampMixin):
     """跨会话长期偏好；LangGraph Store 的持久化事实来源。"""
 

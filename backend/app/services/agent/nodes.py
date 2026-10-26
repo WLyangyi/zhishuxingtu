@@ -16,6 +16,7 @@ from langgraph.store.base import BaseStore
 from langgraph.types import interrupt
 
 from app.services.agent.config import (
+    ARTIFACT_THRESHOLD_CHARS,
     MAX_HISTORY_MESSAGES,
     MAX_ITERATIONS,
     MAX_SEARCHES_PER_TURN,
@@ -23,6 +24,7 @@ from app.services.agent.config import (
     TOKEN_BUDGET,
     TOOL_TIMEOUT_SECONDS,
 )
+from app.services.agent.artifacts import compress_result, save_artifact
 from app.services.agent.memory import get_preference_context
 from app.services.agent.prompts import (
     DIRECT_ANSWER_PROMPT,
@@ -48,6 +50,7 @@ from app.services.tools import (
     get_note,
     list_folders,
     list_tags,
+    read_tool_artifact,
     search_notes,
     web_search,
     create_note,
@@ -62,6 +65,7 @@ ALL_TOOLS = [
     list_folders,
     web_search,
     create_note,
+    read_tool_artifact,
 ]
 TOOL_MAP = {t.name: t for t in ALL_TOOLS}
 
@@ -71,8 +75,10 @@ TOOL_MAP = {t.name: t for t in ALL_TOOLS}
 # M7.3 web_research/note_write 专职化(工具面收窄到各自职责)。
 # chat_agent 走 direct_answer 节点,无工具,不入表。
 KNOWLEDGE_TOOLS = [t for t in ALL_TOOLS if t.name != "create_note"]
-WEB_RESEARCH_TOOLS = [web_search, search_notes]
-NOTE_WRITE_TOOLS = [create_note, search_notes]
+# Phase 4:offload 后的原文靠 read_tool_artifact 取回,故三个工具面都要带上它,
+# 否则子 Agent 拿到 artifact_id 却无权读取,压缩就退化成单向截断。
+WEB_RESEARCH_TOOLS = [web_search, search_notes, read_tool_artifact]
+NOTE_WRITE_TOOLS = [create_note, search_notes, read_tool_artifact]
 
 AGENT_CONFIGS: Dict[str, Dict[str, Any]] = {
     "knowledge": {"tools": KNOWLEDGE_TOOLS, "system_prompt": KNOWLEDGE_AGENT_PROMPT},
@@ -201,6 +207,29 @@ def _failed_calls(tool_log: List[dict], name: str) -> int:
         1
         for lg in tool_log
         if lg.get("tool") == name and lg.get("status") in ("error", "timeout")
+    )
+
+
+def _offload_for_message(
+    state: AgentState, tool_call_id: str, name: str, result: str
+) -> str:
+    """超阈值结果全文落库,返回给 ToolMessage 的压缩预览。
+
+    未超阈值、无会话/调用 id、落库失败时一律原样返回——offload 是优化,
+    失败必须退回完整结果,不能以"省 token"为由丢证据。
+    返回值只用于消息内容;documents / tool_log 仍用原始 result。
+    """
+    if len(result) <= ARTIFACT_THRESHOLD_CHARS:
+        return result
+    artifact = save_artifact(
+        str(state.get("session_id") or ""), tool_call_id, name, result
+    )
+    if not artifact:
+        return result
+    preview = compress_result(result)
+    return (
+        f"{preview}\n\n[已压缩]原文共 {len(result)} 字,完整内容存档 artifact_id={artifact}。"
+        f'需要细节时调用 read_tool_artifact(artifact_id="{artifact}") 分页取回。'
     )
 
 
@@ -458,7 +487,12 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
             except (TypeError, json.JSONDecodeError):
                 pass
 
-        new_msgs.append(ToolMessage(content=result, tool_call_id=tc.get("id", "")))
+        new_msgs.append(
+            ToolMessage(
+                content=_offload_for_message(state, tc.get("id", ""), name, result),
+                tool_call_id=tc.get("id", ""),
+            )
+        )
         thoughts.append({"type": "action", "content": f"{name}{json.dumps(args, ensure_ascii=False)}"})
         thoughts.append({"type": "observation", "content": result[:300]})
         tool_log.append(

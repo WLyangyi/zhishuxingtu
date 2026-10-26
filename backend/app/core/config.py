@@ -97,6 +97,9 @@ class Settings(BaseSettings):
     AGENT_TOOL_TIMEOUT_SECONDS: float = 30.0
     # 同一工具本轮失败(含超时)达到该次数即熔断,后续调用直接短路,不再真调、不再烧 token
     AGENT_MAX_TOOL_FAILURES: int = 2
+    # Phase 4:单条工具结果超过该字符数就 offload——全文落库,消息里只留压缩预览。
+    # 1000 字以内的结果(常规检索 top_k=5 约 1.5k)几乎不受影响,避免小结果也走落库。
+    AGENT_ARTIFACT_THRESHOLD_CHARS: int = 4000
     # Phase 4 可靠性:LLM 指数退避(只重试瞬时错误:超时/连接/限流/5xx)
     LLM_TIMEOUT_SECONDS: float = 60.0
     LLM_MAX_ATTEMPTS: int = 3

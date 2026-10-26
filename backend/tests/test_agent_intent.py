@@ -224,7 +224,7 @@ def test_agent_configs_knowledge_specialized():
     k_tools = {t.name for t in AGENT_CONFIGS["knowledge"]["tools"]}
     assert "create_note" not in k_tools
     assert "web_search" in k_tools  # 拍板:保留回退
-    assert k_tools == {"search_notes", "get_note", "get_graph_neighbors", "list_tags", "list_folders", "web_search"}
+    assert k_tools == {"search_notes", "get_note", "get_graph_neighbors", "list_tags", "list_folders", "web_search", "read_tool_artifact"}
     assert "职责边界" in AGENT_CONFIGS["knowledge"]["system_prompt"]
     assert "不执行任何写入操作" in AGENT_CONFIGS["knowledge"]["system_prompt"]
     assert "create_note" in {t.name for t in AGENT_CONFIGS["note_write"]["tools"]}
@@ -236,8 +236,9 @@ def test_agent_configs_specialists_m73():
 
     w_tools = {t.name for t in AGENT_CONFIGS["web_search"]["tools"]}
     n_tools = {t.name for t in AGENT_CONFIGS["note_write"]["tools"]}
-    assert w_tools == {"web_search", "search_notes"}
-    assert n_tools == {"create_note", "search_notes"}
+    # Phase 4:三个工具面都带 read_tool_artifact,否则 offload 后的原文无人能取回
+    assert w_tools == {"web_search", "search_notes", "read_tool_artifact"}
+    assert n_tools == {"create_note", "search_notes", "read_tool_artifact"}
     # web_research:信源引用要求
     assert "来源" in AGENT_CONFIGS["web_search"]["system_prompt"]
     # note_write:查重流程 + 审批提示
