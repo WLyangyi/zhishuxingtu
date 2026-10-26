@@ -1,0 +1,18 @@
+# 后端镜像只需要 backend/{requirements.txt,app,scripts}，其余一律不送进构建上下文
+.git/
+.github/
+docs/
+frontend/node_modules/
+frontend/dist/
+backend/.venv/
+backend/.venv-clean/
+backend/data/
+backend/eval/
+backend/tests/
+backend/.env
+__pycache__/
+*.py[cod]
+*.db
+*.log
+Dockerfile
+docker-compose.yml

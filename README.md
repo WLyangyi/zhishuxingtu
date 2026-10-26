@@ -43,14 +43,16 @@ flowchart TD
 
 | 指标 | 基线 RAG | Agentic RAG | 说明 |
 |------|:---:|:---:|------|
-| recall@k | 0.993 | 0.983 | 纯计算 |
-| faithfulness | 0.920 | 0.911 | 独立裁判 |
-| answer_relevancy | 0.988 | 0.954 | 独立裁判 |
-| simple_fact faithfulness | 0.950 | **1.000** | 意图路由修复"简单题掉链" |
-| temporal faithfulness | 0.840 | **1.000** | 同上 |
-| multi_hop faithfulness | 0.920 | **0.935** | 多跳反超基线 |
+| recall@k | 0.993 | 0.983 | 纯计算，不依赖裁判 |
+| faithfulness | 0.957 | 0.922 | 独立裁判（GLM-5.3-Flash） |
+| answer_relevancy | 0.973 | 0.971 | 独立裁判 |
+| context_recall | — | 0.977 | 独立裁判，检索证据能否撑起标准答案 |
+| answer_coverage | — | 0.976 | 独立裁判，答案覆盖了标准答案多少要点 |
+| pass 率 | — | 45/50 = 90% | 5 指标 + 路由单条判定 |
+| 路由准确率 | — | 100%（50/50） | vs 标注的 `expected_intent` |
+| 平均 token / 延迟 | — | 8426 / 8942 ms（P95 12239） | 端到端 `graph.stream` |
 
-**M7 多 Agent 增量验证**（同裁判 `qwen3.7-plus-2026-05-26`，各 50 条全量，报告见 `eval/reports/`）：
+**M7 多 Agent 双图对比**（旧裁判 `qwen3.7-plus-2026-05-26`，同裁判各 50 条全量；只用于两张图之间比较，不与上表跨裁判比较）：
 
 | 指标 | 单 Agent 图（回退） | 多 Agent 图（A′） |
 |------|:---:|:---:|
@@ -59,7 +61,9 @@ flowchart TD
 | 平均 token 消耗 | 9370 | **9239** |
 | 平均工具调用 | 3.68 | 3.52 |
 
-> 口径说明：主表 = M6 评测（裁判 qwen3.7-max）；M7 表 = 同裁判双图对比。多 Agent 相对单 Agent **行为等价**（职责隔离与工具收窄不伤效果，token 反而更省），相对 M6 基线 faithfulness / relevancy 不降。评测驱动修复实录：两类 0 分 case（证据截断误判 / 答案退化 / 重复检索烧迭代）修复至 1.000；意图边界抖动（工具安装类问题被误判直答）经边界规则修复至 14/14 稳定。
+> 口径说明：主表 = 2026-10-27 冻结的全量基线（裁判 GLM-5.3-Flash，5 指标 + pass/路由/成本，报告 `backend/eval/reports/2026-10-27-comparison.md`）；跨裁判分数不可直接比较，旧裁判时代的分数只保留双图同裁判对比（M7 表）。相对旧基线，本轮 recall 持平、faithfulness +0.013、路由 98%→100%、token/延迟双降；pass 率 90%（5 条未通过：q017 答非所问、q019/q050 幻觉、q039 少召回一篇、q034 证据不足）；其中只有 q034 是新增的 context_recall / answer_coverage 才抓出来的——它在旧口径的 recall / faithfulness / relevancy 上全部达标，这正是补指标的意义。
+>
+> 门禁：`python eval/eval_gate.py` 读最新摘要按 7 项阈值判定，exit 0/1 直接用于 CI 阻断；本地已验证「放行达标」与「拦住人为回退」两条路径。
 
 ## ✨ 功能特性
 
