@@ -119,6 +119,7 @@ def _persist_pending_approval(db: Session, session_id: str, payload: Dict[str, A
     if not row:
         row = AgentToolCall(id=record_id, session_id=session_id)
         db.add(row)
+    row.tool_call_id = tool_call_id
     row.tool_name = str(payload.get("tool_name") or "create_note")
     row.args_json = json.dumps(payload.get("args") or {}, ensure_ascii=False)
     row.result_json = json.dumps(
@@ -138,6 +139,7 @@ def _persist_tool_logs(db: Session, session_id: str, logs: List[dict]) -> None:
         if not row:
             row = AgentToolCall(id=record_id, session_id=session_id)
             db.add(row)
+        row.tool_call_id = tool_call_id
         row.tool_name = str(log.get("tool") or "")
         row.args_json = json.dumps(log.get("args") or {}, ensure_ascii=False)
         row.result_json = str(log.get("result") or "")[:2000]

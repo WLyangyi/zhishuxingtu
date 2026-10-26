@@ -17,10 +17,18 @@ class AgentSession(Base, TimestampMixin):
 
 class AgentToolCall(Base, TimestampMixin):
     __tablename__ = "agent_tool_calls"
-    __table_args__ = (Index("idx_agent_tool_calls_session_created", "session_id", "created_at"),)
+    __table_args__ = (
+        Index("idx_agent_tool_calls_session_created", "session_id", "created_at"),
+        # Phase 4 幂等键：同一会话内同一个模型 tool_call_id 只允许落一行。
+        # 主键 id 已按 uuid5(session_id, tool_call_id) 确定性生成，这里再加一道库级约束，
+        # 防止将来改主键生成方式或并发重放把同一调用写成两行审计。
+        Index("uq_agent_tool_calls_session_tool_call", "session_id", "tool_call_id", unique=True),
+    )
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
     session_id = Column(String(36), index=True)
+    # 模型侧 tool_call.id（幂等键的一半）；旧数据为 NULL，SQLite 唯一索引允许多行 NULL
+    tool_call_id = Column(String(64))
     tool_name = Column(String(100))
     args_json = Column(Text)
     result_json = Column(Text)

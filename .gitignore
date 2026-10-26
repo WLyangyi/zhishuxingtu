@@ -11,6 +11,8 @@ dist/
 .vscode/
 *.db
 *.sqlite3
+# 运行期数据：知识库 DB、LangGraph checkpoint（数百 MB）、消融重建的索引，均可再生
+backend/data/
 .trae/
 .obsidian/
 temp/
