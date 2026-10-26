@@ -64,6 +64,10 @@ def run_config(name: str, judge: bool, limit: int) -> bool:
     env = os.environ.copy()
     env.update(overrides)
     env.setdefault("AGENT_MULTI_AGENT", "true")  # 与冻结基线同图
+    # 消融是离线批跑，不需要云端 trace：Langfuse 上报超时会给每条用例叠加几十秒
+    # （实测 70s/条 → 16s/条）。只影响墙钟时间，不影响 recall / 路由 / token / stream 延迟。
+    # 用显式开关而非清空 key：Windows 下空串等价于删除变量，最终会回退读 .env 的真 key。
+    env["LANGFUSE_ENABLED"] = "false"
 
     tag = f"ablation-{name}"
     cmd = [
@@ -87,7 +91,10 @@ def run_config(name: str, judge: bool, limit: int) -> bool:
 def run_memory() -> bool:
     print("\n[ablation] === no_memory === 多轮上下文承接")
     cmd = [PYTHON, "-u", os.path.join("eval", "ablation_memory.py")]
-    proc = subprocess.run(cmd, cwd=BACKEND_ROOT, env=os.environ.copy())
+    env = os.environ.copy()
+    env["LANGFUSE_ENABLED"] = "false"
+    env.setdefault("AGENT_MULTI_AGENT", "true")
+    proc = subprocess.run(cmd, cwd=BACKEND_ROOT, env=env)
     return proc.returncode == 0
 
 

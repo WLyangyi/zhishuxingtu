@@ -19,6 +19,10 @@ class GLMJudgeProvider(BaseLLMProvider):
             api_key=settings.GLM_API_KEY,
             base_url=settings.GLM_BASE_URL,
             temperature=0,
+            # 裁判调用必须有上界：不设 timeout 时 openai 客户端默认等 600s，
+            # 一次端点卡住就能让整轮批跑停在某条用例上（实测 4 分钟无进展）。
+            timeout=30,
+            max_retries=2,
         )
 
     def get_chat_model(self) -> ChatOpenAI:

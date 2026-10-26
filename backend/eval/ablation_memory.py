@@ -21,6 +21,12 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# 离线批跑不需要云端 trace。注意不能靠清空 LANGFUSE_* key 来关:
+# PowerShell 里把环境变量设成空串等价于删除变量,最终仍会回退读 .env 里的真 key。
+os.environ["LANGFUSE_ENABLED"] = "false"
+# 与其余消融组/冻结基线保持同一张图(A′ 多 Agent),否则记忆对比的基线不可比。
+os.environ.setdefault("AGENT_MULTI_AGENT", "true")
+
 # 与 run_eval.py 同一套本机 workaround(WMI 卡死 / transformers→torch 连带阻塞)
 sys.modules.setdefault("transformers", None)
 import platform as _platform  # noqa: E402

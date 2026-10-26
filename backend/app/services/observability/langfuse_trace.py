@@ -17,6 +17,10 @@ def get_langfuse_handler() -> Optional[Any]:
         return _handler
     _attempted = True
 
+    if not settings.LANGFUSE_ENABLED:
+        print("[Langfuse] LANGFUSE_ENABLED=false,跳过上报")
+        return None
+
     if not (settings.LANGFUSE_PUBLIC_KEY and settings.LANGFUSE_SECRET_KEY):
         print("[Langfuse] 未配置 key,跳过(不影响主流程)")
         return None

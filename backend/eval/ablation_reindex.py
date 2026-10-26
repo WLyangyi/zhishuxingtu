@@ -17,6 +17,14 @@ import sys
 BACKEND_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BACKEND_ROOT)
 
+# 与 run_eval.py 同一套本机 workaround(WMI 卡死 / transformers→torch 连带阻塞):
+# 重建索引要 import faiss 与 app.*，没有这两行会在 import 阶段直接卡住。
+sys.modules.setdefault("transformers", None)
+import platform as _platform  # noqa: E402
+
+_platform.win32_ver = lambda *a, **k: ("", "", "", "")
+_platform.machine = lambda: os.environ.get("PROCESSOR_ARCHITECTURE") or "AMD64"
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()

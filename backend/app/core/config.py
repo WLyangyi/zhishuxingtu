@@ -119,6 +119,9 @@ class Settings(BaseSettings):
     AI_TEMPERATURE: float = 0.7
 
     # M2: Langfuse 可观测（fail-silent，key 缺失不影响主流程）
+    # LANGFUSE_ENABLED=false 供离线批跑显式关闭上报：不能靠清空 key 来关，
+    # Windows 下把环境变量设成空串等价于删除变量，最终仍会回退读 .env 里的真 key。
+    LANGFUSE_ENABLED: bool = True
     LANGFUSE_PUBLIC_KEY: str = ""
     LANGFUSE_SECRET_KEY: str = ""
     LANGFUSE_BASE_URL: str = "https://cloud.langfuse.com"

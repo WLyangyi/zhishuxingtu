@@ -12,6 +12,22 @@ class VectorStoreError(Exception):
     pass
 
 
+def _faiss_safe_path(path: str) -> str:
+    """返回可交给 faiss C++ IO 的路径。
+
+    faiss 的读写接口用窄字符 fopen：Windows 下路径含非 ASCII（如仓库目录「知枢星图」）
+    时会直接报 `could not open ... No such file or directory`。若目标在当前工作目录下
+    且相对路径全为 ASCII，就改传相对路径——进程 cwd 本身含中文不受影响。
+    """
+    try:
+        rel = os.path.relpath(path)
+    except ValueError:  # 跨盘符无法求相对路径
+        return path
+    if rel.startswith(os.pardir) or any(ord(ch) > 127 for ch in rel):
+        return path
+    return rel
+
+
 class VectorStore:
     def __init__(self, index_path: str, dimension: int = 1024):
         self.index_path = index_path
@@ -45,7 +61,7 @@ class VectorStore:
         
         if os.path.exists(index_file) and os.path.exists(meta_file):
             try:
-                self.index = faiss.read_index(index_file)
+                self.index = faiss.read_index(_faiss_safe_path(index_file))
                 loaded_dimension = self.index.d
                 with open(meta_file, 'r', encoding='utf-8') as f:
                     meta = json.load(f)
@@ -287,7 +303,7 @@ class VectorStore:
                 index_file = os.path.join(abs_index_path, "index.faiss")
                 meta_file = os.path.join(abs_index_path, "meta.json")
                 
-                faiss.write_index(self.index, index_file)
+                faiss.write_index(self.index, _faiss_safe_path(index_file))
                 
                 meta = {
                     'id_map': self.id_map,
