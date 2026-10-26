@@ -8,6 +8,7 @@
   no_three_check    去三查 —— 文档评级/幻觉核对/答案质量对生成质量的贡献(需裁判)
   force_knowledge   去意图路由 —— 路由对简单题 token/延迟的贡献
   no_memory         去记忆 —— 多轮追问的上下文承接能力(独立多轮 case)
+  no_graph          去图谱扩展 —— 双向链接 1 跳邻居对 multi_hop / comparison 的贡献
   overlap0          分块重叠 0 —— 重叠对召回的影响(需先按重叠 0 重建独立索引)
 
 跑法(按方案 §5.5 的两步走):
@@ -40,6 +41,7 @@ CONFIGS = {
     "no_bm25": {"USE_HYBRID_SEARCH": "false"},
     "no_three_check": {"USE_THREE_CHECK": "false"},
     "force_knowledge": {"FORCE_INTENT": "knowledge"},
+    "no_graph": {"GRAPH_RAG_ENABLED": "false"},
     "overlap0": {},  # 额外先重建索引,见 run_overlap_reindex
 }
 

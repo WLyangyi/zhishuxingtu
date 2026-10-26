@@ -122,6 +122,11 @@ class Settings(BaseSettings):
     HYBRID_TOP_K: int = 10                 # 混合检索返回数量
     BM25_TOP_K: int = 15                   # BM25 候选集大小
 
+    # Phase 5: GraphRAG-lite(双向链接 1 跳邻居扩展 + RRF)
+    GRAPH_RAG_ENABLED: bool = True
+    GRAPH_RAG_NEIGHBOR_LIMIT: int = 5      # 最多补充多少篇邻居笔记
+    GRAPH_RAG_NEIGHBOR_WEIGHT: float = 0.5 # 邻居在 RRF 中的权重(<1 保证不挤掉精确命中)
+
     # 智能导入配置 (V4)
     IMPORT_MAX_FILE_SIZE: int = 209715200   # 200MB
     IMPORT_MAX_CHARS: int = 50000           # 最大处理字符数

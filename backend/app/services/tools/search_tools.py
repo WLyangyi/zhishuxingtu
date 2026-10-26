@@ -11,17 +11,24 @@ def search_notes(query: str, top_k: int = 5) -> str:
     """检索个人知识库中的相关笔记(混合检索:向量语义 + 关键词 BM25 + 重排序)。
 
     返回 JSON 数组,每项含 id / title / snippet(≤300 字)。适合回答需要引用笔记的问题。
+    带 via 字段的条目是顺着双向链接补充的关联笔记(非直接命中),可用来回答跨笔记比较/多跳问题。
     """
     from app.api.routes.search import hybrid_search_notes
     from app.db.session import SessionLocal
+    from app.services.graph_rag import INBOUND_MARK, expand_with_linked_notes
 
     db = SessionLocal()
     try:
         notes = hybrid_search_notes(query, db, k=top_k, use_reranker=True)
         out = []
-        for n, score in notes:
+        for n, _score, origin in expand_with_linked_notes(db, notes):
             content = (n.content or "")[:SNIPPET_LEN]
-            out.append({"id": n.id, "title": (n.title or "")[:100], "snippet": content})
+            item = {"id": n.id, "title": (n.title or "")[:100], "snippet": content}
+            if origin == INBOUND_MARK:
+                item["via"] = "link"
+            elif origin:
+                item["via"] = f"link:{origin}"[:120]
+            out.append(item)
         return json.dumps(out, ensure_ascii=False)
     finally:
         db.close()
