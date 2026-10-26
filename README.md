@@ -6,7 +6,7 @@
 [![Vue 3.4+](https://img.shields.io/badge/Vue-3.4%2B-brightgreen)](https://vuejs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109%2B-blue)](https://fastapi.tiangolo.com/)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-green)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-54%20passed-brightgreen)](backend/tests/)
+[![Tests](https://img.shields.io/badge/tests-66%20passed-brightgreen)](backend/tests/)
 
 ## ✨ 核心亮点：多 Agent Agentic RAG
 
@@ -33,7 +33,7 @@ flowchart TD
 - **🛡️ 结构兜底优于提示词恳求** - 实测模型会无视"先查重再写入"的流程指令，`execute_tool` 以结构拦截未查重的写入请求（复用熔断模式，错误恢复遵从性 > 预防性指令遵从性）
 - **🛑 防失控四道闸** - 最大迭代 + token 预算双硬截断、同轮重复检索短路、不可用工具熔断、编排意图提示仅首轮注入（防反复推回同一路由）；Agent 异常自动降级混合检索兜底链路
 - **↩️ 双图回退开关** - `AGENT_MULTI_AGENT` 多 Agent 图 / 单 Agent 图共存，改 .env 一键回滚；50 条评测实测**双图行为等价**（回退零风险），命中路由入库审计（`agent_route` 分布入可观测面板）
-- **📊 量化评估体系** - 50 条六类离线评测集（含 `expected_intent` 标注 + 路由准确率口径）+ 延迟 mean/P95 + token 消耗三口径；recall@k 纯计算 + Qwen 独立裁判（拆句逐条 grounded 判定 + 坏输出容错）+ 10 条人工校准（裁判一致率 90% / 100%）
+- **📊 量化评估体系** - 50 条六类离线评测集（含 `expected_intent` 标注 + 路由准确率口径）+ 延迟 mean/P95 + token/成本口径；recall@k 纯计算 + 4 个独立裁判指标（faithfulness / answer_relevancy / context_recall / answer_coverage，判决模型与生成模型不同源：默认 GLM-5.3-Flash，坏输出容错）+ 10 条人工校准（裁判一致率 90% / 100%）；质量门禁 `eval_gate.py`（CI 阻断）+ 7 组消融
 - **🔌 知识库 MCP 化** - FastMCP 3.x 挂载 FastAPI（`/mcp` 端点），API Key timing-safe 认证、未配置 fail-closed；与 Agent 共享同一工具层，Claude Desktop / Cursor 可直连检索（验证脚本 7/7 通过）
 - **✍️ 写入人工审批（HITL）** - 笔记写入走 LangGraph interrupt，SSE 审批卡 + POST resume，中断状态可恢复（409 防串扰），工具调用全量审计
 - **🧠 双层记忆** - 短期 checkpoint（会话内多轮）+ 长期 store（跨会话用户偏好），LangGraph 官方标准模型
@@ -88,9 +88,9 @@ flowchart TD
 | 前端 | Vue 3.4 · TypeScript · Pinia · Naive UI · Tailwind CSS · D3 |
 | 后端 | Python 3.11 · FastAPI · SQLAlchemy · SSE |
 | AI 编排 | LangGraph 0.2.x（编排器 + 4 专职子 Agent / ReAct / 三查 / HITL / checkpoint / 双图回退开关）· LangChain |
-| 模型 | DeepSeek-V4-flash（Agent 推理，显式关思考）· qwen3.7-text-embedding（向量化）· qwen3.7-plus-2026-05-26（独立评估裁判，含坏输出容错） |
+| 模型 | DeepSeek-V4-flash（Agent 推理，显式关思考）· qwen3.7-text-embedding（向量化）· GLM-5.3-Flash（独立评估裁判，JSON mode + 坏输出容错） |
 | 数据 | FAISS（向量索引 + 混合检索）· SQLite · Redis |
-| 生态 | FastMCP 3.x（MCP Server）· Tavily（联网搜索）· Langfuse（可观测）· pytest（后端 54 用例） |
+| 生态 | FastMCP 3.x（MCP Server）· Tavily（联网搜索）· Langfuse（可观测）· pytest（后端 66 用例） |
 
 ## 🚀 快速开始
 
@@ -117,10 +117,14 @@ DEEPSEEK_API_KEY=your-deepseek-api-key
 DEEPSEEK_MODEL=deepseek-v4-flash
 DEEPSEEK_THINKING=disabled
 
-# 向量化 + 评估裁判（阿里云 DashScope）
+# 向量化（阿里云 DashScope）
 DASHSCOPE_API_KEY=your-dashscope-api-key
 QWEN_EMBEDDING_MODEL=qwen3.7-text-embedding
-QWEN_JUDGE_MODEL=qwen3.7-plus-2026-05-26
+
+# 评估独立裁判（与推理模型不同源；glm=智谱 GLM-5.3-Flash，qwen=回退千问）
+JUDGE_PROVIDER=glm
+GLM_API_KEY=your-zhipu-api-key
+GLM_JUDGE_MODEL=glm-5.3-flash
 
 # 多 Agent 编排（true=编排器路由 4 专职子 Agent，false=单 Agent 图回退位）
 AGENT_MULTI_AGENT=true
@@ -149,7 +153,19 @@ npm run dev
 
 打开 `http://localhost:5173`，在「AI 助手」发起问答即可看到完整的推理时间线。
 
-### 3. 验证脚本（推荐先跑）
+### 3. Docker 容器化启动（可选）
+
+```bash
+cp backend/.env.example backend/.env     # 先填 API Key（密钥不进镜像）
+docker compose up -d --build
+docker compose ps                        # backend 显示 healthy 即就绪
+```
+
+- 前端 `http://localhost:8080`（nginx 托管静态资源，`/api` 反代到后端且关闭 SSE 缓冲）
+- 后端 `http://localhost:8000/docs`，健康检查 `/health`
+- SQLite / FAISS / checkpoint 落命名卷 `zhishu-data`，重建容器不丢数据
+
+### 4. 验证脚本（推荐先跑）
 ```bash
 python scripts/verify_deepseek_tools.py       # 模型工具调用契约 4/4
 python scripts/verify_mcp_server.py           # MCP Server 全链路 7/7
@@ -158,6 +174,9 @@ python scripts/verify_multi_agent_skeleton.py # 多 Agent 骨架真实链路（S
 python scripts/verify_m73_specialists.py      # 专职子 Agent 全流程（联网路由 + 写入审批/拒绝）15/15
 python scripts/probe_intent_boundary.py       # 意图边界用例集路由准确率（14 条 × N 轮）
 python eval/run_eval.py                       # 50 条评测集新旧对比（recall/裁判/延迟/token）
+python eval/eval_gate.py                      # 回归门禁：校验最新基线摘要是否达标（CI 同款，exit 0/1）
+python eval/ablation_runner.py                # 7 组消融（默认 --skip-judge，只比 recall/路由/延迟/token）
+python eval/run_behavior_eval.py              # Agent 行为评测 10 条（拒答/越权/注入/澄清/多轮/熔断）
 ```
 
 ## 🔌 API 接口

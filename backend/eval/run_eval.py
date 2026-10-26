@@ -6,6 +6,8 @@ M2-4 评估脚本:旧基线(baseline RAG) vs 新 agent(ReAct) 跑 eval set,输�
   recall@k       确定性,纯计算(相关文档在检索 top-k 里的覆盖率)
   faithfulness   独立裁判(默认 GLM-5.3-Flash),答案声明是否 grounded 于检索证据
   answer_relevancy 独立裁判(默认 GLM-5.3-Flash),答案是否回应问题
+  context_recall 独立裁判(新增),检索证据能否支撑标准答案的每个事实点(RAGAS 口径)
+  answer_coverage 独立裁判(新增),最终答案覆盖了标准答案多少要点
 
 用法:
     .venv\\Scripts\\python.exe eval/run_eval.py [--limit N] [--skip-judge] [--agent-version agent-v1]
@@ -55,6 +57,8 @@ def recall_at_k(retrieved_ids: List[str], relevant_ids: List[str], k: int) -> Op
 PASS_FAITHFULNESS = 0.7
 PASS_RELEVANCY = 0.7
 PASS_RECALL = 0.6
+PASS_CONTEXT_RECALL = 0.6
+PASS_ANSWER_COVERAGE = 0.6
 # 成本估算口径:粗估值,只用于报告趋势对比,不作结算依据
 COST_PER_1K_TOKENS_CNY = 0.002
 
@@ -65,8 +69,9 @@ def classify_failure(
     """返回 (pass, failure_type, first_error_step)。
 
     检查顺序按链路上游到下游,first_error_step 取最早出问题的环节:
-    routing(意图路由错) -> retrieval_miss(相关文档没召回) -> judge_error(裁判没给分)
-    -> generation_hallucination(答案不 grounded) -> answer_incomplete(没回应问题)
+    routing(意图路由错) -> retrieval_miss(相关文档没召回) -> context_miss(召回的证据撑不起标准答案)
+    -> judge_error(裁判没给分) -> generation_hallucination(答案不 grounded)
+    -> answer_incomplete(没回应问题) -> answer_coverage(答漏了标准答案里的要点)
     """
     intent, expected = agent_row.get("intent"), agent_row.get("expected_intent")
     if expected and intent != expected:
@@ -75,6 +80,10 @@ def classify_failure(
     recall = agent_row.get("recall")
     if rel_ids and recall is not None and recall < PASS_RECALL:
         return False, "retrieval_miss", "retrieval"
+
+    ctx_recall = agent_row.get("context_recall")
+    if rel_ids and ctx_recall is not None and ctx_recall < PASS_CONTEXT_RECALL:
+        return False, "context_miss", "retrieval"
 
     if not judged:
         return True, "", ""
@@ -86,6 +95,10 @@ def classify_failure(
         return False, "generation_hallucination", "generation"
     if relev < PASS_RELEVANCY:
         return False, "answer_incomplete", "answer"
+
+    coverage = agent_row.get("answer_coverage")
+    if coverage is not None and coverage < PASS_ANSWER_COVERAGE:
+        return False, "answer_coverage", "answer"
 
     return True, "", ""
 
@@ -164,18 +177,21 @@ def aggregate(results: List[dict]) -> Dict[str, Any]:
         "recall": avg_metric("recall"),
         "faithfulness": avg_metric("faithfulness"),
         "relevancy": avg_metric("relevancy"),
+        "context_recall": avg_metric("context_recall"),
+        "answer_coverage": avg_metric("answer_coverage"),
     }
     by_cat: Dict[str, Dict[str, Any]] = {}
     for item in results:
         cat = item["category"]
-        bucket = by_cat.setdefault(cat, {"count": 0, "recall": [], "faithfulness": [], "relevancy": []})
+        bucket = by_cat.setdefault(
+            cat,
+            {"count": 0, "recall": [], "faithfulness": [], "relevancy": [],
+             "context_recall": [], "answer_coverage": []},
+        )
         bucket["count"] += 1
-        if item.get("recall") is not None:
-            bucket["recall"].append(item["recall"])
-        if item.get("faithfulness") is not None:
-            bucket["faithfulness"].append(item["faithfulness"])
-        if item.get("relevancy") is not None:
-            bucket["relevancy"].append(item["relevancy"])
+        for key in ("recall", "faithfulness", "relevancy", "context_recall", "answer_coverage"):
+            if item.get(key) is not None:
+                bucket[key].append(item[key])
     return {"total": total, "by_category": by_cat}
 
 
@@ -196,7 +212,13 @@ def write_report(report_path: str, version: str, results: List[dict], agg_b: dic
     def fmt(x):
         return "—" if x is None else f"{x:.3f}"
 
-    for label, key in (("recall@k", "recall"), ("faithfulness", "faithfulness"), ("answer_relevancy", "relevancy")):
+    for label, key in (
+        ("recall@k", "recall"),
+        ("faithfulness", "faithfulness"),
+        ("answer_relevancy", "relevancy"),
+        ("context_recall", "context_recall"),
+        ("answer_coverage", "answer_coverage"),
+    ):
         lines.append(f"| {label} | {fmt(agg_b['total'].get(key))} | {fmt(agg_a['total'].get(key))} |")
 
     passes = [r["agent"]["pass"] for r in results if r["agent"].get("pass") is not None]
@@ -204,7 +226,15 @@ def write_report(report_path: str, version: str, results: List[dict], agg_b: dic
         hit = sum(1 for p in passes if p)
         lines.append(f"| pass 率 | — | {hit}/{len(passes)} = {hit / len(passes):.1%} |")
 
-    lines += ["", "## 按分类分桶", "", "| 分类 | 条数 | recall(b/a) | faithful(b/a) | relevancy(b/a) |", "|---|---|---|---|---|"]
+    lines += [
+        "",
+        "> context_recall / answer_coverage 为 Phase 3 新增指标,仅对 agent 侧计算(基线侧不参与消融对比,故留空)。",
+        "",
+        "## 按分类分桶",
+        "",
+        "| 分类 | 条数 | recall(b/a) | faithful(b/a) | relevancy(b/a) | ctx_recall(a) | coverage(a) |",
+        "|---|---|---|---|---|---|---|",
+    ]
     cats = sorted(set(r["category"] for r in results))
     for cat in cats:
         b, a = agg_b["by_category"][cat], agg_a["by_category"][cat]
@@ -213,7 +243,8 @@ def write_report(report_path: str, version: str, results: List[dict], agg_b: dic
         lines.append(
             f"| {cat} | {b['count']} | {fmt(mean_b('recall'))}/{fmt(mean_a('recall'))} | "
             f"{fmt(mean_b('faithfulness'))}/{fmt(mean_a('faithfulness'))} | "
-            f"{fmt(mean_b('relevancy'))}/{fmt(mean_a('relevancy'))} |"
+            f"{fmt(mean_b('relevancy'))}/{fmt(mean_a('relevancy'))} | "
+            f"{fmt(mean_a('context_recall'))} | {fmt(mean_a('answer_coverage'))} |"
         )
 
     lines += [
@@ -228,7 +259,15 @@ def write_report(report_path: str, version: str, results: List[dict], agg_b: dic
     ]
 
     # Phase 3 失败归因分布(按链路上游到下游排序)
-    order = ["routing", "retrieval_miss", "judge_error", "generation_hallucination", "answer_incomplete"]
+    order = [
+        "routing",
+        "retrieval_miss",
+        "context_miss",
+        "judge_error",
+        "generation_hallucination",
+        "answer_incomplete",
+        "answer_coverage",
+    ]
     dist = Counter(r["agent"].get("failure_type") or "pass" for r in results)
     lines += ["## 失败归因分布", "", "| 归因 | 条数 |", "|---|---|", f"| pass | {dist.pop('pass', 0)} |"]
     for key in order:
@@ -266,20 +305,65 @@ def write_report(report_path: str, version: str, results: List[dict], agg_b: dic
         hits = sum(1 for r in routed if r["agent"].get("intent") == r["agent"]["expected_intent"])
         lines += [f"- 路由准确率(vs expected_intent): {hits}/{len(routed)} = {hits / len(routed):.1%}", ""]
 
-    lines += ["", "## 逐条明细", "", "| id | 分类 | recall(b/a) | faithful(b/a) | relevancy(b/a) | 判定 | 失败归因 | 问题 |", "|---|---|---|---|---|---|---|---|"]
+    lines += [
+        "",
+        "## 逐条明细",
+        "",
+        "| id | 分类 | recall(b/a) | faithful(b/a) | relevancy(b/a) | ctx_recall(a) | coverage(a) | 判定 | 失败归因 | 问题 |",
+        "|---|---|---|---|---|---|---|---|---|---|",
+    ]
     for r in results:
         b, a = r["baseline"], r["agent"]
         verdict = "通过" if a.get("pass") else "未通过"
         lines.append(
             f"| {r['id']} | {r['category']} | {fmt(b.get('recall'))}/{fmt(a.get('recall'))} | "
             f"{fmt(b.get('faithfulness'))}/{fmt(a.get('faithfulness'))} | "
-            f"{fmt(b.get('relevancy'))}/{fmt(a.get('relevancy'))} | {verdict} | "
+            f"{fmt(b.get('relevancy'))}/{fmt(a.get('relevancy'))} | "
+            f"{fmt(a.get('context_recall'))} | {fmt(a.get('answer_coverage'))} | {verdict} | "
             f"{a.get('failure_type') or '—'} | {r['question'][:40]} |"
         )
     lines.append("")
     with open(report_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
     print(f"[报告已写入] {report_path}")
+
+
+def build_summary(results: List[dict], agg_a: dict, agent_version: str, judge_desc: str) -> dict:
+    """机器可读摘要:给 eval_gate / CI / 消融对比用,口径与 markdown 报告一致。"""
+    passes = [r["agent"]["pass"] for r in results if r["agent"].get("pass") is not None]
+    pass_rate = round(sum(1 for p in passes if p) / len(passes), 4) if passes else None
+    routed = [r for r in results if r["agent"].get("expected_intent")]
+    routing_acc = None
+    if routed:
+        hits = sum(1 for r in routed if r["agent"].get("intent") == r["agent"]["expected_intent"])
+        routing_acc = round(hits / len(routed), 4)
+    dist = Counter(r["agent"].get("failure_type") or "pass" for r in results)
+    return {
+        "agent_version": agent_version,
+        "judge": judge_desc,
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "count": len(results),
+        "metrics": agg_a["total"],
+        "pass_rate": pass_rate,
+        "pass_count": sum(1 for p in passes if p),
+        "pass_total": len(passes),
+        "routing_accuracy": routing_acc,
+        "failure_distribution": dict(dist),
+        "avg_tool_calls": round(mean([r["agent"].get("tool_calls") or 0 for r in results]), 3),
+        "avg_token_used": round(mean([r["agent"].get("token_used") or 0 for r in results]), 1),
+        "avg_cost_cny": round(mean([r["agent"].get("cost_cny") or 0 for r in results]), 4),
+        "avg_latency_ms": round(mean([r["agent"].get("latency_ms") or 0 for r in results]), 1),
+        "by_category": {
+            cat: {
+                "count": bucket["count"],
+                **{
+                    key: (round(mean(bucket[key]), 3) if bucket[key] else None)
+                    for key in ("recall", "faithfulness", "relevancy", "context_recall", "answer_coverage")
+                },
+            }
+            for cat, bucket in agg_a["by_category"].items()
+        },
+    }
 
 
 def write_eval_runs(db, results: List[dict], agent_version: str, judge_desc: str) -> None:
@@ -309,7 +393,10 @@ def write_eval_runs(db, results: List[dict], agent_version: str, judge_desc: str
                 agent_version=label,
                 metrics_json=json.dumps(
                     {"recall@k": m.get("recall"), "faithfulness": m.get("faithfulness"),
-                     "answer_relevancy": m.get("relevancy"), "latency_ms": m.get("latency_ms"),
+                     "answer_relevancy": m.get("relevancy"),
+                     "context_recall": m.get("context_recall"),
+                     "answer_coverage": m.get("answer_coverage"),
+                     "latency_ms": m.get("latency_ms"),
                      "intent": m.get("intent"), "tool_calls": m.get("tool_calls"),
                      "token_used": m.get("token_used"),
                      "pass": m.get("pass"), "failure_type": m.get("failure_type"),
@@ -327,6 +414,13 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=0, help="只跑前 N 条(调试用)")
     parser.add_argument("--skip-judge", action="store_true", help="跳过裁判打分,只算 recall(省 token)")
     parser.add_argument("--agent-version", default="agent-v1")
+    parser.add_argument(
+        "--agent-only", action="store_true",
+        help="只跑 agent 侧,跳过旧基线(消融实验用,省一半时间;基线与消融无关)",
+    )
+    parser.add_argument(
+        "--tag", default="", help="报告文件名后缀(消融实验用,避免同一天多次跑互相覆盖)"
+    )
     args = parser.parse_args()
 
     if not os.path.exists(settings.EVAL_SET_PATH):
@@ -334,11 +428,17 @@ def main() -> int:
         return 1
 
     if not args.skip_judge:
-        from app.services.llm.judge_metrics import judge_faithfulness, judge_answer_relevancy
+        from app.services.llm.judge_metrics import (
+            judge_answer_coverage,
+            judge_answer_relevancy,
+            judge_context_recall,
+            judge_faithfulness,
+        )
         from app.services.llm.judge_provider import judge_label
         judge_desc = judge_label()
     else:
         judge_faithfulness = judge_answer_relevancy = None
+        judge_context_recall = judge_answer_coverage = None
         judge_desc = "skip-judge"
     print(f"[eval] 裁判口径: {judge_desc}")
 
@@ -367,7 +467,10 @@ def main() -> int:
             rel_ids = item.get("relevant_doc_ids") or []
             print(f"[{i}/{len(data)}] {qid} {question[:30]} ...")
 
-            b_ids, b_answer, b_sources, b_latency = run_baseline(question, db)
+            if args.agent_only:
+                b_ids, b_answer, b_sources, b_latency = [], "", [], None
+            else:
+                b_ids, b_answer, b_sources, b_latency = run_baseline(question, db)
             (
                 a_ids, a_answer, a_sources,
                 a_intent, a_tool_calls, a_latency, a_tokens,
@@ -396,15 +499,25 @@ def main() -> int:
             }
 
             if judge_faithfulness:
+                a_full = get_full_sources(a_ids, db) if a_ids else a_sources
                 if b_answer:
                     row["baseline"]["faithfulness"] = judge_faithfulness(question, b_answer, b_sources)["score"]
-                if a_answer:
-                    a_full = get_full_sources(a_ids, db)
-                    row["agent"]["faithfulness"] = judge_faithfulness(question, a_answer, a_full)["score"]
-                if b_answer:
                     row["baseline"]["relevancy"] = judge_answer_relevancy(question, b_answer)["score"]
                 if a_answer:
+                    row["agent"]["faithfulness"] = judge_faithfulness(question, a_answer, a_full)["score"]
                     row["agent"]["relevancy"] = judge_answer_relevancy(question, a_answer)["score"]
+
+                # Phase 3 新指标:context_recall(证据是否撑得起标准答案)+ answer_coverage(答案覆盖要点)
+                expected_answer = row["expected_answer"]
+                if expected_answer.strip():
+                    if a_ids:
+                        row["agent"]["context_recall"] = judge_context_recall(
+                            question, expected_answer, a_full
+                        )["score"]
+                    if a_answer:
+                        row["agent"]["answer_coverage"] = judge_answer_coverage(
+                            question, expected_answer, a_answer
+                        )["score"]
 
             # Phase 3 结果结构:通过判定 + 失败归因 + 执行步数 + 成本估算
             judged = bool(judge_faithfulness)
@@ -422,8 +535,17 @@ def main() -> int:
     agg_b = aggregate([dict(r["baseline"], category=r["category"]) for r in results])
     agg_a = aggregate([dict(r["agent"], category=r["category"]) for r in results])
 
-    report_path = os.path.join(settings.EVAL_REPORT_DIR, f"{datetime.now().strftime('%Y-%m-%d')}-comparison.md")
+    suffix = f"-{args.tag}" if args.tag else ""
+    report_path = os.path.join(
+        settings.EVAL_REPORT_DIR, f"{datetime.now().strftime('%Y-%m-%d')}-comparison{suffix}.md"
+    )
     write_report(report_path, args.agent_version, results, agg_b, agg_a, judge_desc)
+
+    summary = build_summary(results, agg_a, args.agent_version, judge_desc)
+    summary_path = report_path[: -len(".md")] + ".json"
+    with open(summary_path, "w", encoding="utf-8") as f:
+        json.dump(summary, f, ensure_ascii=False, indent=2)
+    print(f"[摘要已写入] {summary_path}")
 
     db = SessionLocal()
     try:

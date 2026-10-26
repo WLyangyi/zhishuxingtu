@@ -1,0 +1,53 @@
+[
+  {
+    "id": "m001",
+    "category": "multi_turn",
+    "turns": [
+      {
+        "question": "吴浩阳参与过哪两个主要项目？",
+        "expected_answer": "RAG智能助手项目和在线学习平台项目",
+        "relevant_doc_ids": ["0e9ca631-359c-4722-8cd5-fe0cad6fe3d7"]
+      },
+      {
+        "question": "第二个项目的亮点是什么？",
+        "expected_answer": "高并发优化",
+        "relevant_doc_ids": ["0e9ca631-359c-4722-8cd5-fe0cad6fe3d7"],
+        "expect_keywords": ["高并发"]
+      }
+    ]
+  },
+  {
+    "id": "m002",
+    "category": "multi_turn",
+    "turns": [
+      {
+        "question": "5月10日科技动态中提到哪些硬件产品动态？",
+        "expected_answer": "Apple宣布iPod touch停产、大疆发布DJI Mini 3 Pro、雷蛇推出毒蝰V2专业版鼠标、天猫精灵推出小红盒Pro智能投影仪",
+        "relevant_doc_ids": ["307bdc71-5215-473a-b0b6-91a13cea4a76"]
+      },
+      {
+        "question": "其中大疆发布的那款无人机叫什么？",
+        "expected_answer": "DJI Mini 3 Pro",
+        "relevant_doc_ids": ["307bdc71-5215-473a-b0b6-91a13cea4a76"],
+        "expect_keywords": ["Mini 3"]
+      }
+    ]
+  },
+  {
+    "id": "m003",
+    "category": "multi_turn",
+    "turns": [
+      {
+        "question": "安装克劳德code之前需要先安装什么？",
+        "expected_answer": "Node.js 和 Git",
+        "relevant_doc_ids": ["ab11270b-d216-4f3a-bfb8-65c26cc319f9"]
+      },
+      {
+        "question": "那 npm 包下载太慢有什么加速办法？",
+        "expected_answer": "切换淘宝镜像",
+        "relevant_doc_ids": ["ab11270b-d216-4f3a-bfb8-65c26cc319f9"],
+        "expect_keywords": ["淘宝", "镜像"]
+      }
+    ]
+  }
+]

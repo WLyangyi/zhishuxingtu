@@ -1,0 +1,52 @@
+name: eval-gate
+
+# 回归门禁：不跑 LLM、不连数据库，只校验仓库里冻结的最新评测摘要是否达标。
+# 全量评测依赖 API Key + 本地种子知识库，无法在 GitHub 托管的 runner 上复现；
+# 因此评测本身在本地/服务器跑完后，把 reports/*-comparison*.json 随代码一起提交，
+# CI 负责拦住「指标回退却没有解释」的合入。
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/app/services/agent/**"
+      - "backend/app/services/llm/**"
+      - "backend/eval/**"
+      - "backend/requirements-ci.txt"
+      - ".github/workflows/eval-gate.yml"
+  pull_request:
+    paths:
+      - "backend/app/services/agent/**"
+      - "backend/app/services/llm/**"
+      - "backend/eval/**"
+      - "backend/requirements-ci.txt"
+      - ".github/workflows/eval-gate.yml"
+  workflow_dispatch:
+
+jobs:
+  eval-gate:
+    name: 评测指标门禁
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: 校验最新评测摘要
+        working-directory: backend
+        run: python eval/eval_gate.py
+
+  unit-tests:
+    name: 后端单测
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-ci.txt
+      - name: 安装 CI 依赖(跳过 torch 等重依赖)
+        run: pip install -r backend/requirements-ci.txt
+      - name: 跑单测
+        working-directory: backend
+        run: python -m pytest tests -q

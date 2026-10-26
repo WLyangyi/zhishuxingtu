@@ -36,6 +36,7 @@ from app.services.agent.prompts import (
     QueryIntent,
 )
 from app.services.agent.state import AgentState
+from app.core.config import settings
 from app.services.llm.deepseek_provider import get_deepseek_provider
 from app.services.tools import (
     get_graph_neighbors,
@@ -496,6 +497,11 @@ def generate(state: AgentState) -> Dict[str, Any]:
 
 
 def hallucination_check(state: AgentState) -> Dict[str, Any]:
+    if not settings.USE_THREE_CHECK:
+        # Phase 3 消融:关闭三查,不做 LLM 核对直接放行(保留节点以维持图结构不变)
+        return {"hallucination_ok": "yes", "thoughts": _append_thought(
+            state, {"type": "check", "content": "hallucination_check: USE_THREE_CHECK=false,跳过"}
+        )}
     answer = state.get("answer") or ""
     docs = state.get("documents") or []
     thoughts = _append_thought(state, {"type": "check", "content": "hallucination_check: 开始"})
@@ -517,6 +523,11 @@ def hallucination_check(state: AgentState) -> Dict[str, Any]:
 
 
 def answer_quality(state: AgentState) -> Dict[str, Any]:
+    if not settings.USE_THREE_CHECK:
+        # Phase 3 消融:关闭三查,不做答案质量判定直接放行
+        return {"answer_ok": "yes", "thoughts": _append_thought(
+            state, {"type": "check", "content": "answer_quality: USE_THREE_CHECK=false,跳过"}
+        )}
     answer = state.get("answer") or ""
     thoughts = _append_thought(state, {"type": "check", "content": "answer_quality: 开始"})
 
@@ -572,6 +583,9 @@ def should_continue(state: AgentState) -> str:
     # route_grade_documents 是节点之后的条件边,到那里"跳过"为时已晚(节点已烧一次 LLM 调用)
     if state.get("current_agent") == "web_search":
         return "generate"
+    # Phase 3 消融:关闭三查时 ReAct 结束直接进 generate(绕行位置同上)
+    if not settings.USE_THREE_CHECK:
+        return "generate"
     return "grade_documents"
 
 
@@ -580,6 +594,8 @@ def route_grade_documents(state: AgentState) -> str:
 
 
 def route_hallucination(state: AgentState) -> str:
+    if not settings.USE_THREE_CHECK:
+        return "output"
     ok = state.get("hallucination_ok") != "no"
     # M7.3:web_research 无 answer_quality(明示取舍,见计划 §七),幻觉查通过即输出
     if state.get("current_agent") == "web_search":
@@ -588,6 +604,8 @@ def route_hallucination(state: AgentState) -> str:
 
 
 def route_answer_quality(state: AgentState) -> str:
+    if not settings.USE_THREE_CHECK:
+        return "output"
     return "output" if state.get("answer_ok") != "no" else "rewrite_question"
 
 
@@ -595,6 +613,18 @@ def route_answer_quality(state: AgentState) -> str:
 def intent_classify(state: AgentState) -> Dict[str, Any]:
     """意图识别节点。分类失败时 fail-safe 默认 knowledge，不让主流程被阻塞。"""
     question = state.get("question") or ""
+    forced = (settings.FORCE_INTENT or "").strip().lower()
+    if forced in ("knowledge", "direct_answer", "web_search", "note_write"):
+        # Phase 3 消融:强制意图,跳过分类器 LLM 调用(用于量化意图路由的 token/延迟贡献)
+        return {
+            "intent": forced,
+            "current_agent": forced,
+            "turn_start_index": max(0, len(state.get("messages") or []) - 1),
+            "task_brief": "",
+            "thoughts": _append_thought(
+                state, {"type": "intent", "content": f"意图识别: {forced} | 消融强制(跳过分类器)"}
+            ),
+        }
     intent = "knowledge"
     reason = "fail-safe 默认走知识库检索"
     task_brief = ""  # M7.1:编排器任务简报,分类失败时留空(为空不注入)

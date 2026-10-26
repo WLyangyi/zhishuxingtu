@@ -88,6 +88,9 @@ class Settings(BaseSettings):
     AGENT_CHECKPOINT_DB: str = os.path.join("data", "langgraph_checkpoints.db")
     # M7: A′ 多 Agent 图开关(false=单 Agent 图回退位,双图共存支持一键回滚与 eval 同进程对比)
     AGENT_MULTI_AGENT: bool = False
+    # Phase 3 消融开关(默认保持生产行为;仅 eval/ablation_runner.py 用环境变量覆盖)
+    USE_THREE_CHECK: bool = True   # false=跳过 grade_documents / hallucination_check / answer_quality 三查
+    FORCE_INTENT: str = ""         # 非空=意图路由短路为指定意图(如 knowledge),用于消融"去意图路由"
 
     USE_RERANKER: bool = True
     RERANKER_TOP_K: int = 5
