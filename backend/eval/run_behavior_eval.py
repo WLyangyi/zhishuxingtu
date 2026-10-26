@@ -50,7 +50,10 @@ def run_turns(turns: List[str], user_id: str, thread_id: str) -> Dict[str, Any]:
     started = time.perf_counter()
     for question in turns:
         input_data = build_input(question, session_id="behavior-eval", user_id=user_id, history=history)
-        for step in graph.stream(input_data, config=build_stream_config(thread_id)):
+        cfg = build_stream_config(thread_id)
+        # 行为用例里可能出现"检索被熔断→再换词"的循环,给足超步数,避免直接抛 GraphRecursionError 中断整轮评测
+        cfg["recursion_limit"] = 40
+        for step in graph.stream(input_data, config=cfg):
             for _, v in step.items():
                 if v.get("answer"):
                     answer = v["answer"]
@@ -91,13 +94,27 @@ def check(item: Dict[str, Any], result: Dict[str, Any]) -> List[str]:
     if "max_tool_calls" in checks and len(tools) > checks["max_tool_calls"]:
         fails.append(f"工具调用超限({len(tools)}>{checks['max_tool_calls']})")
     if "max_search_calls" in checks:
-        n = sum(1 for t in tools if t == "search_notes")
+        n = sum(
+            1
+            for t in result["tool_log"]
+            if t.get("tool") == "search_notes" and t.get("status") == "success"
+        )
         if n > checks["max_search_calls"]:
             fails.append(f"重复检索未熔断({n}次)")
     if checks.get("require_no_error_answer"):
         if not answer.strip() or "工具执行出错" in answer:
             fails.append("答案为空或暴露工具错误")
     return fails
+
+
+def _tool_chain(tool_log: List[dict]) -> str:
+    """把工具调用压成一行,便于在报告里看出"检索了几次、被拦了几次"。"""
+    if not tool_log:
+        return "—"
+    parts = [
+        f"{t.get('tool')}{'✓' if t.get('status') == 'success' else '✗'}" for t in tool_log
+    ]
+    return " → ".join(parts)
 
 
 def write_report(results: List[dict]) -> None:
@@ -122,11 +139,11 @@ def write_report(results: List[dict]) -> None:
     for cat in cats:
         p, f = by_cat.get((cat, True), 0), by_cat.get((cat, False), 0)
         lines.append(f"| {cat} | {p}/{p + f} |")
-    lines += ["", "## 逐条结果", "", "| id | 分类 | 判定 | 失败原因 | 意图 | 工具调用 | 延迟 ms |", "|---|---|---|---|---|---|---|"]
+    lines += ["", "## 逐条结果", "", "| id | 分类 | 判定 | 失败原因 | 意图 | 工具链 | 延迟 ms |", "|---|---|---|---|---|---|---|"]
     for r in results:
         lines.append(
             f"| {r['id']} | {r['category']} | {'通过' if r['ok'] else '未通过'} | "
-            f"{'；'.join(r['fails']) or '—'} | {r['intent']} | {len(r['tool_log'])} | {r['latency_ms']} |"
+            f"{'；'.join(r['fails']) or '—'} | {r['intent']} | {r['tool_chain']} | {r['latency_ms']} |"
         )
     lines += ["", "## 答案摘录", ""]
     for r in results:
@@ -171,10 +188,15 @@ def main() -> int:
         turns = item.get("turns") or [item["question"]]
         print(f"[{i}/{len(data)}] {item['id']} {item['category']} {turns[0][:30]} ...", flush=True)
         thread_id = f"behavior-{item['id']}-{int(time.time() * 1000)}"
-        result = run_turns(turns, uid, thread_id)
-        fails = check(item, result)
+        try:
+            result = run_turns(turns, uid, thread_id)
+            fails = check(item, result)
+        except Exception as e:  # noqa: BLE001  单条异常不拖垮整轮评测
+            result = {"answer": "", "intent": "-", "tool_log": [], "token_used": 0, "latency_ms": 0}
+            fails = [f"运行异常:{type(e).__name__}"]
         results.append({**result, "id": item["id"], "category": item["category"],
-                        "question": " -> ".join(turns), "ok": not fails, "fails": fails})
+                        "question": " -> ".join(turns), "ok": not fails, "fails": fails,
+                        "tool_chain": _tool_chain(result["tool_log"])})
         print(f"    {'通过' if not fails else '未通过:' + '；'.join(fails)}", flush=True)
 
     write_report(results)

@@ -12,7 +12,12 @@ from langchain_core.messages import (
 from langgraph.store.base import BaseStore
 from langgraph.types import interrupt
 
-from app.services.agent.config import MAX_HISTORY_MESSAGES, MAX_ITERATIONS, TOKEN_BUDGET
+from app.services.agent.config import (
+    MAX_HISTORY_MESSAGES,
+    MAX_ITERATIONS,
+    MAX_SEARCHES_PER_TURN,
+    TOKEN_BUDGET,
+)
 from app.services.agent.memory import get_preference_context
 from app.services.agent.prompts import (
     DIRECT_ANSWER_PROMPT,
@@ -193,6 +198,74 @@ def agent_step(state: AgentState, *, store: BaseStore = None) -> Dict[str, Any]:
     }
 
 
+def _normalize_query(query: str) -> str:
+    """检索词归一化:去空白/标点/口语词并小写,用于判断两次检索是否指向同一意图。"""
+    q = (query or "").strip().lower()
+    for ch in " \t\r\n，,。.？?！!：:；;、\"'“”‘’()（）[]【】_-":
+        q = q.replace(ch, "")
+    for w in ("帮我查一下", "帮我查", "帮我", "请问", "一下", "关于", "有关", "的", "了", "吗", "呢"):
+        q = q.replace(w, "")
+    return q
+
+
+def _bigrams(text: str) -> set:
+    return {text[i : i + 2] for i in range(len(text) - 1)} if len(text) >= 2 else {text}
+
+
+def _is_semantic_duplicate(query: str, prev_query: str, overlap_threshold: float = 0.85) -> bool:
+    """判断两次检索是否指向同一意图:归一化相等、包含关系(如"吴浩阳"→"吴浩阳简历")、
+    或字符二元组高度重叠(措辞不同但关键词几乎一样)。"""
+    nq, npq = _normalize_query(query), _normalize_query(prev_query)
+    if not nq or not npq:
+        return False
+    if nq == npq:
+        return True
+    if len(npq) >= 3 and (npq in nq or nq in npq):
+        return True
+    a, b = _bigrams(nq), _bigrams(npq)
+    if not a or not b:
+        return False
+    return len(a & b) / len(a | b) >= overlap_threshold
+
+
+def _duplicate_search_error(query: str, tool_log: List[dict]) -> str:
+    """返回重复检索的短路原因(空串=不算重复)。
+
+    只对"已成功返回过非空结果"的检索判重:空结果的检索允许换词重试,
+    否则"知识库里有没有 X"这类问题会被自己的第一次检索挡住。
+    """
+    if not _normalize_query(query):
+        return ""
+    for lg in tool_log:
+        if lg.get("tool") != "search_notes" or lg.get("status") != "success":
+            continue
+        result = (lg.get("result") or "").strip()
+        if result in ("", "[]"):
+            continue
+        prev = str((lg.get("args") or {}).get("query") or "")
+        if prev and _is_semantic_duplicate(query, prev):
+            return (
+                "该检索与本轮已执行的检索高度重复,结果已在上文。"
+                "不要再换措辞重复检索,请立即基于已有结果作答;"
+                "若确需更多细节,请用 get_note 按 id 取全文。"
+            )
+    return ""
+
+
+def _fallback_from_documents(documents: List[dict]) -> str:
+    """迭代/预算耗尽且无可用答案时,把已检索到的笔记列给用户,而不是回一句空话。"""
+    titles: List[str] = []
+    for d in documents or []:
+        title = (d.get("title") or "").strip()
+        if title and title not in titles:
+            titles.append(title)
+    if not titles:
+        return ""
+    lines = ["检索到以下相关笔记,但未能在限定步数内整理出完整答案:"]
+    lines += [f"- {t}" for t in titles[:5]]
+    return "\n".join(lines)
+
+
 def execute_tool(state: AgentState) -> Dict[str, Any]:
     last = state["messages"][-1]
     tool_calls = getattr(last, "tool_calls", None) or []
@@ -250,16 +323,31 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
                         result = f"工具执行出错:{e}"
         else:
             if name == "search_notes":
-                # 病灶B:同一轮内重复相同的检索词直接短路,防多跳检索死循环烧迭代。
+                # 病灶B:重复检索短路(完全相同 + 语义重复),防多跳检索死循环烧满迭代。
                 query = str((args or {}).get("query") or "").strip()
-                if query and query in searched_queries:
-                    result = json.dumps(
-                        {
-                            "error": "该检索词已在本轮执行过且结果已提供,请勿重复检索。"
-                            "请基于已有结果直接作答,或换一个不同的检索词。"
-                        },
-                        ensure_ascii=False,
+                successful_searches = sum(
+                    1
+                    for lg in tool_log
+                    if lg.get("tool") == "search_notes" and lg.get("status") == "success"
+                )
+                dup_reason = ""
+                norm_q = _normalize_query(query)
+                if norm_q and any(
+                    norm_q == _normalize_query(p) for p in searched_queries
+                ):
+                    dup_reason = (
+                        "该检索词本轮已执行过,请勿重复检索;也不要换措辞重复检索,"
+                        "请立即基于已有结果作答。"
                     )
+                if not dup_reason:
+                    dup_reason = _duplicate_search_error(query, tool_log)
+                if not dup_reason and successful_searches >= MAX_SEARCHES_PER_TURN:
+                    dup_reason = (
+                        f"本轮检索次数已达上限({MAX_SEARCHES_PER_TURN} 次),"
+                        "请基于已有结果作答;需要细节时用 get_note 按 id 取全文。"
+                    )
+                if dup_reason:
+                    result = json.dumps({"error": dup_reason}, ensure_ascii=False)
                     status = "error"
                 else:
                     try:
@@ -461,6 +549,8 @@ def output(state: AgentState) -> Dict[str, Any]:
         answer = _best_answer(
             state.get("messages") or [], state.get("turn_start_index") or 0
         )
+    if not answer:
+        answer = _fallback_from_documents(state.get("documents") or [])
     if not answer:
         answer = "已达到最大迭代次数,未能生成满意答案。"
     return {"answer": answer}

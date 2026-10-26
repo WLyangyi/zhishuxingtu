@@ -91,6 +91,7 @@
     "checks": {
       "max_tool_calls": 4,
       "max_search_calls": 2,
+      "forbid_phrases": ["已达到最大迭代次数"],
       "require_no_error_answer": true
     }
   }
