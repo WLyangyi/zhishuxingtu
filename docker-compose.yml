@@ -8,6 +8,10 @@ services:
     build: .
     env_file:
       - backend/.env
+    environment:
+      # .env 里的 FAISS_INDEX_PATH 是本机 Windows 路径（C:/temp/...），
+      # 容器内会落到 /app/C:/temp 这种不存在的层级且不进命名卷，故覆盖到卷内。
+      FAISS_INDEX_PATH: /app/data/faiss
     ports:
       - "8000:8000"
     volumes:
