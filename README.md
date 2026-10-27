@@ -141,6 +141,12 @@ TAVILY_API_KEY=tvly-xxx
 # MCP Server 认证（为空则拒绝所有 MCP 请求）
 MCP_API_KEY=your-mcp-api-key
 
+# MCP 写工具（默认全关：ENABLE_WRITE=true 且 WRITE_USER_ID 非空才暴露 create_note；
+# DRY_RUN=true 时 create_note 只回写入预览、不落库）
+MCP_ENABLE_WRITE=false
+MCP_WRITE_USER_ID=
+MCP_DRY_RUN=true
+
 # 可观测（可选，fail-silent）
 LANGFUSE_PUBLIC_KEY=
 LANGFUSE_SECRET_KEY=
@@ -169,7 +175,7 @@ docker compose ps                        # backend 显示 healthy 即就绪
 
 - 前端 `http://localhost:8080`（nginx 托管静态资源，`/api` 反代到后端且关闭 SSE 缓冲）
 - 后端 `http://localhost:8000/docs`，健康检查 `/health`
-- SQLite / FAISS / checkpoint 落命名卷 `zhishu-data`，重建容器不丢数据
+- SQLite / FAISS / checkpoint 落命名卷 `zhishu-data`，重建容器不丢数据（compose 已把 `FAISS_INDEX_PATH` 覆盖为 `/app/data/faiss`，宿主机 `.env` 里的 Windows 路径不影响容器）
 
 ### 4. 验证脚本（推荐先跑）
 ```bash

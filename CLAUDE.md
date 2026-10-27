@@ -109,6 +109,7 @@ npm run build
 - `AGENT_MULTI_AGENT=false` - M7 A′ 多 Agent 图开关（true=编排器路由 4 子 Agent 的平铺图，false=单 Agent 图回退位）
 - `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL` - 可观测（M2，fail-silent；trace 上报遗留，需干净 `.venv-clean`）
 - `MCP_API_KEY` - MCP Server `/mcp` 认证（M3，为空则 fail-closed 拒绝所有请求）
+- `MCP_ENABLE_WRITE` / `MCP_WRITE_USER_ID` / `MCP_DRY_RUN` - MCP 写工具三重闸门（默认全关：ENABLE_WRITE=true 且 WRITE_USER_ID 非空才暴露 `create_note`；DRY_RUN=true 只回预览不落库。本机当前为真写）
 - `TAVILY_API_KEY` - web_search 联网搜索（M3，为空则工具优雅降级）
 
 ## API 路由前缀
