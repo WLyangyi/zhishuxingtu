@@ -1,77 +1,79 @@
 {
   "agent_version": "ablation-no_bm25",
-  "judge": "skip-judge",
-  "generated_at": "2026-10-27T03:39:45",
+  "judge": "glm / glm-5.3-flash",
+  "generated_at": "2026-10-27T10:27:45",
   "count": 50,
   "metrics": {
     "count": 50,
     "recall": 0.983,
-    "faithfulness": null,
-    "relevancy": null,
-    "context_recall": null,
-    "answer_coverage": null
+    "faithfulness": 0.921,
+    "relevancy": 0.952,
+    "context_recall": 0.983,
+    "answer_coverage": 0.955
   },
-  "pass_rate": 0.96,
-  "pass_count": 48,
+  "pass_rate": 0.72,
+  "pass_count": 36,
   "pass_total": 50,
-  "routing_accuracy": 0.98,
+  "routing_accuracy": 1.0,
   "failure_distribution": {
-    "pass": 48,
-    "routing": 1,
+    "pass": 36,
+    "judge_error": 11,
+    "answer_incomplete": 1,
+    "context_miss": 1,
     "retrieval_miss": 1
   },
-  "avg_tool_calls": 3.38,
-  "avg_token_used": 8865.5,
-  "avg_cost_cny": 0.0177,
-  "avg_latency_ms": 10428.5,
+  "avg_tool_calls": 3.46,
+  "avg_token_used": 9570.6,
+  "avg_cost_cny": 0.0191,
+  "avg_latency_ms": 10788.8,
   "by_category": {
     "simple_fact": {
       "count": 10,
       "recall": 1.0,
-      "faithfulness": null,
-      "relevancy": null,
-      "context_recall": null,
-      "answer_coverage": null
+      "faithfulness": 0.908,
+      "relevancy": 0.99,
+      "context_recall": 1.0,
+      "answer_coverage": 1.0
     },
     "single_doc": {
       "count": 10,
       "recall": 1.0,
-      "faithfulness": null,
-      "relevancy": null,
-      "context_recall": null,
-      "answer_coverage": null
+      "faithfulness": 0.95,
+      "relevancy": 0.825,
+      "context_recall": 1.0,
+      "answer_coverage": 0.9
     },
     "multi_hop": {
       "count": 10,
       "recall": 1.0,
-      "faithfulness": null,
-      "relevancy": null,
-      "context_recall": null,
-      "answer_coverage": null
+      "faithfulness": 0.942,
+      "relevancy": 0.97,
+      "context_recall": 1.0,
+      "answer_coverage": 1.0
     },
     "comparison": {
       "count": 10,
       "recall": 0.917,
-      "faithfulness": null,
-      "relevancy": null,
-      "context_recall": null,
-      "answer_coverage": null
+      "faithfulness": 0.863,
+      "relevancy": 0.995,
+      "context_recall": 0.95,
+      "answer_coverage": 0.93
     },
     "temporal": {
       "count": 5,
       "recall": 1.0,
-      "faithfulness": null,
-      "relevancy": null,
-      "context_recall": null,
-      "answer_coverage": null
+      "faithfulness": 0.922,
+      "relevancy": 1.0,
+      "context_recall": 1.0,
+      "answer_coverage": 1.0
     },
     "edge_case": {
       "count": 5,
       "recall": 1.0,
-      "faithfulness": null,
-      "relevancy": null,
-      "context_recall": null,
-      "answer_coverage": null
+      "faithfulness": 0.9,
+      "relevancy": 0.96,
+      "context_recall": 0.934,
+      "answer_coverage": 0.9
     }
   }
 }

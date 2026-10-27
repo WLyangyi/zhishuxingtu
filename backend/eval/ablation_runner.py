@@ -205,15 +205,17 @@ def write_report(names) -> str:
                 f"{fmt(m.get('avg_tool_calls'), 2)} |"
             )
 
-    lines += [
-        "",
-        "## 读表提醒",
-        "",
+    hints = [
         "- 差值绝对值小于 0.02 视为抖动,不声称有效(方案 §5.5)。",
         "- 延迟包含网络与模型排队,只作趋势参考。",
         "- 关闭三查会省两次 LLM 调用,token 下降属预期;faithfulness 是否下降要看带裁判那一组。",
-        "",
     ]
+    if judged:
+        hints.append(
+            "- 带裁判组的 recall/路由/token/延迟取自**判分那次跑**(与 skip-judge 组同配置、不同次运行);"
+            "跨次跑的 token/延迟含会话波动,不作结论,只用来确认判分跑没把召回打坏。"
+        )
+    lines += ["", "## 读表提醒", ""] + hints + [""]
 
     path = os.path.join(REPORT_DIR, f"{today}-ablation.md")
     with open(path, "w", encoding="utf-8") as f:
