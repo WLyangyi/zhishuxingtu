@@ -55,8 +55,19 @@ def create_note(title: str, content: str, folder_id: Optional[str] = None) -> st
                 chunks, vectors = embedding_service.embed_chunks(note.id, note.title, note.content)
                 if chunks and len(vectors) > 0:
                     vector_store.add_note_chunks(note.id, chunks, vectors)
+                    vector_store.save()
         except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to index agent-created note %s: %s", note.id, exc)
+
+        # 关键词索引同步追加，保证新笔记在当前进程内立刻可被检索。
+        try:
+            from app.services.bm25_service import get_bm25_service
+
+            bm25 = get_bm25_service()
+            if bm25.is_ready:
+                bm25.add_document(note.id, note.title or "", note.content or "")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to update BM25 for agent-created note %s: %s", note.id, exc)
 
         return json.dumps(
             {"id": note.id, "title": note.title, "folder_id": note.folder_id},

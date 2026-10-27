@@ -15,9 +15,17 @@ class HybridSearchService:
         self._initialized = False
 
     def initialize(self) -> None:
-        """初始化混合检索服务"""
+        """初始化混合检索服务（BM25 语料从数据库构建）"""
         try:
+            from app.db.session import SessionLocal
+
             self.bm25_service = get_bm25_service()
+            if not self.bm25_service.is_ready:
+                db = SessionLocal()
+                try:
+                    self.bm25_service.rebuild_index(db)
+                finally:
+                    db.close()
             self._initialized = True
             print("HybridSearch service initialized successfully")
         except Exception as e:
@@ -106,19 +114,24 @@ class HybridSearchService:
         """
         try:
             from app.services.embedding_service import embedding_service
-            from app.services import get_vector_store
+            from app.services.vector_store_adapter import get_vector_store_adapter
 
             if not embedding_service.available:
                 return []
 
-            vector_store = get_vector_store()
-            if not vector_store or vector_store.total_vectors == 0:
+            # 走适配器而不是裸 store：它会按笔记聚合分块 id（note_id_chunk_N → note_id），
+            # 否则 RRF 融合拿到的分块 id 无法映射回笔记，结果会被整体丢掉。
+            vector_store = get_vector_store_adapter()
+            if not vector_store or not vector_store.is_ready:
+                return []
+            if vector_store.get_stats().get("total_vectors", 0) == 0:
                 return []
 
             query_vector = embedding_service.embed_text(query)
-            results = vector_store.search(query_vector, k=k, threshold=0.3)
+            if query_vector is None:
+                return []
 
-            return results
+            return vector_store.search(query_vector, k=k, threshold=0.3)
 
         except Exception as e:
             print(f"Vector search error in hybrid: {e}")

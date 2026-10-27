@@ -15,11 +15,11 @@ class VectorStoreAdapter:
 
     def _init_stores(self):
         if not self._use_langchain:
-            from app.services.vector_store import VectorStore
-            from app.services.embedding_service import embedding_service
-            self._original_store = VectorStore(
-                index_path=settings.FAISS_INDEX_PATH,
-                dimension=embedding_service.dimension if embedding_service.available else 1024
+            # 与混合检索共用同一个全局实例，否则写入的向量检索侧看不到，重启即丢。
+            from app.services import get_vector_store, init_vector_store
+
+            self._original_store = get_vector_store() or init_vector_store(
+                settings.FAISS_INDEX_PATH
             )
         else:
             from app.services.langchain_vectorstore import get_langchain_vectorstore
@@ -128,6 +128,18 @@ class VectorStoreAdapter:
             return False
 
         return self._original_store.clear()
+
+    def remove_note_chunks(self, note_id: str) -> int:
+        """移除某篇笔记已写入的分块向量（add_note_chunks 覆盖写之前调用）。"""
+        chunk_ids = self._note_chunks_map.pop(note_id, [])
+        if not chunk_ids or self._use_langchain:
+            return 0
+        try:
+            self._original_store.remove_vectors(chunk_ids)
+        except Exception as exc:  # noqa: BLE001
+            print(f"Failed to remove chunks for {note_id}: {exc}")
+            return 0
+        return len(chunk_ids)
 
     def get_note_chunk_count(self, note_id: str) -> int:
         return len(self._note_chunks_map.get(note_id, []))

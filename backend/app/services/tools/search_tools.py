@@ -14,8 +14,17 @@ def search_notes(query: str, top_k: int = 5) -> str:
     带 via 字段的条目是顺着双向链接补充的关联笔记(非直接命中),可用来回答跨笔记比较/多跳问题。
     """
     from app.api.routes.search import hybrid_search_notes
+    from app.core.config import settings
     from app.db.session import SessionLocal
+    from app.services import init_vector_store
     from app.services.graph_rag import INBOUND_MARK, expand_with_linked_notes
+    from app.services.hybrid_search import get_hybrid_search_service, init_hybrid_search
+
+    # stdio 入口（Trae 等）不经过 FastAPI lifespan，检索服务需在此补齐一次性初始化，
+    # 否则 hybrid 未就绪会走降级路径、恒返回空结果。
+    if not get_hybrid_search_service().is_ready:
+        init_vector_store(settings.FAISS_INDEX_PATH)
+        init_hybrid_search()
 
     db = SessionLocal()
     try:
