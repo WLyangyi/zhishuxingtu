@@ -1,0 +1,48 @@
+# 容器镜像专用依赖(2026-10-27)
+#
+# 与 backend/requirements.txt 的差别只有两类,原因如下:
+#
+# 1) 去掉 sentence-transformers —— 它在 backend/app 里零引用(embedding 走 DashScope
+#    远程 API),却会把 torch 拖进镜像(linux wheel GB 级)。Docker 构建实测因此卡住。
+# 2) 去掉 faster-whisper / yt-dlp —— 两者在代码里都是懒加载,且自带「未安装则降级」
+#    分支(whisper_service.py 降级到云端转写;ytdlp_service._check_yt_dlp 返回 False)。
+#    容器内不需要本地转写/视频下载能力。
+#    若要让容器恢复这些能力:把对应两行加回本文件即可(镜像会显著变大)。
+#
+# 另外给 langchain / langchain-openai / langchain-community 补了上界:
+# 原 requirements.txt 三者无上界,与 langgraph<0.3.0 冲突时 pip 会从 1.2.x 一路回溯到
+# 0.3.x(实测约 3 分钟)。上界对齐本机实测版本(langchain 0.3.30 / openai 0.3.35 /
+# community 0.3.31),让构建可复现。本文件只影响镜像,不改本机安装。
+
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+sqlalchemy>=2.0.0
+pydantic>=2.10.0
+pydantic-settings>=2.6.0
+python-jose[cryptography]>=3.3.0
+bcrypt>=4.0.0
+python-multipart>=0.0.18
+slowapi>=0.1.9
+faiss-cpu>=1.9.0
+
+langchain>=0.3.0,<0.4.0
+langchain-core>=0.3.29,<1.0.0
+langchain-openai>=0.2.0,<0.4.0
+langchain-community>=0.3.0,<0.4.0
+langgraph>=0.2.50,<0.3.0
+langgraph-checkpoint==2.1.2          # 锁 2.x,与 langgraph 0.2.x 配套(P14)
+langgraph-checkpoint-sqlite>=2,<3
+
+importlib-metadata>=8.0.0            # Python 3.13 已移除标准库 importlib_metadata,部分包需要
+fastmcp>=3,<4                        # M3: MCP Server(Streamable HTTP);锁 3.x,设计期预估 0.x 已过时(P19)
+langfuse>=4,<5   # 4.x 走 OTel;2.x 的 langchain 集成用老路径(langchain.schema)与 langchain 0.3 不兼容
+openai>=1.50.0
+dashscope>=1.20.0
+httpx>=0.27.0
+python-dotenv>=1.0.0
+tiktoken>=0.8.0
+rank_bm25>=0.2.2
+jieba>=0.42.1
+pymupdf>=1.23.0
+trafilatura>=1.6.0
+ffmpeg-python>=0.2.0

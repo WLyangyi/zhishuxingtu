@@ -14,8 +14,13 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY backend/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# 镜像用精简依赖(去掉 torch 系与本地转写/视频下载能力,详见该文件头注释)
+COPY backend/requirements-docker.txt ./requirements.txt
+
+# 直连 pypi.org 在本机会被中途掐断(RemoteDisconnected → pip 解析到半截 JSON 后崩),
+# 故默认走国内镜像;可用 --build-arg PIP_INDEX_URL=... 覆盖。
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+RUN pip install --no-cache-dir --retries 10 --timeout 60 -i "$PIP_INDEX_URL" -r requirements.txt
 
 COPY backend/app ./app
 COPY backend/scripts ./scripts
