@@ -409,6 +409,21 @@ def write_eval_runs(db, results: List[dict], agent_version: str, judge_desc: str
     db.commit()
 
 
+def judge_preflight(judge_relevancy) -> bool:
+    """带裁判跑批前先打一条 smoke:防止跑到第 12 条才发现裁判额度/鉴权坏了(见升级笔记 2.13.2)。
+
+    用最便宜的 answer_relevancy(不需要检索证据)判活。失败即中止,不留半份"分母只有 11 条"的报告。
+    """
+    print("[eval] 裁判预检: 发一条 smoke 请求 ...")
+    probe = judge_relevancy("什么是双向链接?", "双向链接是笔记之间互相引用的关系。")
+    if probe.get("score") is None:
+        print(f"[失败] 裁判不可用,已中止(否则整轮判分全空): {probe.get('error', '未知错误')}")
+        print("[提示] 常见原因: 额度耗尽(如 GLM code 1113)、key 失效、端点不可达。")
+        return False
+    print(f"[eval] 裁判预检通过 score={probe['score']}")
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=0, help="只跑前 N 条(调试用)")
@@ -441,6 +456,8 @@ def main() -> int:
         judge_context_recall = judge_answer_coverage = None
         judge_desc = "skip-judge"
     print(f"[eval] 裁判口径: {judge_desc}")
+    if not args.skip_judge and not judge_preflight(judge_answer_relevancy):
+        return 3
 
     init_vector_store(settings.FAISS_INDEX_PATH)
     init_hybrid_search()
