@@ -110,6 +110,7 @@ npm run build
 - `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL` - 可观测（M2，fail-silent；trace 上报遗留，需干净 `.venv-clean`）
 - `MCP_API_KEY` - MCP Server `/mcp` 认证（M3，为空则 fail-closed 拒绝所有请求）
 - `MCP_ENABLE_WRITE` / `MCP_WRITE_USER_ID` / `MCP_DRY_RUN` - MCP 写工具三重闸门（默认全关：ENABLE_WRITE=true 且 WRITE_USER_ID 非空才暴露 `create_note`；DRY_RUN=true 只回预览不落库。本机当前为真写）
+- `USE_LANGCHAIN_VECTORSTORE` - 必须与 FAISS 索引格式一致：现网索引是 `index.faiss + meta.json`（原生 store），置 true 会因缺 `index.pkl` 加载失败、检索恒空
 - `TAVILY_API_KEY` - web_search 联网搜索（M3，为空则工具优雅降级）
 
 ## API 路由前缀
