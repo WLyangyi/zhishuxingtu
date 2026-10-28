@@ -75,7 +75,7 @@ npm run build
 
 - **笔记管理**: `backend/app/api/routes/notes.py` - 支持双向链接 (`[[标题]]` 语法)
 - **知识图谱**: `backend/app/api/routes/graph.py` - 全局/局部图谱可视化
-- **Agentic RAG**: `backend/app/services/agent/` + `llm/` + `tools/` - 编排器（`intent_classify` 四分类 + `route_intent_multi`）路由 4 专职子 Agent（chat / knowledge / web_research / note_write），工具与提示词由 `AGENT_CONFIGS` 按 `current_agent` 查表（knowledge 移出写入工具、note_write 结构强制查重、三查按 agent 裁剪）；`AGENT_MULTI_AGENT` 开关双图共存（false=单图回退位）；`execute_tool` 对重复检索/永久不可用工具/未查重写入三道熔断防死循环
+- **Agentic RAG**: `backend/app/services/agent/` + `llm/` + `tools/` - 编排器（`intent_classify` 四分类 + `route_intent_multi`）路由 4 专职子 Agent（chat / knowledge / web_research / note_write），工具与提示词由 `AGENT_CONFIGS` 按 `current_agent` 查表（knowledge 移出写入工具、note_write 结构强制查重、三查按 agent 裁剪）；`AGENT_MULTI_AGENT` 开关双图共存（false=单图回退位）；`execute_tool` 对重复检索/永久不可用工具/未查重写入三道熔断防死循环；写工具幂等键（`agent:{session_id}:{tool_call_id}`）防重放重复落库
 - **MCP Server**: `backend/app/services/mcp_server.py` - 知识库 MCP 化（`/mcp` 端点，API Key 认证，与 agent 共享工具层）
 - **AI 问答**: `backend/app/services/rag_chain.py` - RAG 检索 + 流式输出（agent 降级 fallback）
 - **向量检索**: `backend/app/services/vector_store.py` - FAISS 向量索引 + 混合检索

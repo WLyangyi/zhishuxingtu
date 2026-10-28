@@ -145,7 +145,12 @@ _TOOL_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="tool-call
 
 
 def _invoke_tool(
-    fn: Any, args: dict, state: AgentState, *, timeout: Optional[float] = None
+    fn: Any,
+    args: dict,
+    state: AgentState,
+    *,
+    timeout: Optional[float] = None,
+    tool_call_id: Optional[str] = None,
 ) -> Any:
     """在节点执行所在的同步上下文内绑定用户，避免 SSE 线程池切换丢 ContextVar。
 
@@ -158,6 +163,7 @@ def _invoke_tool(
             ToolContext(
                 user_id=str(state.get("user_id") or ""),
                 session_id=str(state.get("session_id") or ""),
+                tool_call_id=tool_call_id,
             )
         )
         try:
@@ -183,12 +189,15 @@ def _call_tool(
     state: AgentState,
     *,
     timeout: Optional[float] = None,
+    tool_call_id: Optional[str] = None,
 ) -> tuple:
     """统一工具调用出口,返回 (status, result)。"""
     if not fn:
         return "error", f"未知工具:{name}"
     try:
-        return "success", _invoke_tool(fn, args, state, timeout=timeout)
+        return "success", _invoke_tool(
+            fn, args, state, timeout=timeout, tool_call_id=tool_call_id
+        )
     except ToolTimeoutError as exc:
         return "timeout", json.dumps(
             {
@@ -414,7 +423,9 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
                 else:
                     # 审批在主线程完成,写入不带超时:本地 DB 操作不会卡死,而 interrupt
                     # 依赖主线程上下文,不能挪进超时线程池。
-                    status, result = _call_tool(fn, name, args, state)
+                    status, result = _call_tool(
+                        fn, name, args, state, tool_call_id=tc.get("id", "")
+                    )
         else:
             if _failed_calls(tool_log, name) >= MAX_TOOL_FAILURES:
                 # Phase 4:同一工具本轮失败/超时达到阈值即熔断,后续请求直接短路,
@@ -456,7 +467,12 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
                     status = "error"
                 else:
                     status, result = _call_tool(
-                        fn, name, args, state, timeout=TOOL_TIMEOUT_SECONDS
+                        fn,
+                        name,
+                        args,
+                        state,
+                        timeout=TOOL_TIMEOUT_SECONDS,
+                        tool_call_id=tc.get("id", ""),
                     )
                     if query:
                         searched_queries.add(query)
@@ -475,7 +491,12 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
                 status = "error"
             else:
                 status, result = _call_tool(
-                    fn, name, args, state, timeout=TOOL_TIMEOUT_SECONDS
+                    fn,
+                    name,
+                    args,
+                    state,
+                    timeout=TOOL_TIMEOUT_SECONDS,
+                    tool_call_id=tc.get("id", ""),
                 )
 
         latency_ms = max(0, int((time.perf_counter() - started) * 1000))

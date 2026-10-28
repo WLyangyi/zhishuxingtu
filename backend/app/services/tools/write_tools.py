@@ -1,12 +1,26 @@
 import json
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from langchain_core.tools import tool
+from sqlalchemy.exc import IntegrityError
 
 from app.services.tools.context import get_tool_context
 
 logger = logging.getLogger(__name__)
+
+
+def _idempotent_payload(note: Any) -> str:
+    """重放命中已有笔记时返回同一份结构,并显式标记 idempotent_replay。"""
+    return json.dumps(
+        {
+            "id": note.id,
+            "title": note.title,
+            "folder_id": note.folder_id,
+            "idempotent_replay": True,
+        },
+        ensure_ascii=False,
+    )
 
 
 @tool
@@ -27,7 +41,23 @@ def create_note(title: str, content: str, folder_id: Optional[str] = None) -> st
         return json.dumps({"error": "笔记标题不能为空"}, ensure_ascii=False)
 
     db = SessionLocal()
+    # 幂等键:同一 session 的同一个 tool_call 被重放(resume/重试)时复用已有笔记。
+    # MCP 直调没有 tool_call_id,退化为无幂等,保持原行为。
+    idem_key = (
+        f"agent:{ctx.session_id}:{ctx.tool_call_id}"
+        if ctx.session_id and ctx.tool_call_id
+        else None
+    )
     try:
+        if idem_key:
+            existing = (
+                db.query(Note)
+                .filter(Note.user_id == ctx.user_id, Note.idempotency_key == idem_key)
+                .first()
+            )
+            if existing:
+                return _idempotent_payload(existing)
+
         if folder_id:
             folder = db.query(Folder).filter(Folder.id == folder_id).first()
             if not folder or (folder.user_id and folder.user_id != ctx.user_id):
@@ -40,6 +70,7 @@ def create_note(title: str, content: str, folder_id: Optional[str] = None) -> st
             folder_id=folder_id,
             user_id=ctx.user_id,
             linked_note_ids=json.dumps(linked_ids, ensure_ascii=False),
+            idempotency_key=idem_key,
         )
         db.add(note)
         db.commit()
@@ -72,6 +103,21 @@ def create_note(title: str, content: str, folder_id: Optional[str] = None) -> st
         return json.dumps(
             {"id": note.id, "title": note.title, "folder_id": note.folder_id},
             ensure_ascii=False,
+        )
+    except IntegrityError:
+        # 并发重放:唯一索引挡住第二次写入,回查已落库的那篇,保持幂等语义。
+        db.rollback()
+        existing = (
+            db.query(Note)
+            .filter(Note.user_id == ctx.user_id, Note.idempotency_key == idem_key)
+            .first()
+            if idem_key
+            else None
+        )
+        if existing:
+            return _idempotent_payload(existing)
+        return json.dumps(
+            {"error": "唯一约束冲突,但未找到对应的已存在笔记"}, ensure_ascii=False
         )
     except Exception as exc:  # noqa: BLE001
         db.rollback()
