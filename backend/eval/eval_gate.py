@@ -34,6 +34,17 @@ DEFAULT_THRESHOLDS: Dict[str, float] = {
     "routing_accuracy": 0.90,
 }
 
+# 相对回退上限:给了 --baseline 才生效。绝对值阈值管「本来就差」,
+# 这里管「这次比上次差」——两者缺一不可,单靠绝对值拦不住 0.99→0.95 这种退化。
+REGRESSION_LIMITS: Dict[str, float] = {
+    "recall": 0.02,
+    "context_recall": 0.05,
+    "faithfulness": 0.03,
+    "relevancy": 0.03,
+    "answer_coverage": 0.05,
+    "pass_rate": 0.02,
+}
+
 
 def latest_summary() -> Optional[str]:
     # 只认「基线」摘要(*-comparison.json),排除消融的带 tag 摘要(*-comparison-<tag>.json),
@@ -67,6 +78,10 @@ def main() -> int:
         help="覆盖阈值,可重复,如 --min pass_rate=0.85",
     )
     parser.add_argument("--list", action="store_true", help="打印当前阈值后退出")
+    parser.add_argument(
+        "--baseline", metavar="PATH",
+        help="上一次验收摘要 JSON;给了就额外比对相对回退",
+    )
     args = parser.parse_args()
 
     thresholds = dict(DEFAULT_THRESHOLDS)
@@ -97,6 +112,14 @@ def main() -> int:
     with open(path, encoding="utf-8") as f:
         summary = json.load(f)
 
+    baseline_summary = None
+    if args.baseline:
+        if not os.path.exists(args.baseline):
+            print(f"[门禁失败] 基线摘要不存在: {args.baseline}")
+            return 1
+        with open(args.baseline, encoding="utf-8") as f:
+            baseline_summary = json.load(f)
+
     print(f"摘要: {path}")
     print(f"版本: {summary.get('agent_version')}  裁判: {summary.get('judge')}  "
           f"条数: {summary.get('count')}  生成: {summary.get('generated_at')}")
@@ -117,6 +140,27 @@ def main() -> int:
             failed.append(f"{key}={value:.3f}<{threshold:.2f}")
 
     print("")
+
+    if baseline_summary is not None:
+        print(f"基线: {args.baseline}")
+        print("| 指标 | 基线 | 本次 | 允许回退 | 结果 |")
+        print("|---|---|---|---|---|")
+        for key, limit in REGRESSION_LIMITS.items():
+            base_value = _get(baseline_summary, key)
+            cur_value = _get(summary, key)
+            if base_value is None or cur_value is None:
+                print(f"| {key} | — | — | {limit:.3f} | 跳过(无数据) |")
+                continue
+            drop = base_value - cur_value
+            ok = drop <= limit
+            print(
+                f"| {key} | {base_value:.3f} | {cur_value:.3f} | {limit:.3f} "
+                f"| {'通过' if ok else '未通过'} |"
+            )
+            if not ok:
+                failed.append(f"{key}(回退{drop:+.3f}>{limit:.3f})")
+        print("")
+
     if failed:
         print(f"[门禁未通过] {len(failed)} 项不达标: " + "、".join(failed))
         return 1

@@ -76,3 +76,47 @@ def test_gate_rejects_unknown_threshold_key(tmp_path, monkeypatch, capsys):
     (tmp_path / "2026-10-27-comparison.json").write_text(json.dumps(PASSING), encoding="utf-8")
     monkeypatch.setattr(sys, "argv", ["eval_gate.py", "--min", "nope=0.1"])
     assert gate.main() == 2
+
+
+def test_gate_blocks_decline_that_absolute_threshold_still_allows(
+    tmp_path, monkeypatch, capsys
+):
+    """0.983 → 0.950 仍高于绝对阈值 0.90,只有基线比对能拦住这次退化。"""
+    gate = _load_gate()
+    monkeypatch.setattr(gate, "REPORT_DIR", str(tmp_path))
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(json.dumps(PASSING), encoding="utf-8")
+    current = dict(PASSING, metrics=dict(PASSING["metrics"], recall=0.95))
+    (tmp_path / "2026-10-27-comparison.json").write_text(
+        json.dumps(current), encoding="utf-8"
+    )
+    monkeypatch.setattr(sys, "argv", ["eval_gate.py", "--baseline", str(baseline_path)])
+    assert gate.main() == 1
+    assert "回退" in capsys.readouterr().out
+
+
+def test_gate_allows_regression_within_limit(tmp_path, monkeypatch):
+    gate = _load_gate()
+    monkeypatch.setattr(gate, "REPORT_DIR", str(tmp_path))
+    baseline = dict(PASSING, metrics=dict(PASSING["metrics"], recall=0.99))
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(json.dumps(baseline), encoding="utf-8")
+    (tmp_path / "2026-10-27-comparison.json").write_text(
+        json.dumps(PASSING), encoding="utf-8"
+    )
+    monkeypatch.setattr(sys, "argv", ["eval_gate.py", "--baseline", str(baseline_path)])
+    # 0.99 → 0.983 只回退 0.007,未超 0.02
+    assert gate.main() == 0
+
+
+def test_gate_fails_when_baseline_missing(tmp_path, monkeypatch, capsys):
+    gate = _load_gate()
+    monkeypatch.setattr(gate, "REPORT_DIR", str(tmp_path))
+    (tmp_path / "2026-10-27-comparison.json").write_text(
+        json.dumps(PASSING), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["eval_gate.py", "--baseline", str(tmp_path / "nope.json")]
+    )
+    assert gate.main() == 1
+    assert "基线摘要不存在" in capsys.readouterr().out

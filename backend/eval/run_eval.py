@@ -59,8 +59,9 @@ PASS_RELEVANCY = 0.7
 PASS_RECALL = 0.6
 PASS_CONTEXT_RECALL = 0.6
 PASS_ANSWER_COVERAGE = 0.6
-# 成本估算口径:粗估值,只用于报告趋势对比,不作结算依据
-COST_PER_1K_TOKENS_CNY = 0.002
+# 成本估算口径:粗估值,只用于报告趋势对比,不作结算依据。
+# 单价统一读配置(AGENT_COST_PER_1K_TOKENS_CNY),避免 eval 与运行时各维护一份价格。
+COST_PER_1K_TOKENS_CNY = float(settings.AGENT_COST_PER_1K_TOKENS_CNY)
 
 
 def classify_failure(
