@@ -197,7 +197,9 @@ onMounted(async () => {
   await categoryStore.fetchCategories()
   await tagsStore.fetchTags()
   
-  if (route.query.category_id) {
+  if (route.params.categoryId) {
+    categoryId.value = route.params.categoryId as string
+  } else if (route.query.category_id) {
     categoryId.value = route.query.category_id as string
   }
   if (route.query.type_id) {
@@ -284,18 +286,18 @@ async function deleteContent() {
   
   try {
     await categoryStore.deleteContent(contentId.value)
-    router.push('/categories')
+    router.push(categoryId.value ? `/library/${categoryId.value}` : '/library')
   } catch (error) {
     console.error(error)
   }
 }
 
 function goBack() {
-  router.push('/categories')
+  router.push(categoryId.value ? `/library/${categoryId.value}` : '/library')
 }
 
 function openContent(id: string) {
-  router.push({ name: 'ContentEditor', params: { id } })
+  router.push({ name: 'ContentEditor', params: { categoryId: categoryId.value, id } })
 }
 
 async function createNewTag() {

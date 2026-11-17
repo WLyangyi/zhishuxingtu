@@ -1,0 +1,137 @@
+/* ============================================================
+   知枢星图 · 精密星图（Precision Star Atlas）
+   tokens.css — 全站唯一令牌来源
+   设计文档：docs/design/深空观测站-前端设计文档.md §3
+   规则：组件内禁止硬编码十六进制色值，一律引用这里的变量
+   ============================================================ */
+
+:root {
+  color-scheme: dark;
+
+  /* ---- 表面与结构 ---- */
+  --bg: #0c0d0f;
+  --panel: #121417;
+  --panel-2: #181b20;
+  --line: rgba(255, 255, 255, 0.07);
+  --line-strong: rgba(255, 255, 255, 0.14);
+  --grid-line: rgba(255, 255, 255, 0.026);
+
+  /* ---- 文字 ---- */
+  --text: #eae8e2;
+  --t2: rgba(234, 232, 226, 0.56);
+  --t3: rgba(234, 232, 226, 0.32);
+
+  /* ---- 唯一强调色：琥珀金 ---- */
+  --gold: #e8ae4c;
+  --gold-deep: #c8933a;
+  --gold-ink: #161310;
+  --gold-soft: rgba(232, 174, 76, 0.12);
+
+  /* ---- 功能语义色（只用于语义，不做装饰） ---- */
+  --danger: #d98c7a;
+  --danger-soft: rgba(217, 140, 122, 0.12);
+  --success: #8fa98a;
+  --success-soft: rgba(143, 169, 138, 0.12);
+
+  /* ---- 图谱类型编码（形状 + 颜色双编码） ---- */
+  --steel: #8fa3b8;
+  --sage: #9aa68c;
+  --graph-note: var(--gold);
+  --graph-tag: var(--steel);
+  --graph-folder: rgba(234, 232, 226, 0.72);
+  --graph-asset: var(--sage);
+  --graph-edge: rgba(255, 255, 255, 0.1);
+
+  /* ---- 字体 ---- */
+  --font-display: "Space Grotesk", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --font-body: Inter, "Noto Sans SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, "Courier New", monospace;
+
+  /* ---- 字阶 ---- */
+  --fs-hero: 68px;
+  --fs-d1: 56px;
+  --fs-d2: 40px;
+  --fs-d3: 32px;
+  --fs-title-1: 24px;
+  --fs-title-2: 18px;
+  --fs-title-3: 14px;
+  --fs-body-l: 17px;
+  --fs-body: 15px;
+  --fs-body-s: 13px;
+  --fs-micro: 12px;
+  --fs-readout: 10.5px;
+
+  /* ---- 间距（4px 基准） ---- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 28px;
+  --sp-7: 40px;
+  --sp-8: 56px;
+  --sp-9: 80px;
+
+  /* ---- 圆角（小圆角是精密感的一部分） ---- */
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 10px;
+  --r-pill: 999px;
+
+  /* ---- 动效 ---- */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --d-fast: 150ms;
+  --d-base: 250ms;
+  --d-panel: 450ms;
+  --d-enter: 700ms;
+  --d-narrative: 1000ms;
+
+  /* ---- 骨架尺寸 ---- */
+  --rail-w: 72px;
+  --topbar-h: 54px;
+  --max-w: 1600px;
+  --read-col: 700px;
+
+  /* ---- 层级 ---- */
+  --z-base: 0;
+  --z-sticky: 20;
+  --z-rail: 40;
+  --z-overlay: 60;
+  --z-modal: 70;
+  --z-toast: 80;
+
+  /* ---- 功能性投影（仅浮层，非装饰） ---- */
+  --shadow-float: 0 16px 60px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f5f4f0;
+  --panel: #ffffff;
+  --panel-2: #f0eee9;
+  --line: rgba(20, 20, 20, 0.08);
+  --line-strong: rgba(20, 20, 20, 0.16);
+  --grid-line: rgba(20, 20, 20, 0.04);
+
+  --text: #1b1c1e;
+  --t2: rgba(27, 28, 30, 0.6);
+  --t3: rgba(27, 28, 30, 0.36);
+
+  --gold: #a67a24;
+  --gold-deep: #8f6820;
+  --gold-ink: #fffdf8;
+  --gold-soft: rgba(166, 122, 36, 0.12);
+
+  --danger: #b4553f;
+  --danger-soft: rgba(180, 85, 63, 0.1);
+  --success: #5c7a57;
+  --success-soft: rgba(92, 122, 87, 0.1);
+
+  --steel: #5f7185;
+  --sage: #6c7a5e;
+  --graph-folder: rgba(27, 28, 30, 0.72);
+  --graph-edge: rgba(20, 20, 20, 0.14);
+
+  --shadow-float: 0 16px 60px rgba(30, 26, 20, 0.18);
+}

@@ -1,7 +1,13 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, type RouteLocation, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
-const routes = [
+/**
+ * 信息架构（设计文档 §5.2）
+ * - 图标栏主入口：/ 观测台、/library 我的笔记、/graph 图谱、/ai AI 助手
+ * - LAB 组：/lab、/skills、/prompts、/ai/observability
+ * - 旧路由一律重定向，保留书签与外部链接可用性
+ */
+export const routes: RouteRecordRaw[] = [
   {
     path: '/login',
     name: 'Login',
@@ -29,59 +35,24 @@ const routes = [
         component: () => import('@/views/NoteEditor.vue')
       },
       {
-        path: 'categories',
-        name: 'Categories',
+        path: 'library',
+        name: 'Library',
         component: () => import('@/views/CategoryView.vue')
       },
       {
-        path: 'categories/:categoryId',
-        name: 'CategoryDetail',
+        path: 'library/:categoryId',
+        name: 'LibraryDetail',
         component: () => import('@/views/CategoryView.vue')
       },
       {
-        path: 'categories/:categoryId/content/new',
+        path: 'library/:categoryId/content/new',
         name: 'NewContent',
         component: () => import('@/views/ContentEditor.vue')
       },
       {
-        path: 'categories/:categoryId/content/:id',
+        path: 'library/:categoryId/content/:id',
         name: 'ContentEditor',
         component: () => import('@/views/ContentEditor.vue')
-      },
-      {
-        path: 'personal/folders',
-        name: 'PersonalFolders',
-        component: () => import('@/views/Home.vue')
-      },
-      {
-        path: 'personal/search',
-        name: 'PersonalSearch',
-        component: () => import('@/views/SearchResults.vue')
-      },
-      {
-        path: 'personal/graph',
-        name: 'PersonalGraph',
-        component: () => import('@/views/GraphView.vue')
-      },
-      {
-        path: 'personal/ai',
-        name: 'PersonalAI',
-        component: () => import('@/views/AIAssistant.vue')
-      },
-      {
-        path: 'observability',
-        name: 'AgentObservability',
-        component: () => import('@/views/AgentObservability.vue')
-      },
-      {
-        path: 'work',
-        name: 'Work',
-        component: () => import('@/views/Home.vue')
-      },
-      {
-        path: 'assets',
-        name: 'Assets',
-        component: () => import('@/views/Home.vue')
       },
       {
         path: 'graph',
@@ -89,12 +60,22 @@ const routes = [
         component: () => import('@/views/GraphView.vue')
       },
       {
+        path: 'ai',
+        name: 'AIAssistant',
+        component: () => import('@/views/AIAssistant.vue')
+      },
+      {
+        path: 'ai/observability',
+        name: 'AgentObservability',
+        component: () => import('@/views/AgentObservability.vue')
+      },
+      {
         path: 'skills',
         name: 'Skills',
         component: () => import('@/views/SkillsView.vue')
       },
       {
-        path: 'prompt-lab',
+        path: 'lab',
         name: 'PromptLab',
         component: () => import('@/views/PromptLab.vue')
       },
@@ -114,7 +95,33 @@ const routes = [
         component: () => import('@/views/ImportHistory.vue')
       }
     ]
-  }
+  },
+
+  // ---- 旧路由重定向（P0 清理，不保留别名页面） ----
+  { path: '/categories', redirect: '/library' },
+  {
+    path: '/categories/:categoryId',
+    redirect: (to: RouteLocation) => ({ name: 'LibraryDetail', params: { categoryId: to.params.categoryId } })
+  },
+  {
+    path: '/categories/:categoryId/content/new',
+    redirect: (to: RouteLocation) => ({ name: 'NewContent', params: { categoryId: to.params.categoryId } })
+  },
+  {
+    path: '/categories/:categoryId/content/:id',
+    redirect: (to: RouteLocation) => ({
+      name: 'ContentEditor',
+      params: { categoryId: to.params.categoryId, id: to.params.id }
+    })
+  },
+  { path: '/personal/folders', redirect: { path: '/library', query: { area: 'personal' } } },
+  { path: '/work', redirect: { path: '/library', query: { area: 'work' } } },
+  { path: '/assets', redirect: { path: '/library', query: { area: 'assets' } } },
+  { path: '/personal/graph', redirect: '/graph' },
+  { path: '/personal/ai', redirect: '/ai' },
+  { path: '/personal/search', redirect: '/search' },
+  { path: '/prompt-lab', redirect: '/lab' },
+  { path: '/observability', redirect: '/ai/observability' }
 ]
 
 const router = createRouter({

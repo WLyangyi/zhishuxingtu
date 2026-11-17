@@ -1,0 +1,113 @@
+/* ============================================================
+   textures.css — 坐标网格、描边空心字、星场容器、噪点
+   设计文档 §3.5：纵深靠运动差与细线，不靠模糊与光斑
+   ============================================================ */
+
+/* ---- 坐标网格（全站统一 140px 间距） ---- */
+.atlas-grid {
+  position: relative;
+}
+
+.atlas-grid::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    repeating-linear-gradient(to right, var(--grid-line) 0 1px, transparent 1px 140px),
+    repeating-linear-gradient(to bottom, var(--grid-line) 0 1px, transparent 1px 140px);
+  z-index: 0;
+}
+
+.atlas-grid--fixed::before {
+  position: fixed;
+}
+
+/* 只画竖向坐标线（首页右栏分隔等） */
+.atlas-grid-v::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(to right, var(--grid-line) 0 1px, transparent 1px 140px);
+  z-index: 0;
+}
+
+/* ---- 描边空心字（每页一个专属词） ---- */
+.outline-word {
+  position: absolute;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(96px, 14vw, 200px);
+  line-height: 0.78;
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+  color: transparent;
+  -webkit-text-stroke: 1px var(--line-strong);
+  opacity: 0.5;
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+}
+
+.outline-word--faint {
+  -webkit-text-stroke-color: var(--line);
+  opacity: 0.7;
+}
+
+/* ---- 星场画布容器 ---- */
+.starfield {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.starfield canvas {
+  width: 100%;
+  height: 100%;
+}
+
+/* ---- 星座插画（细线 + 星点 + Mono 编号） ---- */
+.constellation-art {
+  display: block;
+  overflow: visible;
+}
+
+.constellation-art .c-line {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.constellation-art .c-line--gold {
+  stroke: var(--gold);
+  opacity: 0.55;
+}
+
+.constellation-art .c-star {
+  fill: var(--text);
+}
+
+.constellation-art .c-star--gold {
+  fill: var(--gold);
+}
+
+.constellation-art .c-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  fill: var(--t3);
+}
+
+/* ---- 噪点（可选，极淡） ---- */
+.atlas-noise::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.018;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  z-index: 1;
+}

@@ -325,14 +325,14 @@ function enterCategory(categoryKey: string) {
     if (fallback) {
       console.log('Using fallback category:', fallback)
       categoryStore.currentCategory = fallback
-      router.push(`/categories/${fallback.id}`)
+      router.push(`/library/${fallback.id}`)
     }
     return
   }
   
   console.log('Navigating to category:', category)
   categoryStore.currentCategory = category
-  router.push(`/categories/${category.id}`)
+  router.push(`/library/${category.id}`)
 }
 
 function openNote(noteId: string) {
@@ -352,11 +352,11 @@ function goToSkills() {
 }
 
 function goToAI() {
-  router.push('/personal/ai')
+  router.push('/ai')
 }
 
 function goToPromptLab() {
-  router.push('/prompt-lab')
+  router.push('/lab')
 }
 
 function openImport() {

@@ -1,0 +1,97 @@
+/* ============================================================
+   utilities.css — 少量全站工具类（readout / hairline / 容器）
+   ============================================================ */
+
+/* 数据读数：Mono、大写、宽字距（编号、指标名、分组标签） */
+.readout {
+  font-family: var(--font-mono);
+  font-size: var(--fs-readout);
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--t3);
+  line-height: 1.6;
+}
+
+.readout--gold { color: var(--gold); }
+.readout--t2 { color: var(--t2); }
+
+/* 数值：等宽表格数字，避免跳动 */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* 发丝分隔线 */
+.hairline {
+  height: 1px;
+  background: var(--line);
+  border: 0;
+}
+
+.hairline-v {
+  width: 1px;
+  background: var(--line);
+  border: 0;
+}
+
+/* 应用容器 */
+.shell-container {
+  width: 100%;
+  max-width: var(--max-w);
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+/* 阅读列 */
+.reading-col {
+  width: 100%;
+  max-width: var(--read-col);
+  margin: 0 auto;
+}
+
+/* 文本截断 */
+.truncate-1 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.truncate-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 屏幕阅读器专用 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 滚动条隐藏 */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* 图表/图谱全出血 */
+.full-bleed {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
