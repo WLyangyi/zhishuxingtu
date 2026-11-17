@@ -31,5 +31,9 @@ export const notesApi = {
   getBacklinks: async (id: string): Promise<Response<Backlink[]>> => {
     const response = await api.get(`/notes/${id}/backlinks`)
     return response.data
+  },
+
+  recordView: async (id: string): Promise<void> => {
+    await api.post(`/notes/${id}/view`)
   }
 }

@@ -1,1187 +1,711 @@
 <template>
-  <div class="home-page" ref="homeRef" @mousemove="handleMouseMove">
-    <canvas ref="particleCanvas" class="particle-canvas"></canvas>
-    
-    <div class="home-content">
-      <div class="main-area">
-        <div class="header-section animate-fade-in-up">
-          <h1 class="main-title">
-            <span class="title-greeting">{{ timeGreeting }}</span>
-            <span class="title-name">{{ username }}</span>
+  <div class="home">
+    <div class="outline-word home__outline" aria-hidden="true">OBSERVATORY</div>
+
+    <div class="home__inner">
+      <section class="hero">
+        <div class="hero__text">
+          <h1 class="hero__title">
+            {{ greeting }}，{{ displayName }}。<br />
+            <span class="hero__title-muted">{{ greetingLine }}</span>
           </h1>
-          <p class="subtitle">探索你的知识宇宙</p>
-        </div>
 
-        <div class="search-section animate-fade-in-up stagger-1" :class="{ focused: searchFocused }">
-          <div class="search-wrapper">
-            <Search class="search-icon" :size="20" />
-            <input
-              ref="searchInputRef"
-              v-model="searchQuery"
-              type="text"
-              placeholder="搜索笔记、标签、链接..."
-              class="search-input"
-              @focus="handleSearchFocus"
-              @blur="handleSearchBlur"
-              @keyup.enter="handleSearch"
-            />
-            <kbd class="search-shortcut">⌘K</kbd>
-          </div>
-          <Transition name="tag-cloud">
-            <div v-if="searchFocused && popularTags.length > 0" class="tag-cloud">
-              <span class="tag-label">热门标签：</span>
-              <button
-                v-for="tag in popularTags"
-                :key="tag.id"
-                class="tag-item"
-                @click="searchByTag(tag.name)"
-              >
-                {{ tag.name }}
-              </button>
-            </div>
-          </Transition>
-        </div>
+          <p class="hero__lede">
+            你的知识库并不沉默。{{ stats.notes }} 篇笔记正在等待下一次连接、一次提问，或一条被重新看见的线索。
+          </p>
 
-        <div class="main-entries-section animate-fade-in-up stagger-2">
-          <div class="entry-card" @click="enterCategory('personal')">
-            <div class="entry-icon" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b;">
-              <User :size="32" />
-            </div>
-            <h3 class="entry-title">个人</h3>
-            <p class="entry-subtitle">Personal</p>
-            <p class="entry-desc">笔记、日记、灵感收集</p>
-          </div>
-          <div class="entry-card" @click="enterCategory('work')">
-            <div class="entry-icon" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6;">
-              <Briefcase :size="32" />
-            </div>
-            <h3 class="entry-title">工作</h3>
-            <p class="entry-subtitle">Work</p>
-            <p class="entry-desc">项目文档、任务管理</p>
-          </div>
-          <div class="entry-card" @click="enterCategory('assets')">
-            <div class="entry-icon" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">
-              <Image :size="32" />
-            </div>
-            <h3 class="entry-title">素材</h3>
-            <p class="entry-subtitle">Assets</p>
-            <p class="entry-desc">图片、链接、附件</p>
-          </div>
-        </div>
-      </div>
-
-      <div class="side-area">
-        <div class="graph-section animate-fade-in-up stagger-3">
-          <div class="section-header">
-            <h2 class="section-title">知识图谱</h2>
-            <button class="expand-btn" @click="goToGraph">
-              <Expand :size="16" />
-            </button>
-          </div>
-          <div class="graph-container" ref="graphContainerRef">
-            <canvas ref="graphCanvas" class="graph-canvas"></canvas>
-            <div class="graph-overlay">
-              <span class="graph-label">{{ totalNodes }} 个节点</span>
-              <span class="graph-label">{{ totalLinks }} 条连接</span>
-            </div>
+          <div class="hero__actions">
+            <AppButton size="md" @click="router.push('/notes/new')">
+              <template #icon><Plus :size="14" /></template>
+              新建一条思考
+            </AppButton>
+            <RouterLink to="/ai" class="hero__link">向知识库提问 →</RouterLink>
           </div>
         </div>
 
-        <div class="recent-section animate-fade-in-up stagger-4">
-          <div class="section-header">
-            <h2 class="section-title">最近编辑</h2>
-            <button class="view-all-btn" @click="goToSearch">查看全部</button>
+        <ConstellationArt variant="hero" :width="380" :height="210" class="hero__art" />
+      </section>
+
+      <section class="continue">
+        <header class="section-head">
+          <span class="readout">CONTINUE · 继续阅读</span>
+          <RouterLink to="/library" class="section-head__link">全部笔记 →</RouterLink>
+        </header>
+
+        <Skeleton v-if="loading" :lines="2" :height="18" />
+
+        <RouterLink
+          v-else-if="continueItem"
+          :to="`/notes/${continueItem.id}`"
+          class="continue__item"
+        >
+          <span class="readout continue__index">01</span>
+          <div class="continue__body">
+            <h2 class="continue__title">{{ continueItem.title }}</h2>
+            <p class="continue__meta">{{ continueItem.meta }}</p>
+            <p v-if="continueItem.excerpt" class="continue__excerpt">{{ continueItem.excerpt }}</p>
           </div>
-          <div class="recent-list">
-            <div
-              v-for="note in recentNotes"
-              :key="note.id"
-              class="recent-item"
-              @click="openNote(note.id)"
-            >
-              <div class="recent-dot"></div>
-              <div class="recent-info">
-                <span class="recent-title">{{ note.title }}</span>
-                <span class="recent-meta">
-                  <Clock :size="12" />
-                  {{ formatDate(note.updated_at) }}
-                </span>
-              </div>
-            </div>
-            <div v-if="recentNotes.length === 0" class="empty-recent">
-              <FileText :size="24" class="empty-icon" />
-              <p>暂无笔记</p>
-              <p class="empty-hint">创建第一篇笔记开始记录</p>
-            </div>
-          </div>
+          <ArrowRight :size="18" class="continue__arrow" />
+        </RouterLink>
+
+        <EmptyState
+          v-else
+          title="还没有航行记录"
+          description="写下第一条思考，或从最近笔记里挑一篇开始。"
+        >
+          <AppButton size="sm" @click="router.push('/notes/new')">新建笔记</AppButton>
+        </EmptyState>
+      </section>
+
+      <section class="recent">
+        <header class="section-head">
+          <span class="readout">RECENT · 最近编辑</span>
+          <RouterLink to="/library" class="section-head__link">查看全部 →</RouterLink>
+        </header>
+
+        <div v-if="loading" class="recent__list">
+          <Skeleton v-for="index in 5" :key="index" :height="16" />
         </div>
 
-        <div class="ai-section animate-fade-in-up stagger-4">
-          <div class="section-header">
-            <h2 class="section-title">AI 助手</h2>
-          </div>
-          <div class="ai-card" @click="goToAI">
-            <div class="ai-icon">
-              <Bot :size="24" />
-            </div>
-            <div class="ai-info">
-              <h3 class="ai-title">智能对话</h3>
-              <p class="ai-desc">基于知识库进行智能问答</p>
-            </div>
-            <div class="ai-arrow">→</div>
-          </div>
+        <p v-else-if="!recentNotes.length" class="recent__empty">还没有笔记。新建一条，让星图开始生长。</p>
+
+        <div v-else class="recent__list">
+          <RouterLink
+            v-for="note in recentNotes"
+            :key="note.id"
+            :to="`/notes/${note.id}`"
+            class="recent__row"
+          >
+            <span class="recent__title">{{ note.title }}</span>
+            <span class="recent__meta">
+              {{ relativeTime(note.updated_at) }}
+              <span v-if="note.link_count"> · {{ note.link_count }} LINKS</span>
+            </span>
+          </RouterLink>
         </div>
 
-        <div class="prompt-lab-section animate-fade-in-up stagger-4">
-          <div class="section-header">
-            <h2 class="section-title">提示词工程</h2>
-          </div>
-          <div class="prompt-lab-card" @click="goToPromptLab">
-            <div class="prompt-lab-icon">
-              <FlaskConical :size="24" />
-            </div>
-            <div class="prompt-lab-info">
-              <h3 class="prompt-lab-title">提示词实验室</h3>
-              <p class="prompt-lab-desc">Few-Shot示例、A/B测试、思维链</p>
-            </div>
-            <div class="prompt-lab-arrow">→</div>
-          </div>
+        <div class="stats">
+          <span class="stats__item"><b class="num">{{ stats.notes }}</b> 篇笔记</span>
+          <span class="stats__item"><b class="num">{{ stats.tags }}</b> 个标签</span>
+          <span class="stats__item"><b class="num">{{ stats.links }}</b> 条连接</span>
         </div>
+      </section>
 
-        <div class="quick-actions animate-fade-in-up stagger-5">
-          <button class="action-btn" @click="goToSearch">
-            <Search :size="18" />
-            <span>全局搜索</span>
-          </button>
-          <button class="action-btn" @click="openImport">
-            <Upload :size="18" />
-            <span>智能导入</span>
-          </button>
-          <button class="action-btn" @click="goToSkills">
-            <Zap :size="18" />
-            <span>智能模块</span>
-          </button>
-        </div>
-      </div>
+      <aside class="side">
+        <section class="side__block">
+          <span class="readout">STAR CHART · 星图总览</span>
+          <svg class="side__chart" viewBox="0 0 240 150" aria-hidden="true">
+            <g class="side__orbit-group">
+              <ellipse cx="120" cy="76" rx="88" ry="34" />
+              <ellipse cx="120" cy="76" rx="62" ry="24" transform="rotate(-18 120 76)" />
+              <ellipse cx="120" cy="76" rx="42" ry="16" transform="rotate(24 120 76)" />
+            </g>
+            <circle cx="120" cy="76" r="2.6" class="side__core" />
+            <circle cx="196" cy="66" r="2.2" class="side__star side__star--gold" />
+            <circle cx="74" cy="96" r="1.8" class="side__star" />
+            <circle cx="148" cy="52" r="1.6" class="side__star" />
+            <circle cx="46" cy="62" r="1.4" class="side__star" />
+            <text x="202" y="60" class="side__code">ZS·044</text>
+            <text x="150" y="46" class="side__code">ZS·118</text>
+          </svg>
+          <RouterLink to="/graph" class="side__link">进入图谱 →</RouterLink>
+        </section>
+
+        <section class="side__block">
+          <span class="readout">AGENT · AI 助手</span>
+          <h3 class="side__title">向你的知识库提问</h3>
+          <p class="side__desc">多轮记忆 · 工具调用 · 三查反思 · 人工审批</p>
+          <RouterLink to="/ai" class="side__link">开始对话 →</RouterLink>
+        </section>
+
+        <section class="side__block side__block--areas">
+          <span class="readout">AREAS · 分区</span>
+          <RouterLink
+            v-for="area in areas"
+            :key="area.id"
+            :to="`/library/${area.id}`"
+            class="side__area"
+          >
+            <span class="side__area-name">{{ area.name }}</span>
+            <span class="readout side__area-label">{{ areaLabel(area.name) }}</span>
+            <span class="num side__area-count">{{ area.note_count }}</span>
+          </RouterLink>
+          <p v-if="!areas.length && !loading" class="side__desc">还没有分区。</p>
+        </section>
+
+        <p v-if="degraded" class="side__degraded">首页聚合暂不可用，已降级显示最近笔记。</p>
+      </aside>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, nextTick } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useCategoryStore } from '@/stores/category'
-import { useFoldersStore } from '@/stores/folders'
-import { useNotesStore } from '@/stores/notes'
-import { useTagsStore } from '@/stores/tags'
+import { ArrowRight, Plus } from 'lucide-vue-next'
+import AppButton from '@/components/ui/AppButton.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
+import ConstellationArt from '@/components/domain/ConstellationArt.vue'
+import { homeApi } from '@/api/home'
+import { notesApi } from '@/api/notes'
 import { useAuthStore } from '@/stores/auth'
-import { useImportStore } from '@/stores/import'
-import { 
-  Search, FileText, Clock, Zap, Expand, Bot, FlaskConical,
-  User, Briefcase, Upload, Image
-} from 'lucide-vue-next'
+import type { HomeArea, HomeOverview, HomeRecentNote } from '@/types/home'
 
 const router = useRouter()
-const categoryStore = useCategoryStore()
-const foldersStore = useFoldersStore()
-const notesStore = useNotesStore()
-const tagsStore = useTagsStore()
 const authStore = useAuthStore()
-const importStore = useImportStore()
 
-const homeRef = ref<HTMLElement | null>(null)
-const particleCanvas = ref<HTMLCanvasElement | null>(null)
-const graphCanvas = ref<HTMLCanvasElement | null>(null)
-const graphContainerRef = ref<HTMLElement | null>(null)
-const searchInputRef = ref<HTMLInputElement | null>(null)
+const overview = ref<HomeOverview | null>(null)
+const loading = ref(true)
+const degraded = ref(false)
 
-const searchQuery = ref('')
-const searchFocused = ref(false)
-const mouseX = ref(0)
-const mouseY = ref(0)
+const stats = computed(
+  () =>
+    overview.value?.stats ?? {
+      notes: 0,
+      tags: 0,
+      folders: 0,
+      categories: 0,
+      words: 0,
+      links: 0
+    }
+)
 
-let particleAnimationId: number | null = null
-let graphAnimationId: number | null = null
-let particles: Particle[] = []
-let graphNodes: GraphNode[] = []
-let graphEdges: GraphEdge[] = []
+const displayName = computed(() => authStore.user?.username || '观测员')
+const areas = computed<HomeArea[]>(() => overview.value?.areas ?? [])
+const recentNotes = computed<HomeRecentNote[]>(() => overview.value?.recent_notes ?? [])
 
-interface Particle {
-  x: number
-  y: number
-  vx: number
-  vy: number
-  radius: number
-  baseX: number
-  baseY: number
-}
-
-interface GraphNode {
-  x: number
-  y: number
-  vx: number
-  vy: number
-  radius: number
-  color: string
-  label: string
-}
-
-interface GraphEdge {
-  source: number
-  target: number
-}
-
-const categories = computed(() => categoryStore.categories)
-const username = computed(() => authStore.user?.username || '用户')
-const popularTags = computed(() => tagsStore.tags.slice(0, 5))
-const recentNotes = computed(() => notesStore.notes.slice(0, 5))
-
-const totalNotes = computed(() => notesStore.notes.length)
-
-const totalLinks = computed(() => {
-  let count = 0
-  notesStore.notes.forEach(note => {
-    const matches = note.content?.match(/\[\[([^\]]+)\]\]/g) || []
-    count += matches.length
-  })
-  return count
+const hour = new Date().getHours()
+const greeting = computed(() => {
+  if (hour < 5) return '夜深了'
+  if (hour < 11) return '早上好'
+  if (hour < 14) return '午间好'
+  if (hour < 18) return '下午好'
+  return '晚上好'
+})
+const greetingLine = computed(() => {
+  if (hour < 5) return '星空仍然亮着。'
+  if (hour < 11) return '开始今天的观测。'
+  if (hour < 14) return '整理上午的坐标。'
+  return '继续你的巡夜。'
 })
 
-const totalNodes = computed(() => notesStore.notes.length + categories.value.length)
-
-const timeGreeting = computed(() => {
-  const hour = new Date().getHours()
-  if (hour >= 5 && hour < 12) return '早安'
-  if (hour >= 12 && hour < 18) return '午安'
-  if (hour >= 18 && hour < 22) return '傍晚好'
-  return '夜深了'
+const continueItem = computed(() => {
+  const read = overview.value?.recent_reads?.[0]
+  if (read) {
+    return {
+      id: read.note_id,
+      title: read.title,
+      meta: `上次阅读 · ${relativeTime(read.viewed_at)}`,
+      excerpt: read.excerpt
+    }
+  }
+  const first = recentNotes.value[0]
+  if (first) {
+    return {
+      id: first.id,
+      title: first.title,
+      meta: `最近编辑 · ${relativeTime(first.updated_at)}`,
+      excerpt: first.excerpt
+    }
+  }
+  return null
 })
 
-function formatDate(dateStr: string): string {
-  if (!dateStr) return ''
-  const date = new Date(dateStr)
-  const now = new Date()
-  const diff = now.getTime() - date.getTime()
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-  
-  if (days === 0) return '今天'
-  if (days === 1) return '昨天'
-  if (days < 7) return `${days}天前`
-  return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+const AREA_LABELS: Record<string, string> = {
+  个人: 'PERSONAL',
+  工作: 'WORK',
+  素材: 'ASSETS'
 }
 
-function handleMouseMove(e: MouseEvent) {
-  if (!homeRef.value) return
-  const rect = homeRef.value.getBoundingClientRect()
-  mouseX.value = e.clientX - rect.left
-  mouseY.value = e.clientY - rect.top
+function areaLabel(name: string) {
+  return AREA_LABELS[name] ?? 'AREA'
 }
 
-function handleSearchFocus() {
-  searchFocused.value = true
+function parseTime(value: string) {
+  return new Date(/[zZ]|[+-]\d{2}:\d{2}$/.test(value) ? value : `${value}Z`)
 }
 
-function handleSearchBlur() {
-  setTimeout(() => {
-    searchFocused.value = false
-  }, 200)
+function relativeTime(value: string) {
+  const diff = Date.now() - parseTime(value).getTime()
+  if (Number.isNaN(diff)) return ''
+  const minutes = Math.floor(diff / 60000)
+  if (minutes < 1) return '刚刚'
+  if (minutes < 60) return `${minutes} 分钟前`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} 小时前`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days} 天前`
+  return parseTime(value).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
 }
 
-function handleSearch() {
-  if (searchQuery.value.trim()) {
-    router.push({ path: '/search', query: { q: searchQuery.value } })
+async function load() {
+  loading.value = true
+  try {
+    const response = await homeApi.overview()
+    if (response.data) overview.value = response.data
+  } catch {
+    degraded.value = true
+    await fallback()
+  } finally {
+    loading.value = false
   }
 }
 
-function searchByTag(tagName: string) {
-  router.push({ path: '/search', query: { q: tagName } })
-}
-
-function enterCategory(categoryKey: string) {
-  console.log('enterCategory called with:', categoryKey)
-  console.log('categories:', categories.value)
-  
-  if (!categories.value || categories.value.length === 0) {
-    console.warn('Categories not loaded yet, waiting...')
-    categoryStore.fetchCategories().then(() => {
-      setTimeout(() => enterCategory(categoryKey), 100)
-    })
-    return
-  }
-  
-  const categoryMap: Record<string, any> = {
-    'personal': categories.value.find(c => c.name?.toLowerCase().includes('个人')),
-    'work': categories.value.find(c => c.name?.toLowerCase().includes('工作')),
-    'assets': categories.value.find(c => c.name?.toLowerCase().includes('素材'))
-  }
-  
-  console.log('categoryMap:', categoryMap)
-  
-  const category = categoryMap[categoryKey]
-  
-  if (!category) {
-    console.error('Category not found for key:', categoryKey)
-    const fallback = categories.value[0]
-    if (fallback) {
-      console.log('Using fallback category:', fallback)
-      categoryStore.currentCategory = fallback
-      router.push(`/library/${fallback.id}`)
+async function fallback() {
+  try {
+    const response = await notesApi.list({ page_size: 5 })
+    const items = response.data?.items ?? []
+    overview.value = {
+      stats: {
+        notes: response.data?.total ?? items.length,
+        tags: 0,
+        folders: 0,
+        categories: 0,
+        words: 0,
+        links: 0
+      },
+      recent_notes: items.map((note) => ({
+        id: note.id,
+        title: note.title,
+        excerpt: (note.content ?? '').replace(/\s+/g, ' ').slice(0, 80),
+        updated_at: note.updated_at,
+        folder_id: note.folder_id ?? null,
+        category_id: null,
+        link_count: note.linked_note_ids?.length ?? 0
+      })),
+      recent_reads: [],
+      top_tags: [],
+      areas: []
     }
-    return
-  }
-  
-  console.log('Navigating to category:', category)
-  categoryStore.currentCategory = category
-  router.push(`/library/${category.id}`)
-}
-
-function openNote(noteId: string) {
-  router.push(`/notes/${noteId}`)
-}
-
-function goToSearch() {
-  router.push('/search')
-}
-
-function goToGraph() {
-  router.push('/graph')
-}
-
-function goToSkills() {
-  router.push('/skills')
-}
-
-function goToAI() {
-  router.push('/ai')
-}
-
-function goToPromptLab() {
-  router.push('/lab')
-}
-
-function openImport() {
-  importStore.openImportModal()
-}
-
-function initParticles() {
-  const canvas = particleCanvas.value
-  if (!canvas) return
-  
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-  
-  const resize = () => {
-    canvas.width = window.innerWidth
-    canvas.height = window.innerHeight
-    createParticles()
-  }
-  
-  const createParticles = () => {
-    particles = []
-    const count = Math.min(80, Math.floor((canvas.width * canvas.height) / 15000))
-    
-    for (let i = 0; i < count; i++) {
-      const x = Math.random() * canvas.width
-      const y = Math.random() * canvas.height
-      particles.push({
-        x,
-        y,
-        vx: (Math.random() - 0.5) * 0.3,
-        vy: (Math.random() - 0.5) * 0.3,
-        radius: Math.random() * 2 + 1,
-        baseX: x,
-        baseY: y
-      })
-    }
-  }
-  
-  const animate = () => {
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-    
-    particles.forEach((p, i) => {
-      const dx = mouseX.value - p.x
-      const dy = mouseY.value - p.y
-      const dist = Math.sqrt(dx * dx + dy * dy)
-      
-      if (dist < 150) {
-        const force = (150 - dist) / 150
-        p.vx += dx * force * 0.002
-        p.vy += dy * force * 0.002
-      }
-      
-      p.x += p.vx
-      p.y += p.vy
-      
-      p.vx *= 0.99
-      p.vy *= 0.99
-      
-      p.x += (p.baseX - p.x) * 0.01
-      p.y += (p.baseY - p.y) * 0.01
-      
-      ctx.beginPath()
-      ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2)
-      ctx.fillStyle = 'rgba(0, 102, 255, 0.6)'
-      ctx.fill()
-      
-      particles.slice(i + 1).forEach(p2 => {
-        const dx2 = p.x - p2.x
-        const dy2 = p.y - p2.y
-        const dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2)
-        
-        if (dist2 < 120) {
-          ctx.beginPath()
-          ctx.moveTo(p.x, p.y)
-          ctx.lineTo(p2.x, p2.y)
-          ctx.strokeStyle = `rgba(0, 102, 255, ${0.15 * (1 - dist2 / 120)})`
-          ctx.lineWidth = 0.5
-          ctx.stroke()
-        }
-      })
-    })
-    
-    particleAnimationId = requestAnimationFrame(animate)
-  }
-  
-  resize()
-  window.addEventListener('resize', resize)
-  animate()
-}
-
-function initGraph() {
-  const canvas = graphCanvas.value
-  const container = graphContainerRef.value
-  if (!canvas || !container) return
-  
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-  
-  const resize = () => {
-    const rect = container.getBoundingClientRect()
-    canvas.width = rect.width
-    canvas.height = rect.height
-    createNodes()
-  }
-  
-  const createNodes = () => {
-    graphNodes = []
-    graphEdges = []
-    
-    const colors = ['#0066FF', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4']
-    const nodeCount = Math.min(20, totalNotes.value + 5)
-    
-    for (let i = 0; i < nodeCount; i++) {
-      graphNodes.push({
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
-        vx: (Math.random() - 0.5) * 0.5,
-        vy: (Math.random() - 0.5) * 0.5,
-        radius: Math.random() * 4 + 3,
-        color: colors[i % colors.length],
-        label: `Node ${i}`
-      })
-    }
-    
-    for (let i = 0; i < nodeCount; i++) {
-      const connections = Math.floor(Math.random() * 3) + 1
-      for (let j = 0; j < connections; j++) {
-        const target = Math.floor(Math.random() * nodeCount)
-        if (target !== i) {
-          graphEdges.push({ source: i, target })
-        }
-      }
-    }
-  }
-  
-  const animate = () => {
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-    
-    graphEdges.forEach(edge => {
-      const source = graphNodes[edge.source]
-      const target = graphNodes[edge.target]
-      
-      ctx.beginPath()
-      ctx.moveTo(source.x, source.y)
-      ctx.lineTo(target.x, target.y)
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)'
-      ctx.lineWidth = 1
-      ctx.stroke()
-    })
-    
-    graphNodes.forEach(node => {
-      node.x += node.vx
-      node.y += node.vy
-      
-      if (node.x < node.radius || node.x > canvas.width - node.radius) {
-        node.vx *= -1
-      }
-      if (node.y < node.radius || node.y > canvas.height - node.radius) {
-        node.vy *= -1
-      }
-      
-      node.x = Math.max(node.radius, Math.min(canvas.width - node.radius, node.x))
-      node.y = Math.max(node.radius, Math.min(canvas.height - node.radius, node.y))
-      
-      ctx.beginPath()
-      ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2)
-      ctx.fillStyle = node.color
-      ctx.fill()
-      
-      ctx.beginPath()
-      ctx.arc(node.x, node.y, node.radius + 2, 0, Math.PI * 2)
-      ctx.strokeStyle = node.color + '40'
-      ctx.lineWidth = 2
-      ctx.stroke()
-    })
-    
-    graphAnimationId = requestAnimationFrame(animate)
-  }
-  
-  resize()
-  window.addEventListener('resize', resize)
-  animate()
-}
-
-function cleanup() {
-  if (particleAnimationId) {
-    cancelAnimationFrame(particleAnimationId)
-  }
-  if (graphAnimationId) {
-    cancelAnimationFrame(graphAnimationId)
+  } catch {
+    overview.value = null
   }
 }
 
-onMounted(async () => {
-  await Promise.all([
-    categoryStore.fetchCategories(),
-    foldersStore.fetchFolders(),
-    categoryStore.fetchContents(),
-    notesStore.fetchNotes(),
-    tagsStore.fetchTags()
-  ])
-  
-  await nextTick()
-  initParticles()
-  initGraph()
-  
-  document.addEventListener('keydown', (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-      e.preventDefault()
-      searchInputRef.value?.focus()
-    }
-  })
-})
-
-onUnmounted(() => {
-  cleanup()
-})
+onMounted(load)
 </script>
 
-<style scoped lang="scss">
-.home-page {
+<style scoped>
+.home {
   position: relative;
   min-height: 100%;
-  background: var(--bg-deep);
-  overflow: hidden;
 }
 
-.particle-canvas {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
+.home__outline {
+  top: 52px;
+  right: -40px;
+  font-size: clamp(110px, 14vw, 220px);
+  opacity: 0.35;
   z-index: 0;
 }
 
-.home-content {
+.home__inner {
   position: relative;
   z-index: 1;
-  display: grid;
-  grid-template-columns: 1fr 340px;
-  gap: 24px;
-  padding: 32px;
-  max-width: 1400px;
-  margin: 0 auto;
-  min-height: 100%;
-}
-
-.main-area {
-  display: flex;
-  flex-direction: column;
-  gap: 32px;
-}
-
-.header-section {
-  text-align: center;
-  padding: 40px 0 20px;
-}
-
-.main-title {
-  font-family: 'Exo 2', 'Noto Sans SC', sans-serif;
-  font-size: 48px;
-  font-weight: 700;
-  line-height: 1.2;
-  margin: 0 0 12px;
-  background: linear-gradient(135deg, #ffffff 0%, rgba(255, 255, 255, 0.7) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  
-  .title-greeting {
-    display: block;
-    font-size: 20px;
-    font-weight: 400;
-    color: var(--text-tertiary);
-    -webkit-text-fill-color: var(--text-tertiary);
-    margin-bottom: 4px;
-  }
-  
-  .title-name {
-    display: block;
-  }
-}
-
-.subtitle {
-  font-size: 16px;
-  color: var(--text-muted);
-  margin: 0;
-}
-
-.search-section {
-  position: relative;
-  max-width: 600px;
-  margin: 0 auto;
   width: 100%;
-}
-
-.search-wrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 20px;
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--radius-xl);
-  transition: all 0.3s ease;
-  
-  .search-icon {
-    color: var(--text-muted);
-    flex-shrink: 0;
-  }
-  
-  .search-input {
-    flex: 1;
-    background: transparent;
-    border: none;
-    font-size: 16px;
-    color: var(--text-primary);
-    
-    &::placeholder {
-      color: var(--text-muted);
-    }
-  }
-  
-  .search-shortcut {
-    padding: 4px 8px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    font-size: 12px;
-    color: var(--text-muted);
-    font-family: 'JetBrains Mono', monospace;
-  }
-}
-
-.search-section.focused .search-wrapper {
-  border-color: var(--tech-blue);
-  box-shadow: 0 0 0 3px var(--tech-blue-muted), 0 8px 32px rgba(0, 0, 0, 0.3);
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.tag-cloud {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 16px;
-  margin-top: 12px;
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: var(--radius-lg);
-  flex-wrap: wrap;
-  
-  .tag-label {
-    font-size: 12px;
-    color: var(--text-muted);
-  }
-  
-  .tag-item {
-    padding: 6px 12px;
-    background: var(--tech-blue-muted);
-    border: 1px solid rgba(0, 102, 255, 0.3);
-    border-radius: 20px;
-    font-size: 12px;
-    color: var(--tech-blue);
-    transition: all 0.2s;
-    
-    &:hover {
-      background: rgba(0, 102, 255, 0.25);
-      transform: translateY(-1px);
-    }
-  }
-}
-
-.tag-cloud-enter-active,
-.tag-cloud-leave-active {
-  transition: all 0.3s ease;
-}
-
-.tag-cloud-enter-from,
-.tag-cloud-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
-}
-
-.main-entries-section {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 24px;
-  max-width: 900px;
+  max-width: 1320px;
   margin: 0 auto;
-  padding: 20px 0;
+  padding: 44px 40px 64px;
 }
 
-.entry-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 40px 24px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--radius-xl);
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  text-align: center;
-
-  &:hover {
-    transform: translateY(-6px);
-    border-color: rgba(255, 255, 255, 0.15);
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
-
-    .entry-icon {
-      transform: scale(1.1);
-    }
-  }
-
-  .entry-icon {
-    width: 72px;
-    height: 72px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-xl);
-    margin-bottom: 20px;
-    transition: transform 0.3s ease;
-  }
-
-  .entry-title {
-    font-family: 'Exo 2', 'Noto Sans SC', sans-serif;
-    font-size: 24px;
-    font-weight: 700;
-    color: var(--text-primary);
-    margin: 0 0 4px;
-  }
-
-  .entry-subtitle {
-    font-size: 14px;
-    color: var(--text-muted);
-    margin: 0 0 12px;
-    opacity: 0.7;
-  }
-
-  .entry-desc {
-    font-size: 13px;
-    color: var(--text-muted);
-    margin: 0;
-    line-height: 1.5;
-  }
-}
-
-.side-area {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-.graph-section {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: var(--radius-xl);
-  padding: 20px;
-  
-  .expand-btn {
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: var(--radius-md);
-    color: var(--text-muted);
-    transition: all 0.2s;
-    
-    &:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: var(--text-primary);
-    }
-  }
-}
-
-.graph-container {
+.hero {
   position: relative;
-  height: 200px;
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  margin-top: 12px;
-  background: rgba(0, 0, 0, 0.3);
-}
-
-.graph-canvas {
-  width: 100%;
-  height: 100%;
-}
-
-.graph-overlay {
-  position: absolute;
-  bottom: 12px;
-  left: 12px;
-  display: flex;
-  gap: 12px;
-  
-  .graph-label {
-    font-size: 11px;
-    color: var(--text-muted);
-    padding: 4px 8px;
-    background: rgba(0, 0, 0, 0.5);
-    border-radius: 4px;
-  }
-}
-
-.recent-section {
-  flex: 1;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: var(--radius-xl);
-  padding: 20px;
-  
-  .view-all-btn {
-    font-size: 12px;
-    color: var(--tech-blue);
-    transition: color 0.2s;
-    
-    &:hover {
-      color: var(--primary-color);
-    }
-  }
-}
-
-.recent-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 12px;
-}
-
-.recent-item {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 12px;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all 0.2s;
-  
-  &:hover {
-    background: rgba(255, 255, 255, 0.04);
-    
-    .recent-dot {
-      background: var(--tech-blue);
-      box-shadow: 0 0 8px var(--tech-blue-glow);
-    }
-  }
-  
-  .recent-dot {
-    width: 6px;
-    height: 6px;
-    margin-top: 6px;
-    border-radius: 50%;
-    background: var(--text-muted);
-    flex-shrink: 0;
-    transition: all 0.2s;
-  }
-  
-  .recent-info {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  
-  .recent-title {
-    font-size: 13px;
-    color: var(--text-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  
-  .recent-meta {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 11px;
-    color: var(--text-muted);
-  }
+  justify-content: space-between;
+  gap: 40px;
+  padding-bottom: 40px;
 }
 
-.empty-recent {
+.hero__text {
+  max-width: 640px;
+}
+
+.hero__title {
+  font-family: var(--font-display);
+  font-size: clamp(36px, 4.2vw, 56px);
+  font-weight: 500;
+  line-height: 1.12;
+  letter-spacing: -0.04em;
+}
+
+.hero__title-muted {
+  color: var(--t3);
+}
+
+.hero__lede {
+  margin-top: 18px;
+  max-width: 420px;
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--t2);
+}
+
+.hero__actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-top: 24px;
+}
+
+.hero__link {
+  font-size: 12px;
+  color: var(--t2);
+  transition: color var(--d-fast) var(--ease-out), transform var(--d-fast) var(--ease-out);
+}
+
+.hero__link:hover {
+  color: var(--gold);
+  transform: translateX(4px);
+}
+
+.hero__art {
+  flex: none;
+  margin-top: 6px;
+  opacity: 0.9;
+}
+
+.continue {
+  padding: 22px 0 26px;
+  border-top: 1px solid var(--line);
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.section-head__link {
+  font-size: 11px;
+  color: var(--t3);
+  transition: color var(--d-fast) var(--ease-out);
+}
+
+.section-head__link:hover {
+  color: var(--gold);
+}
+
+.continue__item {
+  display: grid;
+  grid-template-columns: 52px 1fr 32px;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 0;
+  transition: transform var(--d-base) var(--ease-out);
+}
+
+.continue__item:hover {
+  transform: translateX(6px);
+}
+
+.continue__index {
+  color: var(--gold);
+}
+
+.continue__title {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  color: var(--text);
+  transition: color var(--d-fast) var(--ease-out);
+}
+
+.continue__item:hover .continue__title {
+  color: var(--gold);
+}
+
+.continue__meta {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--t3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.continue__excerpt {
+  margin-top: 4px;
+  max-width: 560px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--t3);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+
+.continue__arrow {
+  color: var(--t3);
+  transition: transform var(--d-fast) var(--ease-out), color var(--d-fast) var(--ease-out);
+}
+
+.continue__item:hover .continue__arrow {
+  color: var(--gold);
+  transform: translateX(4px);
+}
+
+.recent {
+  padding-top: 8px;
+}
+
+.recent__list {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 32px;
-  text-align: center;
-  
-  .empty-icon {
-    color: var(--text-muted);
-    margin-bottom: 12px;
-  }
-  
-  p {
-    font-size: 13px;
-    color: var(--text-muted);
-    margin: 0;
-  }
-  
-  .empty-hint {
-    font-size: 12px;
-    color: var(--text-muted);
-    margin-top: 4px;
-    opacity: 0.7;
-  }
+  border-top: 1px solid var(--line);
 }
 
-.quick-actions {
+.recent__row {
   display: flex;
-  gap: 8px;
-  
-  .action-btn {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 12px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: var(--radius-lg);
-    color: var(--text-secondary);
-    font-size: 13px;
-    transition: all 0.2s;
-    
-    &:hover {
-      background: rgba(255, 255, 255, 0.06);
-      border-color: rgba(255, 255, 255, 0.1);
-      color: var(--text-primary);
-    }
-  }
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  height: 42px;
+  border-bottom: 1px solid var(--line);
+  transition: transform var(--d-base) var(--ease-out);
 }
 
-.ai-section {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: var(--radius-xl);
-  padding: 20px;
-  
-  .ai-card {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 16px;
-    background: linear-gradient(135deg, rgba(0, 102, 255, 0.1) 0%, rgba(0, 102, 255, 0.05) 100%);
-    border: 1px solid rgba(0, 102, 255, 0.2);
-    border-radius: var(--radius-lg);
-    cursor: pointer;
-    transition: all 0.3s ease;
-    margin-top: 12px;
-    
-    &:hover {
-      background: linear-gradient(135deg, rgba(0, 102, 255, 0.15) 0%, rgba(0, 102, 255, 0.08) 100%);
-      border-color: rgba(0, 102, 255, 0.4);
-      transform: translateY(-2px);
-      
-      .ai-arrow {
-        transform: translateX(4px);
-      }
-    }
-    
-    .ai-icon {
-      width: 48px;
-      height: 48px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(0, 102, 255, 0.2);
-      border-radius: var(--radius-md);
-      color: var(--tech-blue);
-    }
-    
-    .ai-info {
-      flex: 1;
-      
-      .ai-title {
-        font-size: 15px;
-        font-weight: 600;
-        color: var(--text-primary);
-        margin: 0 0 4px;
-      }
-      
-      .ai-desc {
-        font-size: 12px;
-        color: var(--text-muted);
-        margin: 0;
-      }
-    }
-    
-    .ai-arrow {
-      font-size: 18px;
-      color: var(--tech-blue);
-      transition: transform 0.2s;
-    }
-  }
+.recent__row:hover {
+  transform: translateX(5px);
 }
 
-.prompt-lab-section {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: var(--radius-xl);
-  padding: 20px;
-  
-  .prompt-lab-card {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 16px;
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0.05) 100%);
-    border: 1px solid rgba(245, 158, 11, 0.2);
-    border-radius: var(--radius-lg);
-    cursor: pointer;
-    transition: all 0.3s ease;
-    margin-top: 12px;
-    
-    &:hover {
-      background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(245, 158, 11, 0.08) 100%);
-      border-color: rgba(245, 158, 11, 0.4);
-      transform: translateY(-2px);
-      
-      .prompt-lab-arrow {
-        transform: translateX(4px);
-      }
-    }
-    
-    .prompt-lab-icon {
-      width: 48px;
-      height: 48px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(245, 158, 11, 0.2);
-      border-radius: var(--radius-md);
-      color: var(--primary-color);
-    }
-    
-    .prompt-lab-info {
-      flex: 1;
-      
-      .prompt-lab-title {
-        font-size: 15px;
-        font-weight: 600;
-        color: var(--text-primary);
-        margin: 0 0 4px;
-      }
-      
-      .prompt-lab-desc {
-        font-size: 12px;
-        color: var(--text-muted);
-        margin: 0;
-      }
-    }
-    
-    .prompt-lab-arrow {
-      font-size: 18px;
-      color: var(--primary-color);
-      transition: transform 0.2s;
-    }
-  }
+.recent__title {
+  font-size: 13px;
+  color: var(--t2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color var(--d-fast) var(--ease-out);
 }
 
-@keyframes fade-in-up {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
+.recent__row:hover .recent__title {
+  color: var(--gold);
+}
+
+.recent__meta {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+  color: var(--t3);
+  flex: none;
+}
+
+.recent__empty {
+  padding: 18px 0;
+  font-size: 12px;
+  color: var(--t3);
+}
+
+.stats {
+  display: flex;
+  align-items: baseline;
+  gap: 28px;
+  margin-top: 22px;
+}
+
+.stats__item {
+  font-size: 11px;
+  color: var(--t3);
+}
+
+.stats__item b {
+  margin-right: 4px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--gold);
+}
+
+.side {
+  border-left: 1px solid var(--line);
+  padding-left: 28px;
+}
+
+.side__block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.side__block + .side__block {
+  padding-top: 22px;
+}
+
+.side__block--areas {
+  border-bottom: 0;
+}
+
+.side__chart {
+  width: 100%;
+  height: auto;
+  max-width: 240px;
+}
+
+.side__orbit-group {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 0.8;
+  transform-origin: 120px 76px;
+  animation: orbit-spin 80s linear infinite;
+  transform-box: view-box;
+}
+
+.side__core {
+  fill: var(--text);
+}
+
+.side__star {
+  fill: var(--t2);
+}
+
+.side__star--gold {
+  fill: var(--gold);
+}
+
+.side__code {
+  font-family: var(--font-mono);
+  font-size: 6px;
+  letter-spacing: 0.1em;
+  fill: var(--t3);
+}
+
+.side__link {
+  font-size: 11px;
+  color: var(--gold);
+  transition: transform var(--d-fast) var(--ease-out);
+  align-self: flex-start;
+}
+
+.side__link:hover {
+  transform: translateX(4px);
+}
+
+.side__title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.side__desc {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--t3);
+}
+
+.side__area {
+  display: grid;
+  grid-template-columns: 1fr auto 34px;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  transition: transform var(--d-base) var(--ease-out);
+}
+
+.side__area:hover {
+  transform: translateX(4px);
+}
+
+.side__area-name {
+  font-size: 13px;
+  color: var(--t2);
+}
+
+.side__area-label {
+  font-size: 8px;
+}
+
+.side__area-count {
+  text-align: right;
+  font-size: 12px;
+  color: var(--gold);
+}
+
+.side__degraded {
+  margin-top: 12px;
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--danger);
+}
+
+@keyframes orbit-spin {
   to {
-    opacity: 1;
-    transform: translateY(0);
+    transform: rotate(360deg);
   }
 }
 
-@media (max-width: 1024px) {
-  .home-content {
-    grid-template-columns: 1fr;
-    padding: 24px;
+@media (min-width: 1024px) {
+  .home__inner {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    grid-template-areas:
+      'hero hero'
+      'main side';
+    column-gap: 36px;
   }
-  
-  .side-area {
-    flex-direction: row;
+
+  .hero {
+    grid-area: hero;
+  }
+
+  .continue,
+  .recent {
+    grid-column: 1;
+  }
+
+  .side {
+    grid-area: side;
+    grid-row: 2 / span 2;
+  }
+}
+
+@media (max-width: 1023px) {
+  .home__inner {
+    padding: 32px 24px 48px;
+  }
+
+  .hero__art {
+    display: none;
+  }
+
+  .side {
+    margin-top: 32px;
+    padding-left: 0;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding-top: 24px;
+  }
+}
+
+@media (max-width: 767px) {
+  .home__inner {
+    padding: 24px 16px 40px;
+  }
+
+  .continue__title {
+    font-size: 20px;
+  }
+
+  .continue__meta {
+    white-space: normal;
+  }
+
+  .continue__excerpt {
+    -webkit-line-clamp: 2;
+  }
+
+  .stats {
+    gap: 16px;
     flex-wrap: wrap;
-    
-    > * {
-      flex: 1;
-      min-width: 280px;
-    }
-  }
-  
-  .graph-section {
-    order: -1;
-  }
-}
-
-@media (max-width: 640px) {
-  .home-content {
-    padding: 16px;
-  }
-  
-  .main-title {
-    font-size: 32px;
-    
-    .title-greeting {
-      font-size: 16px;
-    }
-  }
-  
-  .category-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .side-area {
-    flex-direction: column;
-    
-    > * {
-      min-width: auto;
-    }
   }
 }
 </style>

@@ -209,6 +209,7 @@ import { useNotesStore } from '@/stores/notes'
 import { useFoldersStore } from '@/stores/folders'
 import { useTagsStore } from '@/stores/tags'
 import { useNotificationStore } from '@/stores/notification'
+import { reportNoteView } from '@/lib/readTracker'
 import type { Backlink } from '@/types'
 import {
   ArrowLeft, Edit3, Eye, HelpCircle, Save, Trash2,
@@ -322,6 +323,7 @@ async function loadNote() {
     selectedTagIds.value = note.tags.map(t => t.id)
     await notesStore.fetchBacklinks(noteId.value)
     backlinks.value = [...notesStore.backlinks]
+    reportNoteView(noteId.value)
   } else {
     router.push('/')
   }

@@ -4,4 +4,12 @@ from app.schemas.note import NoteBase, NoteCreate, NoteUpdate, NoteResponse, Not
 from app.schemas.folder import FolderBase, FolderCreate, FolderUpdate, FolderResponse, FolderTreeResponse
 from app.schemas.tag import TagBase, TagCreate, TagUpdate, TagResponse
 from app.schemas.graph import GraphNode, GraphEdge, GraphResponse
+from app.schemas.home import (
+    HomeStats,
+    HomeRecentNote,
+    HomeRecentRead,
+    HomeTopTag,
+    HomeArea,
+    HomeOverview,
+)
 from app.schemas.prompt import PromptBase, PromptCreate, PromptUpdate, PromptInDB, PromptListResponse, PromptTemplate, DEFAULT_PROMPT_TEMPLATES

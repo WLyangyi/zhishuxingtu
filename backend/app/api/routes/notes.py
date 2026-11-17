@@ -10,6 +10,7 @@ from app.models.tag import Tag
 from app.models.user import User
 from app.schemas import Response, NoteCreate, NoteUpdate, NoteResponse, NoteListResponse, BacklinkResponse
 from app.api.deps import get_current_user
+from app.queries.home import record_note_view
 from app.services import get_vector_store
 from app.services.vector_store_adapter import get_vector_store_adapter
 from app.services.embedding_service import embedding_service
@@ -163,6 +164,18 @@ async def get_note(
         "updated_at": note.updated_at
     }
     return Response(data=note_dict)
+
+@router.post("/{note_id}/view", status_code=204)
+async def record_view(
+    note_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """记录当前用户打开过该笔记（按 user+note 幂等 upsert）。"""
+    try:
+        record_note_view(db, current_user.id, note_id)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="笔记不存在")
 
 @router.put("/{note_id}", response_model=Response[NoteResponse])
 async def update_note(

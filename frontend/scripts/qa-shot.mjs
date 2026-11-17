@@ -65,6 +65,8 @@ class CDP {
       if (message.error) entry.reject(new Error(message.error.message))
       else entry.resolve(message.result)
     }
+    this.ws.onclose = () => this.rejectAll(new Error('CDP 连接已关闭'))
+    this.ws.onerror = () => this.rejectAll(new Error('CDP 连接错误'))
   }
 
   open() {
@@ -74,12 +76,32 @@ class CDP {
     })
   }
 
-  send(method, params = {}) {
+  send(method, params = {}, timeoutMs = 20000) {
     const id = ++this.seed
     this.ws.send(JSON.stringify({ id, method, params }))
     return new Promise((resolveSend, rejectSend) => {
-      this.pending.set(id, { resolve: resolveSend, reject: rejectSend })
+      const timer = setTimeout(() => {
+        this.pending.delete(id)
+        rejectSend(new Error(`CDP 调用超时: ${method}`))
+      }, timeoutMs)
+      this.pending.set(id, {
+        resolve: (value) => {
+          clearTimeout(timer)
+          resolveSend(value)
+        },
+        reject: (error) => {
+          clearTimeout(timer)
+          rejectSend(error)
+        }
+      })
     })
+  }
+
+  rejectAll(error) {
+    for (const [id, entry] of this.pending) {
+      this.pending.delete(id)
+      entry.reject(error)
+    }
   }
 
   close() {
@@ -101,7 +123,7 @@ const mobile = Boolean(args.mobile)
 const fullPage = Boolean(args.full)
 const theme = args.theme ?? 'dark'
 const waitMs = Number(args.wait ?? 2600)
-const port = Number(args.port ?? 9333)
+const port = Number(args.port ?? 9300 + Math.floor(Math.random() * 400))
 
 const edgePath = EDGE_CANDIDATES.find((path) => existsSync(path))
 if (!edgePath) {
@@ -156,7 +178,7 @@ try {
 
   if (args.eval) {
     await cdp.send('Runtime.evaluate', { expression: String(args.eval) })
-    await sleep(700)
+    await sleep(Number(args.settle ?? 700))
   }
 
   let clip
@@ -176,5 +198,5 @@ try {
   console.log(`✓ 截图已保存：${out} (${width}x${height}${mobile ? ' mobile' : ''}${fullPage ? ' full' : ''})`)
 } finally {
   cdp?.close()
-  browser.kill()
+  browser.kill('SIGKILL')
 }

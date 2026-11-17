@@ -11,6 +11,8 @@
         :id="inputId"
         :value="modelValue"
         :type="type"
+        :name="name"
+        :autocomplete="autocomplete"
         :placeholder="placeholder"
         :disabled="disabled"
         :readonly="readonly"
@@ -37,6 +39,8 @@ withDefaults(
     modelValue?: string | number
     label?: string
     type?: string
+    name?: string
+    autocomplete?: string
     placeholder?: string
     disabled?: boolean
     readonly?: boolean
@@ -48,6 +52,8 @@ withDefaults(
   {
     modelValue: '',
     type: 'text',
+    name: '',
+    autocomplete: 'off',
     placeholder: '',
     disabled: false,
     readonly: false,

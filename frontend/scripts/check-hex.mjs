@@ -3,7 +3,7 @@ import { extname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = fileURLToPath(new URL('../src/', import.meta.url))
-const TARGETS = ['components/ui', 'components/domain', 'components/layout', 'lib', 'views/DevUI.vue']
+const TARGETS = ['components/ui', 'components/domain', 'components/layout', 'lib', 'views/DevUI.vue', 'views/Home.vue', 'views/Login.vue', 'views/GraphView.vue']
 const EXTENSIONS = new Set(['.vue', '.css', '.ts', '.js'])
 const HEX = /#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g
 
@@ -43,4 +43,4 @@ if (offenders.length) {
   process.exit(1)
 }
 
-console.log('✓ hex 扫描通过：ui/domain/layout/lib 与 /dev/ui 无硬编码色值')
+console.log('✓ hex 扫描通过：ui/domain/layout/lib 与 /dev/ui、P3 三页均无硬编码色值')

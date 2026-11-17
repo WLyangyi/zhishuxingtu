@@ -1,149 +1,110 @@
 <template>
-  <div class="login-container">
-    <div class="login-left">
-      <div class="brand-section">
-        <div class="brand-logo">
-          <svg viewBox="0 0 40 40" class="logo-svg">
-            <circle cx="20" cy="8" r="3" class="logo-dot" />
-            <circle cx="8" cy="20" r="3" class="logo-dot" />
-            <circle cx="32" cy="20" r="3" class="logo-dot" />
-            <circle cx="14" cy="32" r="3" class="logo-dot" />
-            <circle cx="26" cy="32" r="3" class="logo-dot" />
-            <line x1="20" y1="8" x2="8" y2="20" class="logo-line" />
-            <line x1="20" y1="8" x2="32" y2="20" class="logo-line" />
-            <line x1="8" y1="20" x2="14" y2="32" class="logo-line" />
-            <line x1="32" y1="20" x2="26" y2="32" class="logo-line" />
-            <line x1="14" y1="32" x2="26" y2="32" class="logo-line" />
-            <circle cx="20" cy="20" r="4" class="logo-center" />
-          </svg>
-        </div>
-        <h1 class="brand-title">知枢星图</h1>
-        <p class="brand-tagline">连接知识，点亮思维</p>
+  <div class="login atlas-grid">
+    <StarField :density="110" class="login__stars" />
+    <div class="login__outline outline-word" aria-hidden="true">OBSERVATORY</div>
+
+    <section class="login__brand">
+      <header class="login__mark">
+        <BrandMark class="login__mark-icon" />
+        <span class="login__wordmark">知枢星图</span>
+        <span class="readout login__mark-kicker">DEEP SPACE OBSERVATORY</span>
+      </header>
+
+      <div class="login__hero">
+        <h1 class="login__headline">
+          连接知识，<br />
+          <span class="login__headline-gold">点亮思维。</span>
+        </h1>
+        <p class="readout login__coords">RA 05H 35M · DEC −05° 23′ · 你的坐标</p>
       </div>
 
-      <div class="features-section">
-        <div class="feature-item">
-          <div class="feature-icon">
-            <Network :size="20" />
-          </div>
-          <div class="feature-text">
-            <h4>知识图谱</h4>
-            <p>可视化展示知识关联</p>
-          </div>
-        </div>
-        <div class="feature-item">
-          <div class="feature-icon">
-            <Link :size="20" />
-          </div>
-          <div class="feature-text">
-            <h4>双向链接</h4>
-            <p>构建知识网络</p>
-          </div>
-        </div>
-        <div class="feature-item">
-          <div class="feature-icon">
-            <Search :size="20" />
-          </div>
-          <div class="feature-text">
-            <h4>智能搜索</h4>
-            <p>快速定位内容</p>
-          </div>
-        </div>
-      </div>
-    </div>
+      <ConstellationArt variant="login" :width="360" :height="200" class="login__constellation" />
 
-    <div class="login-right">
-      <div class="login-form-wrapper">
-        <div class="form-header">
-          <h2>{{ isRegister ? '创建账号' : '欢迎回来' }}</h2>
-          <p>{{ isRegister ? '开始您的知识管理之旅' : '登录您的知枢星图账号' }}</p>
-        </div>
+      <ul class="login__features">
+        <li v-for="(feature, index) in features" :key="feature.title" class="login__feature">
+          <span class="readout login__feature-index">{{ String(index + 1).padStart(2, '0') }}</span>
+          <span class="login__feature-title">{{ feature.title }}</span>
+          <span class="login__feature-line" aria-hidden="true" />
+          <span class="login__feature-desc">{{ feature.description }}</span>
+        </li>
+      </ul>
+    </section>
 
-        <form @submit.prevent="handleSubmit" class="login-form">
-          <div class="form-group">
-            <label for="username">用户名</label>
-            <div class="input-wrapper">
-              <User :size="18" class="input-icon" />
-              <input
-                v-model="username"
-                type="text"
-                id="username"
-                placeholder="请输入用户名"
-                required
-                autocomplete="username"
-              />
-            </div>
-          </div>
+    <section class="login__panel">
+      <div class="login__card">
+        <BrandMark class="login__card-mark" />
+        <h2 class="login__card-title">{{ isRegister ? '建立观测账号' : '回到知枢星图' }}</h2>
+        <p class="login__card-subtitle">
+          {{ isRegister ? '从今天起，让每条思考都有坐标。' : '今夜的星空已经就位，继续你的巡夜。' }}
+        </p>
 
-          <div class="form-group">
-            <label for="password">密码</label>
-            <div class="input-wrapper">
-              <Lock :size="18" class="input-icon" />
-              <input
-                v-model="password"
-                :type="showPassword ? 'text' : 'password'"
-                id="password"
-                placeholder="请输入密码"
-                required
-                autocomplete="current-password"
-              />
-              <button type="button" class="toggle-btn" @click="showPassword = !showPassword">
-                <Eye v-if="!showPassword" :size="18" />
-                <EyeOff v-else :size="18" />
+        <form class="login__form" @submit.prevent="handleSubmit">
+          <AppInput
+            v-model="username"
+            label="用户名"
+            placeholder="请输入用户名"
+            autocomplete="username"
+            :disabled="loading"
+          />
+
+          <AppInput
+            v-model="password"
+            label="密码"
+            :type="showPassword ? 'text' : 'password'"
+            placeholder="请输入密码"
+            :autocomplete="isRegister ? 'new-password' : 'current-password'"
+            :disabled="loading"
+          >
+            <template #suffix>
+              <button
+                type="button"
+                class="login__eye"
+                :aria-label="showPassword ? '隐藏密码' : '显示密码'"
+                @click="showPassword = !showPassword"
+              >
+                <EyeOff v-if="showPassword" :size="14" :stroke-width="1.8" />
+                <Eye v-else :size="14" :stroke-width="1.8" />
               </button>
-            </div>
-          </div>
+            </template>
+          </AppInput>
 
-          <div v-if="isRegister" class="form-group">
-            <label for="confirmPassword">确认密码</label>
-            <div class="input-wrapper">
-              <Shield :size="18" class="input-icon" />
-              <input
-                v-model="confirmPassword"
-                :type="showConfirmPassword ? 'text' : 'password'"
-                id="confirmPassword"
-                placeholder="请再次输入密码"
-                required
-                autocomplete="new-password"
-              />
-              <button type="button" class="toggle-btn" @click="showConfirmPassword = !showConfirmPassword">
-                <Eye v-if="!showConfirmPassword" :size="18" />
-                <EyeOff v-else :size="18" />
-              </button>
-            </div>
-          </div>
+          <AppInput
+            v-if="isRegister"
+            v-model="confirmPassword"
+            label="确认密码"
+            :type="showPassword ? 'text' : 'password'"
+            placeholder="再次输入密码"
+            autocomplete="new-password"
+            :disabled="loading"
+          />
 
-          <transition name="fade">
-            <div v-if="error" class="error-message">
-              <AlertCircle :size="16" />
-              <span>{{ error }}</span>
-            </div>
-          </transition>
+          <p v-if="error" class="login__error" role="alert">{{ error }}</p>
 
-          <button type="submit" class="submit-btn" :disabled="loading">
-            <span v-if="!loading">{{ isRegister ? '创建账号' : '登录' }}</span>
-            <span v-else class="loading-spinner"></span>
-          </button>
+          <AppButton type="submit" block :loading="loading" size="lg" class="login__submit">
+            {{ isRegister ? '创建账号' : '进入观测台 →' }}
+          </AppButton>
         </form>
 
-        <div class="form-footer">
-          <p>
-            {{ isRegister ? '已有账号？' : '还没有账号？' }}
-            <button type="button" class="switch-btn" @click="switchMode">
-              {{ isRegister ? '立即登录' : '立即注册' }}
-            </button>
-          </p>
-        </div>
+        <button type="button" class="login__switch" @click="switchMode">
+          {{ isRegister ? '已有账号？返回登录' : '还没有账号？创建账号' }}
+        </button>
+
+        <span class="readout login__footer">ZHISHU OBSERVATORY · SINCE 2026</span>
       </div>
-    </div>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { Eye, EyeOff } from 'lucide-vue-next'
+import StarField from '@/components/domain/StarField.vue'
+import ConstellationArt from '@/components/domain/ConstellationArt.vue'
+import BrandMark from '@/components/layout/BrandMark.vue'
+import AppInput from '@/components/ui/AppInput.vue'
+import AppButton from '@/components/ui/AppButton.vue'
 import { useAuthStore } from '@/stores/auth'
-import { User, Lock, Shield, Eye, EyeOff, AlertCircle, Network, Link, Search } from 'lucide-vue-next'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -155,7 +116,12 @@ const isRegister = ref(false)
 const loading = ref(false)
 const error = ref('')
 const showPassword = ref(false)
-const showConfirmPassword = ref(false)
+
+const features = [
+  { title: '知识图谱', description: '以星图方式看见知识的关联' },
+  { title: '双向链接', description: '让每条思考都连成星座' },
+  { title: 'Agentic 检索', description: '混合检索 + 三查反思，答案有据可循' }
+]
 
 function switchMode() {
   isRegister.value = !isRegister.value
@@ -165,355 +131,269 @@ function switchMode() {
 
 async function handleSubmit() {
   error.value = ''
-  
+
+  if (!username.value.trim() || !password.value) {
+    error.value = '请输入用户名和密码'
+    return
+  }
+
   if (isRegister.value) {
+    if (password.value.length < 8) {
+      error.value = '密码长度至少 8 位'
+      return
+    }
     if (password.value !== confirmPassword.value) {
       error.value = '两次输入的密码不一致'
       return
     }
-    if (password.value.length < 6) {
-      error.value = '密码长度至少6位'
-      return
+  }
+
+  loading.value = true
+  try {
+    if (isRegister.value) {
+      await authStore.register(username.value.trim(), password.value)
     }
-    
-    loading.value = true
-    try {
-      await authStore.register(username.value, password.value)
-      await authStore.login(username.value, password.value)
-      router.push('/')
-    } catch (e: any) {
-      error.value = e.response?.data?.detail || '注册失败'
-    } finally {
-      loading.value = false
-    }
-  } else {
-    loading.value = true
-    try {
-      await authStore.login(username.value, password.value)
-      router.push('/')
-    } catch (e: any) {
-      error.value = e.response?.data?.detail || '登录失败'
-    } finally {
-      loading.value = false
-    }
+    await authStore.login(username.value.trim(), password.value)
+    router.push('/')
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '操作失败，请稍后重试'
+  } finally {
+    loading.value = false
   }
 }
 </script>
 
-<style scoped lang="scss">
-.login-container {
-  min-height: 100vh;
+<style scoped>
+.login {
+  position: relative;
   display: flex;
-  background: var(--bg-primary);
+  min-height: 100vh;
+  background: var(--bg);
+  overflow: hidden;
 }
 
-.login-left {
-  flex: 1;
+.login__stars {
+  opacity: 0.9;
+}
+
+.login__outline {
+  left: -2vw;
+  bottom: -3vh;
+  font-size: clamp(120px, 18vw, 260px);
+  opacity: 0.55;
+}
+
+.login__brand {
+  position: relative;
+  z-index: 1;
+  flex: 1.15;
+  display: flex;
+  flex-direction: column;
+  padding: 34px 48px 28px;
+  min-width: 0;
+}
+
+.login__mark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.login__mark-icon {
+  width: 26px;
+  height: 26px;
+  flex: none;
+}
+
+.login__wordmark {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.login__mark-kicker {
+  margin-left: 6px;
+}
+
+.login__hero {
+  margin-top: auto;
+  margin-bottom: 30px;
+  max-width: 620px;
+}
+
+.login__headline {
+  font-family: var(--font-display);
+  font-size: clamp(44px, 5.2vw, 72px);
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.045em;
+  color: var(--text);
+}
+
+.login__headline-gold {
+  color: var(--gold);
+}
+
+.login__coords {
+  margin-top: 22px;
+  font-size: 10px;
+  color: var(--t3);
+}
+
+.login__constellation {
+  position: absolute;
+  right: 8%;
+  bottom: 27%;
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+.login__features {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line);
+}
+
+.login__feature {
+  display: grid;
+  grid-template-columns: 34px 120px 1fr auto;
+  align-items: center;
+  gap: 16px;
+  height: 44px;
+  border-bottom: 1px solid var(--line);
+  transition: transform var(--d-base) var(--ease-out);
+}
+
+.login__feature:hover {
+  transform: translateX(6px);
+}
+
+.login__feature-index {
+  color: var(--gold);
+}
+
+.login__feature-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.login__feature-line {
+  height: 1px;
+  background: var(--line);
+}
+
+.login__feature-desc {
+  font-size: 11px;
+  color: var(--t3);
+  text-align: right;
+}
+
+.login__panel {
+  position: relative;
+  z-index: 1;
+  flex: 0.85;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  border-left: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+}
+
+.login__card {
   display: flex;
   flex-direction: column;
   align-items: center;
+  width: 100%;
+  max-width: 330px;
+  text-align: center;
+}
+
+.login__card-mark {
+  width: 30px;
+  height: 30px;
+  margin-bottom: 18px;
+}
+
+.login__card-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.login__card-subtitle {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--t3);
+}
+
+.login__form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  margin-top: 28px;
+  text-align: left;
+}
+
+.login__eye {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  padding: 60px;
-  background: var(--bg-secondary);
-  position: relative;
-  
-  @media (max-width: 900px) {
+  width: 20px;
+  height: 20px;
+  color: var(--t3);
+}
+
+.login__eye:hover {
+  color: var(--text);
+}
+
+.login__error {
+  font-size: 11px;
+  color: var(--danger);
+  line-height: 1.5;
+}
+
+.login__submit {
+  margin-top: 4px;
+}
+
+.login__switch {
+  margin-top: 18px;
+  font-size: 11px;
+  color: var(--t3);
+  transition: color var(--d-fast) var(--ease-out);
+}
+
+.login__switch:hover {
+  color: var(--gold);
+}
+
+.login__footer {
+  margin-top: 40px;
+  font-size: 9px;
+  color: var(--t3);
+}
+
+@media (max-width: 900px) {
+  .login__brand {
     display: none;
   }
-}
 
-.brand-section {
-  text-align: center;
-  margin-bottom: 60px;
-}
-
-.brand-logo {
-  width: 80px;
-  height: 80px;
-  margin: 0 auto 20px;
-}
-
-.logo-svg {
-  width: 100%;
-  height: 100%;
-  
-  .logo-dot {
-    fill: var(--primary-color);
-  }
-  
-  .logo-line {
-    stroke: var(--primary-color);
-    stroke-width: 1;
-    opacity: 0.4;
-  }
-  
-  .logo-center {
-    fill: var(--accent-purple);
-  }
-}
-
-.brand-title {
-  font-size: 36px;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0 0 8px;
-  letter-spacing: 4px;
-}
-
-.brand-tagline {
-  font-size: 14px;
-  color: var(--text-muted);
-  margin: 0;
-  letter-spacing: 2px;
-}
-
-.features-section {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  max-width: 280px;
-}
-
-.feature-item {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 16px 20px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  transition: all var(--transition-base);
-
-  &:hover {
-    border-color: var(--border-default);
-    transform: translateX(4px);
-  }
-}
-
-.feature-icon {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--primary-muted);
-  border-radius: var(--radius-md);
-  color: var(--primary-color);
-}
-
-.feature-text {
-  h4 {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--text-primary);
-    margin: 0 0 2px;
-  }
-  
-  p {
-    font-size: 12px;
-    color: var(--text-muted);
-    margin: 0;
-  }
-}
-
-.login-right {
-  width: 480px;
-  min-width: 480px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 60px;
-  background: var(--bg-primary);
-  
-  @media (max-width: 900px) {
-    width: 100%;
-    min-width: auto;
-    padding: 40px 24px;
-  }
-}
-
-.login-form-wrapper {
-  width: 100%;
-  max-width: 360px;
-}
-
-.form-header {
-  margin-bottom: 32px;
-  
-  h2 {
-    font-size: 28px;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin: 0 0 8px;
-  }
-  
-  p {
-    font-size: 14px;
-    color: var(--text-muted);
-    margin: 0;
-  }
-}
-
-.login-form {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  
-  label {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-secondary);
-  }
-}
-
-.input-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 0 14px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  transition: all var(--transition-fast);
-
-  &:focus-within {
-    border-color: var(--primary-color);
-    background: var(--bg-tertiary);
-  }
-  
-  .input-icon {
-    color: var(--text-muted);
-    flex-shrink: 0;
-  }
-  
-  input {
+  .login__panel {
     flex: 1;
-    padding: 12px 0;
-    background: transparent;
-    border: none;
-    font-size: 14px;
-    color: var(--text-primary);
-    
-    &::placeholder {
-      color: var(--text-muted);
-    }
-    
-    &:focus {
-      outline: none;
-    }
+    border-left: 0;
+    padding: 32px 22px;
   }
-  
-  .toggle-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 4px;
-    background: transparent;
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: color var(--transition-fast);
-    
-    &:hover {
-      color: var(--text-secondary);
-    }
-  }
-}
 
-.error-message {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 14px;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  border-radius: var(--radius-md);
-  color: #f87171;
-  font-size: 13px;
-}
-
-.fade-enter-active, .fade-leave-active {
-  transition: all 0.2s ease;
-}
-
-.fade-enter-from, .fade-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
-}
-
-.submit-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  padding: 14px;
-  background: var(--primary-color);
-  border: none;
-  border-radius: var(--radius-md);
-  color: #000;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all var(--transition-base);
-  margin-top: 8px;
-  
-  &:hover:not(:disabled) {
-    background: var(--primary-hover);
-    transform: translateY(-1px);
-  }
-  
-  &:active:not(:disabled) {
-    transform: translateY(0);
-  }
-  
-  &:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
-  }
-  
-  .loading-spinner {
-    width: 20px;
-    height: 20px;
-    border: 2px solid rgba(0, 0, 0, 0.2);
-    border-top-color: #000;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.form-footer {
-  margin-top: 24px;
-  text-align: center;
-  
-  p {
-    font-size: 13px;
-    color: var(--text-muted);
-    margin: 0;
-  }
-  
-  .switch-btn {
-    background: none;
-    border: none;
-    color: var(--primary-color);
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    padding: 0;
-    margin-left: 4px;
-    transition: color var(--transition-fast);
-    
-    &:hover {
-      color: var(--primary-hover);
-    }
+  .login__card {
+    max-width: 360px;
   }
 }
 </style>
