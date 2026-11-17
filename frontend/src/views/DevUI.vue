@@ -348,7 +348,7 @@ onMounted(() => {
 .dev-ui {
   position: relative;
   min-height: 100%;
-  background: var(--bg);
+  background: transparent;
 }
 
 .dev-ui__inner {
@@ -357,6 +357,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 36px;
+  width: 100%;
   max-width: 1200px;
   margin: 0 auto;
   padding: 40px 32px 80px;
@@ -485,9 +486,19 @@ onMounted(() => {
   max-width: 720px;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767px) {
   .dev-ui__inner {
     padding: 24px 16px 56px;
+  }
+
+  .demo__grid,
+  .demo__grid--two,
+  .demo__grid--three {
+    grid-template-columns: 1fr;
+  }
+
+  .demo__row {
+    gap: 8px 10px;
   }
 }
 </style>

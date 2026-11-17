@@ -273,6 +273,17 @@ body.light {
 .stagger-4 { animation-delay: 0.2s; }
 .stagger-5 { animation-delay: 0.25s; }
 
+/* ---- P2 Shell 接管布局：旧页面不再自行计算整屏高度 ---- */
+.category-view,
+.content-editor-page,
+.note-editor-page,
+.graph-page,
+.ai-assistant,
+.observability-page {
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
 /* ---- 旧浅色特例 ---- */
 body.light .header {
   background: var(--panel) !important;
