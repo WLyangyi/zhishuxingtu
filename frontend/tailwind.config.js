@@ -21,22 +21,33 @@ export default {
         ink: 'var(--text)',
         t2: 'var(--t2)',
         t3: 'var(--t3)',
+        overlay: 'var(--overlay)',
         gold: {
           DEFAULT: 'var(--gold)',
           deep: 'var(--gold-deep)',
           ink: 'var(--gold-ink)',
           soft: 'var(--gold-soft)',
+          line: 'var(--gold-line)',
         },
         danger: {
           DEFAULT: 'var(--danger)',
           soft: 'var(--danger-soft)',
+          line: 'var(--danger-line)',
         },
         success: {
           DEFAULT: 'var(--success)',
           soft: 'var(--success-soft)',
         },
-        steel: 'var(--steel)',
-        sage: 'var(--sage)',
+        steel: {
+          DEFAULT: 'var(--steel)',
+          soft: 'var(--steel-soft)',
+          line: 'var(--steel-line)',
+        },
+        sage: {
+          DEFAULT: 'var(--sage)',
+          soft: 'var(--sage-soft)',
+          line: 'var(--sage-line)',
+        },
 
         // ---- 旧页面兼容（P6 删除） ----
         primary: {

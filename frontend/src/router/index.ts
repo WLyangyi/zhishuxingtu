@@ -93,6 +93,11 @@ export const routes: RouteRecordRaw[] = [
         path: 'import-history',
         name: 'ImportHistory',
         component: () => import('@/views/ImportHistory.vue')
+      },
+      {
+        path: 'dev/ui',
+        name: 'DevUI',
+        component: () => import('@/views/DevUI.vue')
       }
     ]
   },

@@ -15,6 +15,8 @@
   --line: rgba(255, 255, 255, 0.07);
   --line-strong: rgba(255, 255, 255, 0.14);
   --grid-line: rgba(255, 255, 255, 0.026);
+  --overlay: rgba(0, 0, 0, 0.62);
+  --star: rgba(234, 232, 226, 0.9);
 
   /* ---- 文字 ---- */
   --text: #eae8e2;
@@ -26,6 +28,7 @@
   --gold-deep: #c8933a;
   --gold-ink: #161310;
   --gold-soft: rgba(232, 174, 76, 0.12);
+  --gold-line: rgba(232, 174, 76, 0.45);
 
   /* ---- 功能语义色（只用于语义，不做装饰） ---- */
   --danger: #d98c7a;
@@ -36,6 +39,11 @@
   /* ---- 图谱类型编码（形状 + 颜色双编码） ---- */
   --steel: #8fa3b8;
   --sage: #9aa68c;
+  --steel-soft: rgba(143, 163, 184, 0.12);
+  --sage-soft: rgba(154, 166, 140, 0.12);
+  --steel-line: rgba(143, 163, 184, 0.45);
+  --sage-line: rgba(154, 166, 140, 0.45);
+  --danger-line: rgba(217, 140, 122, 0.4);
   --graph-note: var(--gold);
   --graph-tag: var(--steel);
   --graph-folder: rgba(234, 232, 226, 0.72);
@@ -113,6 +121,8 @@
   --line: rgba(20, 20, 20, 0.08);
   --line-strong: rgba(20, 20, 20, 0.16);
   --grid-line: rgba(20, 20, 20, 0.04);
+  --overlay: rgba(30, 26, 20, 0.4);
+  --star: rgba(27, 28, 30, 0.72);
 
   --text: #1b1c1e;
   --t2: rgba(27, 28, 30, 0.6);
@@ -122,6 +132,7 @@
   --gold-deep: #8f6820;
   --gold-ink: #fffdf8;
   --gold-soft: rgba(166, 122, 36, 0.12);
+  --gold-line: rgba(166, 122, 36, 0.45);
 
   --danger: #b4553f;
   --danger-soft: rgba(180, 85, 63, 0.1);
@@ -130,6 +141,11 @@
 
   --steel: #5f7185;
   --sage: #6c7a5e;
+  --steel-soft: rgba(95, 113, 133, 0.1);
+  --sage-soft: rgba(108, 122, 94, 0.1);
+  --steel-line: rgba(95, 113, 133, 0.45);
+  --sage-line: rgba(108, 122, 94, 0.45);
+  --danger-line: rgba(180, 85, 63, 0.4);
   --graph-folder: rgba(27, 28, 30, 0.72);
   --graph-edge: rgba(20, 20, 20, 0.14);
 
