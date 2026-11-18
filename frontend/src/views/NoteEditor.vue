@@ -65,19 +65,25 @@
 
             <div class="editor__divider" />
 
-            <textarea
-              v-if="mode === 'edit'"
-              ref="inputRef"
-              v-model="content"
-              class="editor__input"
-              placeholder="开始编写…  输入 [[ 链接另一篇笔记"
-              aria-label="笔记正文"
-              @input="onInput"
-              @click="onCaretMove"
-              @keyup="onCaretMove"
-              @keydown="onKeydown"
-              @blur="onBlur"
-            />
+            <div v-if="mode === 'edit'" class="editor__input-wrap">
+              <div ref="mirrorRef" class="editor__mirror" aria-hidden="true"><span
+                  v-for="(segment, index) in highlightSegments"
+                  :key="index"
+                  :class="segment.kind !== 'plain' && `editor__hl--${segment.kind}`"
+                >{{ segment.text }}</span></div>
+              <textarea
+                ref="inputRef"
+                v-model="content"
+                class="editor__input"
+                placeholder="开始编写…  输入 [[ 链接另一篇笔记"
+                aria-label="笔记正文"
+                @input="onInput"
+                @click="onCaretMove"
+                @keyup="onCaretMove"
+                @keydown="onKeydown"
+                @blur="onBlur"
+              />
+            </div>
 
             <article
               v-else
@@ -203,6 +209,7 @@ import { useFoldersStore } from '@/stores/folders'
 import { useTagsStore } from '@/stores/tags'
 import { flattenFolders, folderPath } from '@/lib/library'
 import {
+  buildWikiHighlightSegments,
   detectWikiQuery,
   parseWikiLinks,
   readMinutes,
@@ -228,6 +235,8 @@ const tagsStore = useTagsStore()
 
 const titleRef = ref<HTMLTextAreaElement | null>(null)
 const inputRef = ref<HTMLTextAreaElement | null>(null)
+const mirrorRef = ref<HTMLElement | null>(null)
+const highlightSegments = computed(() => buildWikiHighlightSegments(content.value))
 const bodyRef = ref<HTMLDivElement | null>(null)
 
 const title = ref('')
@@ -847,7 +856,39 @@ onBeforeUnmount(() => {
   background: var(--line);
 }
 
+.editor__input-wrap {
+  position: relative;
+}
+
+/* 镜像层：与正文 textarea 完全一致的排版度量，仅绘制高亮底色 */
+.editor__mirror {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.95;
+  color: transparent;
+}
+
+.editor__hl--wiki {
+  background: var(--gold-soft);
+  box-shadow: inset 0 -1px 0 var(--gold-line);
+  border-radius: 2px;
+}
+
+.editor__hl--pending {
+  background: var(--gold-soft);
+  border-radius: 2px;
+  opacity: 0.6;
+}
+
 .editor__input {
+  position: relative;
+  z-index: 1;
   display: block;
   width: 100%;
   min-height: 52vh;

@@ -74,6 +74,68 @@ export function wordCount(content: string): number {
   return content.replace(/\s+/g, '').length
 }
 
+export interface WikiSegment {
+  text: string
+  kind: 'plain' | 'wiki' | 'pending'
+}
+
+/**
+ * 编辑态 overlay 高亮切分（P6-②）
+ * - 闭合 [[标题]] → wiki（金色高亮）
+ * - 未闭合 [[查询（不跨行）→ pending（弱提示）
+ * - [[]] 空标题、孤立 [[ 与 ]] → plain
+ */
+export function buildWikiHighlightSegments(content: string): WikiSegment[] {
+  const segments: WikiSegment[] = []
+  let buffer = ''
+  let index = 0
+
+  const flush = () => {
+    if (buffer) {
+      segments.push({ text: buffer, kind: 'plain' })
+      buffer = ''
+    }
+  }
+
+  while (index < content.length) {
+    const open = content.indexOf('[[', index)
+    if (open < 0) {
+      buffer += content.slice(index)
+      break
+    }
+    buffer += content.slice(index, open)
+
+    const close = content.indexOf(']]', open + 2)
+    const newline = content.indexOf('\n', open + 2)
+    const hasClose = close >= 0 && (newline < 0 || close < newline)
+    const inner = hasClose
+      ? content.slice(open + 2, close)
+      : content.slice(open + 2, newline >= 0 ? newline : undefined)
+
+    if (hasClose && inner.trim()) {
+      flush()
+      segments.push({ text: content.slice(open, close + 2), kind: 'wiki' })
+      index = close + 2
+      continue
+    }
+
+    if (!hasClose && inner.trim()) {
+      flush()
+      const end = newline >= 0 ? newline : content.length
+      segments.push({ text: content.slice(open, end), kind: 'pending' })
+      index = end
+      continue
+    }
+
+    // [[]] 空标题或 [[ 后直接结束：按普通文本消费两个字符
+    buffer += '[['
+    index = open + 2
+  }
+
+  flush()
+  return segments
+}
+
 export function readMinutes(chars: number): number {
   return Math.max(1, Math.ceil(chars / 250))
 }
