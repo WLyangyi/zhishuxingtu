@@ -5,9 +5,14 @@
     <aside :class="['library__tree', treeOpen && 'library__tree--open']">
       <header class="tree__head">
         <span class="readout">LIBRARY · 我的笔记</span>
-        <button type="button" class="tree__close" aria-label="关闭目录" @click="treeOpen = false">
-          <X :size="14" />
-        </button>
+        <span class="tree__head-actions">
+          <button type="button" class="tree__add" aria-label="新建分类" @click="openCategoryCreate">
+            <Plus :size="14" :stroke-width="1.8" />
+          </button>
+          <button type="button" class="tree__close" aria-label="关闭目录" @click="treeOpen = false">
+            <X :size="14" />
+          </button>
+        </span>
       </header>
 
       <button
@@ -33,6 +38,14 @@
           <FolderOpen :size="15" :stroke-width="1.8" />
           <span class="tree__label">{{ category.name }}</span>
           <span class="num tree__count">{{ categoryCounts.get(category.id) ?? 0 }}</span>
+          <span
+            class="tree__more"
+            role="button"
+            aria-label="管理分类"
+            @click.stop="openTreeMenu($event, { type: 'category', id: category.id, name: category.name })"
+          >
+            <MoreHorizontal :size="13" :stroke-width="1.8" />
+          </span>
         </button>
 
         <button
@@ -46,6 +59,14 @@
           <Folder :size="13" :stroke-width="1.8" />
           <span class="tree__label">{{ folder.name }}</span>
           <span class="num tree__count">{{ folderCounts.get(folder.id) ?? 0 }}</span>
+          <span
+            class="tree__more"
+            role="button"
+            aria-label="管理文件夹"
+            @click.stop="openTreeMenu($event, { type: 'folder', id: folder.id, name: folder.name, categoryId: folder.category_id, parentId: folder.parent_id })"
+          >
+            <MoreHorizontal :size="13" :stroke-width="1.8" />
+          </span>
         </button>
       </div>
 
@@ -65,6 +86,49 @@
 
       <RouterLink to="/import-history" class="tree__import">导入历史 →</RouterLink>
     </aside>
+
+    <div
+      v-if="treeMenu.open"
+      class="tree-menu"
+      :style="{ left: `${treeMenu.x}px`, top: `${treeMenu.y}px` }"
+    >
+      <button type="button" class="tree-menu__item" @click="menuAction('folder-create')">
+        <FolderPlus :size="13" :stroke-width="1.8" />
+        新建文件夹
+      </button>
+      <button type="button" class="tree-menu__item" @click="menuAction('rename')">
+        <Pencil :size="13" :stroke-width="1.8" />
+        重命名
+      </button>
+      <span class="tree-menu__separator" />
+      <button type="button" class="tree-menu__item tree-menu__item--danger" @click="menuAction('delete')">
+        <Trash2 :size="13" :stroke-width="1.8" />
+        删除
+      </button>
+    </div>
+
+    <AppModal :open="formModal.open" :title="formTitle" size="sm" @update:open="formModal.open = $event">
+      <AppInput v-model="formModal.name" label="名称" placeholder="输入名称" class="tree-form__input" />
+      <template #footer>
+        <AppButton variant="secondary" size="sm" @click="formModal.open = false">取消</AppButton>
+        <AppButton size="sm" :disabled="!formModal.name.trim()" @click="submitForm">
+          {{ formActionLabel }}
+        </AppButton>
+      </template>
+    </AppModal>
+
+    <AppModal
+      :open="deleteConfirm.open"
+      :title="deleteConfirm.kind === 'category' ? '删除分类？' : '删除文件夹？'"
+      size="sm"
+      @update:open="deleteConfirm.open = $event"
+    >
+      <p class="tree-delete__text">「{{ deleteConfirm.name }}」将被删除，此操作无法撤销。</p>
+      <template #footer>
+        <AppButton variant="secondary" size="sm" @click="deleteConfirm.open = false">取消</AppButton>
+        <AppButton variant="danger" size="sm" @click="confirmDelete">删除</AppButton>
+      </template>
+    </AppModal>
 
     <main class="library__main">
       <div class="library__bar">
@@ -171,10 +235,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { FileText, Folder, FolderOpen, Inbox, ListTree, X } from 'lucide-vue-next'
+import { FileText, Folder, FolderOpen, FolderPlus, Inbox, ListTree, MoreHorizontal, Pencil, Plus, Trash2, X } from 'lucide-vue-next'
 import AppButton from '@/components/ui/AppButton.vue'
+import AppInput from '@/components/ui/AppInput.vue'
+import AppModal from '@/components/ui/AppModal.vue'
 import Breadcrumb from '@/components/ui/Breadcrumb.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import SearchInput from '@/components/ui/SearchInput.vue'
@@ -352,6 +418,147 @@ function resetSelection() {
   treeOpen.value = false
 }
 
+/* ---- 分类/文件夹 CRUD（P6-③） ---- */
+type FormKind = 'category-create' | 'category-rename' | 'folder-create' | 'folder-rename'
+
+const formModal = reactive({
+  open: false,
+  kind: 'category-create' as FormKind,
+  name: '',
+  categoryId: null as string | null,
+  folderId: null as string | null
+})
+
+const formTitle = computed(() => {
+  switch (formModal.kind) {
+    case 'category-create':
+      return '新建分类'
+    case 'category-rename':
+      return '重命名分类'
+    case 'folder-create':
+      return '新建文件夹'
+    case 'folder-rename':
+      return '重命名文件夹'
+  }
+})
+
+const formActionLabel = computed(() =>
+  formModal.kind === 'category-create' || formModal.kind === 'folder-create' ? '创建' : '保存'
+)
+
+function openCategoryCreate() {
+  formModal.kind = 'category-create'
+  formModal.name = ''
+  formModal.categoryId = null
+  formModal.folderId = null
+  formModal.open = true
+}
+
+/* 树行「⋯」菜单 */
+type TreeMenuTarget = {
+  type: 'category' | 'folder'
+  id: string
+  name: string
+  categoryId?: string | null
+  parentId?: string | null
+}
+
+const treeMenu = reactive({
+  open: false,
+  x: 0,
+  y: 0,
+  target: null as TreeMenuTarget | null
+})
+
+function openTreeMenu(event: MouseEvent, target: TreeMenuTarget) {
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  treeMenu.open = true
+  treeMenu.x = rect.right + 6
+  treeMenu.y = rect.top
+  treeMenu.target = target
+}
+
+function closeTreeMenu() {
+  treeMenu.open = false
+  treeMenu.target = null
+}
+
+function menuAction(action: 'folder-create' | 'rename' | 'delete') {
+  const target = treeMenu.target
+  closeTreeMenu()
+  if (!target) return
+
+  if (action === 'delete') {
+    deleteConfirm.kind = target.type
+    deleteConfirm.id = target.id
+    deleteConfirm.name = target.name
+    deleteConfirm.open = true
+    return
+  }
+
+  if (action === 'folder-create') {
+    formModal.kind = 'folder-create'
+    formModal.name = ''
+    formModal.categoryId = target.type === 'category' ? target.id : (target.categoryId ?? null)
+    formModal.folderId = target.type === 'folder' ? (target.id as string) : null
+    formModal.open = true
+    return
+  }
+
+  formModal.kind = target.type === 'category' ? 'category-rename' : 'folder-rename'
+  formModal.name = target.name
+  formModal.categoryId = target.type === 'category' ? target.id : null
+  formModal.folderId = target.type === 'folder' ? target.id : null
+  formModal.open = true
+}
+
+async function submitForm() {
+  const name = formModal.name.trim()
+  if (!name) return
+
+  try {
+    if (formModal.kind === 'category-create') {
+      await categoryStore.createCategory({ name })
+    } else if (formModal.kind === 'category-rename') {
+      await categoryStore.updateCategory(formModal.categoryId as string, { name })
+    } else if (formModal.kind === 'folder-rename') {
+      await foldersStore.updateFolder(formModal.folderId as string, { name })
+    } else if (formModal.kind === 'folder-create') {
+      await foldersStore.createFolder({
+        name,
+        category_id: formModal.categoryId ?? undefined,
+        parent_id: formModal.folderId ?? undefined
+      })
+    }
+    formModal.open = false
+  } catch {
+    /* store 已发错误通知，弹窗保持打开便于修正 */
+  }
+}
+
+/* 删除确认 */
+const deleteConfirm = reactive({
+  open: false,
+  kind: 'category' as 'category' | 'folder',
+  id: '',
+  name: ''
+})
+
+async function confirmDelete() {
+  const { kind, id } = deleteConfirm
+  deleteConfirm.open = false
+  try {
+    if (kind === 'category') {
+      await categoryStore.deleteCategory(id)
+    } else {
+      await foldersStore.deleteFolder(id)
+    }
+    if (filter.categoryId === id || filter.folderId === id) resetSelection()
+  } catch {
+    /* store 已发错误通知 */
+  }
+}
+
 function syncFromRoute() {
   filter.categoryId = (route.params.categoryId as string) || null
   filter.folderId = (route.query.folder as string) || null
@@ -392,6 +599,11 @@ onMounted(async () => {
     tagsStore.fetchTags(),
     loadNotes()
   ])
+  window.addEventListener('click', closeTreeMenu)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('click', closeTreeMenu)
 })
 </script>
 
@@ -428,6 +640,116 @@ onMounted(async () => {
   padding: 0 8px 12px;
 }
 
+.tree__head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tree__add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--t3);
+  cursor: pointer;
+  transition: color var(--d-fast) var(--ease-out), border-color var(--d-fast) var(--ease-out);
+}
+
+.tree__add:hover {
+  color: var(--gold);
+  border-color: var(--gold-line);
+}
+
+.tree-form__input {
+  width: 100%;
+}
+
+.tree__more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 2px;
+  border-radius: var(--r-sm);
+  color: var(--t3);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity var(--d-fast) var(--ease-out), color var(--d-fast) var(--ease-out),
+    background var(--d-fast) var(--ease-out);
+}
+
+.tree__item:hover .tree__more,
+.tree__more:focus-visible {
+  opacity: 1;
+}
+
+.tree__more:hover {
+  color: var(--gold);
+  background: var(--panel-2);
+}
+
+.tree-menu {
+  position: fixed;
+  z-index: var(--z-overlay);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 132px;
+  padding: 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--panel);
+  box-shadow: var(--shadow-float);
+}
+
+.tree-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  font-size: 12px;
+  color: var(--t2);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--d-fast) var(--ease-out), color var(--d-fast) var(--ease-out);
+}
+
+.tree-menu__item:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.tree-menu__item--danger {
+  color: var(--danger);
+}
+
+.tree-menu__item--danger:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.tree-menu__separator {
+  height: 1px;
+  margin: 2px 4px;
+  background: var(--line);
+}
+
+.tree-delete__text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--t2);
+}
+
 .tree__close {
   display: none;
   color: var(--t3);
@@ -435,7 +757,7 @@ onMounted(async () => {
 
 .tree__item {
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
+  grid-template-columns: 16px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 8px;
   width: 100%;
