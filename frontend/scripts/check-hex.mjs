@@ -3,7 +3,7 @@ import { extname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = fileURLToPath(new URL('../src/', import.meta.url))
-const TARGETS = ['components/ui', 'components/domain', 'components/layout', 'components/agent', 'lib', 'views/DevUI.vue', 'views/Home.vue', 'views/Login.vue', 'views/GraphView.vue', 'views/Library.vue', 'views/NoteEditor.vue', 'views/SearchResults.vue', 'views/ImportHistory.vue', 'views/AIAssistant.vue', 'views/AgentObservability.vue', 'views/PromptLab.vue', 'views/PromptsView.vue', 'views/SkillsView.vue', 'views/ImportModal.vue']
+const TARGETS = ['components/ui', 'components/domain', 'components/layout', 'components/agent', 'lib', 'views/DevUI.vue', 'views/Home.vue', 'views/Login.vue', 'views/GraphView.vue', 'views/Library.vue', 'views/NoteEditor.vue', 'views/SearchResults.vue', 'views/ImportHistory.vue', 'views/AIAssistant.vue', 'views/AgentObservability.vue', 'views/PromptLab.vue', 'views/PromptsView.vue', 'views/SkillsView.vue', 'views/ImportModal.vue', 'views/ImportResult.vue']
 const EXTENSIONS = new Set(['.vue', '.css', '.ts', '.js'])
 const HEX = /#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g
 
