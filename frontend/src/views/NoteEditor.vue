@@ -160,11 +160,11 @@
     <AppModal v-model:open="propsOpen" title="笔记属性" size="sm">
       <div class="props">
         <AppSelect
-          :model-value="folderId ?? ''"
+          :model-value="folderId ?? 'all'"
           label="文件夹"
           placeholder="未归档"
           :options="folderOptions"
-          @update:model-value="folderId = $event || null"
+          @update:model-value="folderId = $event === 'all' ? null : $event"
         />
 
         <div class="props__tags">
@@ -293,7 +293,7 @@ const outgoing = computed(() =>
 )
 
 const folderOptions = computed(() => [
-  { label: '未归档', value: '' },
+  { label: '未归档', value: 'all' },
   ...flatFolders.value.map((folder) => ({
     label: `${'　'.repeat(folder.level)}${folder.name}`,
     value: folder.id

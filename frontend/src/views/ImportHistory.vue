@@ -111,10 +111,10 @@ const importStore = useImportStore()
 
 const page = ref(1)
 const pageSize = 20
-const filterType = ref('')
+const filterType = ref('all')
 
 const filterOptions = [
-  { label: '全部来源', value: '' },
+  { label: '全部来源', value: 'all' },
   { label: 'PDF 文档', value: 'pdf' },
   { label: '网页', value: 'url' },
   { label: '本地视频', value: 'video' },
@@ -190,7 +190,7 @@ function openItem(item: ImportHistoryItem) {
 
 async function load() {
   await importStore.fetchHistory({
-    source_type: filterType.value || undefined,
+    source_type: filterType.value === 'all' ? undefined : filterType.value,
     page: page.value,
     page_size: pageSize
   })

@@ -17,7 +17,7 @@
         <SelectContent class="select-content" position="popper" :side-offset="4">
           <SelectViewport>
             <SelectItem
-              v-for="option in options"
+              v-for="option in safeOptions"
               :key="option.value"
               :value="option.value"
               :disabled="option.disabled"
@@ -34,6 +34,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import {
   SelectContent,
   SelectIcon,
@@ -54,7 +55,7 @@ export interface SelectOption {
   disabled?: boolean
 }
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     modelValue?: string
     options: SelectOption[]
@@ -66,6 +67,10 @@ withDefaults(
 )
 
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
+
+/* Reka 的 SelectItem 禁止空字符串 value（空串被保留给清空/placeholder 语义），
+   传入会在渲染期抛异常并冻结整页。这里在组件层兜底过滤。 */
+const safeOptions = computed(() => props.options.filter((option) => option.value !== ''))
 </script>
 
 <style scoped>

@@ -522,7 +522,7 @@ const tabItems = [
 ]
 
 const statusOptions = [
-  { label: '全部状态', value: '' },
+  { label: '全部状态', value: 'all' },
   { label: '运行中', value: 'running' },
   { label: '已暂停', value: 'paused' },
   { label: '已完成', value: 'completed' }
@@ -531,7 +531,7 @@ const statusOptions = [
 const activeTab = ref('examples')
 
 const scenarioOptions = computed(() => [
-  { label: '全场景', value: '' },
+  { label: '全场景', value: 'all' },
   ...SCENARIOS.map((item) => ({ label: item.label, value: item.value }))
 ])
 
@@ -551,8 +551,8 @@ const chains = ref<PromptChain[]>([])
 const presetChains = ref<any[]>([])
 const selectedCotType = ref<string | null>(null)
 
-const filterScenario = ref('')
-const filterStatus = ref('')
+const filterScenario = ref('all')
+const filterStatus = ref('all')
 
 const showExampleModal = ref(false)
 const showExampleDetailModal = ref(false)
@@ -594,12 +594,12 @@ const chainForm = ref({
 })
 
 const filteredExamples = computed(() => {
-  if (!filterScenario.value) return examples.value
+  if (filterScenario.value === 'all') return examples.value
   return examples.value.filter(e => e.scenario === filterScenario.value)
 })
 
 const filteredExperiments = computed(() => {
-  if (!filterStatus.value) return experiments.value
+  if (filterStatus.value === 'all') return experiments.value
   return experiments.value.filter(e => e.status === filterStatus.value)
 })
 
