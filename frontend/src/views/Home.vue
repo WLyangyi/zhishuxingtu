@@ -150,6 +150,7 @@ import ConstellationArt from '@/components/domain/ConstellationArt.vue'
 import { homeApi } from '@/api/home'
 import { notesApi } from '@/api/notes'
 import { useAuthStore } from '@/stores/auth'
+import { relativeTime } from '@/lib/time'
 import type { HomeArea, HomeOverview, HomeRecentNote } from '@/types/home'
 
 const router = useRouter()
@@ -220,23 +221,6 @@ const AREA_LABELS: Record<string, string> = {
 
 function areaLabel(name: string) {
   return AREA_LABELS[name] ?? 'AREA'
-}
-
-function parseTime(value: string) {
-  return new Date(/[zZ]|[+-]\d{2}:\d{2}$/.test(value) ? value : `${value}Z`)
-}
-
-function relativeTime(value: string) {
-  const diff = Date.now() - parseTime(value).getTime()
-  if (Number.isNaN(diff)) return ''
-  const minutes = Math.floor(diff / 60000)
-  if (minutes < 1) return '刚刚'
-  if (minutes < 60) return `${minutes} 分钟前`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours} 小时前`
-  const days = Math.floor(hours / 24)
-  if (days < 7) return `${days} 天前`
-  return parseTime(value).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
 }
 
 async function load() {

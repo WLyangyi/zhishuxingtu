@@ -37,12 +37,12 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'library',
         name: 'Library',
-        component: () => import('@/views/CategoryView.vue')
+        component: () => import('@/views/Library.vue')
       },
       {
         path: 'library/:categoryId',
         name: 'LibraryDetail',
-        component: () => import('@/views/CategoryView.vue')
+        component: () => import('@/views/Library.vue')
       },
       {
         path: 'library/:categoryId/content/new',
