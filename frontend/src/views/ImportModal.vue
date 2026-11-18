@@ -12,16 +12,12 @@
 
           <div class="modal-body">
             <div v-if="!importStore.isImporting" class="source-tabs">
-              <button
-                v-for="tab in tabs"
-                :key="tab.key"
-                class="tab-btn"
-                :class="{ active: activeTab === tab.key }"
-                @click="activeTab = tab.key"
-              >
-                <component :is="tab.icon" :size="18" />
-                <span>{{ tab.label }}</span>
-              </button>
+              <SegmentedControl
+                :items="sourceItems"
+                :model-value="activeTab"
+                aria-label="导入来源"
+                @update:model-value="activeTab = $event as 'pdf' | 'url' | 'video'"
+              />
             </div>
 
             <div v-if="!importStore.isImporting" class="tab-content">
@@ -62,18 +58,13 @@
               </div>
 
               <div v-if="activeTab === 'video'" class="video-area">
-                <div class="video-tabs">
-                  <button
-                    class="video-tab-btn"
-                    :class="{ active: videoTab === 'local' }"
-                    @click="videoTab = 'local'"
-                  >本地视频</button>
-                  <button
-                    class="video-tab-btn"
-                    :class="{ active: videoTab === 'online' }"
-                    @click="videoTab = 'online'"
-                  >在线视频</button>
-                </div>
+                <SegmentedControl
+                  :items="videoItems"
+                  :model-value="videoTab"
+                  size="sm"
+                  aria-label="视频来源"
+                  @update:model-value="videoTab = $event as 'local' | 'online'"
+                />
 
                 <div v-if="videoTab === 'local'" class="upload-area">
                   <div
@@ -154,6 +145,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useImportStore } from '@/stores/import'
+import { SegmentedControl } from '@/components/ui'
 import { FileText, Globe, Video, X, Check, Loader2, Youtube } from 'lucide-vue-next'
 
 const importStore = useImportStore()
@@ -168,10 +160,15 @@ const videoInputRef = ref<HTMLInputElement | null>(null)
 
 const MAX_FILE_SIZE = 200 * 1024 * 1024
 
-const tabs = [
-  { key: 'pdf' as const, label: 'PDF 文档', icon: FileText },
-  { key: 'url' as const, label: '网页链接', icon: Globe },
-  { key: 'video' as const, label: '视频', icon: Video }
+const sourceItems = [
+  { label: 'PDF 文档', value: 'pdf' },
+  { label: '网页链接', value: 'url' },
+  { label: '视频', value: 'video' }
+]
+
+const videoItems = [
+  { label: '本地视频', value: 'local' },
+  { label: '在线视频', value: 'online' }
 ]
 
 const progress = computed(() => importStore.currentTask?.progress || 0)
@@ -288,219 +285,192 @@ function handleClose() {
 }
 </script>
 
-<style scoped lang="scss">
+<style scoped>
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(8px);
+  z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  padding: 24px;
+  background: var(--overlay);
+  backdrop-filter: blur(6px);
 }
 
 .modal-container {
-  width: 560px;
-  max-height: 90vh;
-  background: var(--bg-primary, #1a1a2e);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
+  width: 100%;
+  max-width: 560px;
+  max-height: 88vh;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--panel);
+  overflow: hidden;
 }
 
 .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 24px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+}
 
-  .modal-title {
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--text-primary, #fff);
-    margin: 0;
-  }
+.modal-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-title-3);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
 
-  .close-btn {
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 8px;
-    color: var(--text-muted, #888);
-    transition: all 0.2s;
-    background: transparent;
-    border: none;
-    cursor: pointer;
+.close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-sm);
+  color: var(--t3);
+  transition: color var(--d-fast) var(--ease-out), background var(--d-fast) var(--ease-out);
+}
 
-    &:hover {
-      background: rgba(255, 255, 255, 0.08);
-      color: var(--text-primary, #fff);
-    }
-  }
+.close-btn:hover {
+  color: var(--text);
+  background: var(--panel-2);
 }
 
 .modal-body {
-  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px;
   overflow-y: auto;
 }
 
 .source-tabs {
   display: flex;
-  gap: 8px;
-  margin-bottom: 24px;
 }
 
-.tab-btn {
-  flex: 1;
+/* ---- 拖拽区 ---- */
+.upload-area,
+.url-area,
+.video-area {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 10px;
-  color: var(--text-secondary, #aaa);
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s;
+  flex-direction: column;
+  gap: 12px;
+}
 
-  &:hover {
-    background: rgba(255, 255, 255, 0.06);
-    color: var(--text-primary, #fff);
-  }
+.video-area :deep(.seg) {
+  align-self: flex-start;
+}
 
-  &.active {
-    background: rgba(0, 102, 255, 0.1);
-    border-color: rgba(0, 102, 255, 0.3);
-    color: var(--tech-blue, #0066FF);
-  }
+.video-area :deep(.seg) {
+  align-self: flex-start;
 }
 
 .drop-zone {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 48px 24px;
-  border: 2px dashed rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
+  gap: 6px;
+  padding: 38px 20px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg);
   cursor: pointer;
-  transition: all 0.3s;
+  text-align: center;
+  transition: border-color var(--d-fast) var(--ease-out), background var(--d-fast) var(--ease-out);
+}
 
-  &:hover, &.dragging {
-    border-color: var(--tech-blue, #0066FF);
-    background: rgba(0, 102, 255, 0.05);
-  }
+.drop-zone:hover,
+.drop-zone.dragging {
+  border-color: var(--gold-line);
+  background: var(--gold-soft);
+}
 
-  .drop-icon {
-    color: var(--text-muted, #888);
-    margin-bottom: 16px;
-  }
+.drop-icon {
+  color: var(--t3);
+  margin-bottom: 4px;
+}
 
-  .drop-text {
-    font-size: 15px;
-    color: var(--text-secondary, #aaa);
-    margin: 0 0 8px;
-  }
+.drop-zone.dragging .drop-icon,
+.drop-zone:hover .drop-icon {
+  color: var(--gold);
+}
 
-  .drop-hint {
-    font-size: 12px;
-    color: var(--text-muted, #666);
-    margin: 0;
-  }
+.drop-text {
+  font-size: var(--fs-body-s);
+  color: var(--t2);
+}
+
+.drop-hint {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--t3);
 }
 
 .hidden-input {
   display: none;
 }
 
-.url-area {
-  .input-group {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 14px 16px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 10px;
-    transition: all 0.2s;
-
-    &:focus-within {
-      border-color: var(--tech-blue, #0066FF);
-      box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.1);
-    }
-
-    .input-icon {
-      color: var(--text-muted, #888);
-      flex-shrink: 0;
-    }
-
-    .url-input {
-      flex: 1;
-      background: transparent;
-      border: none;
-      font-size: 14px;
-      color: var(--text-primary, #fff);
-      outline: none;
-
-      &::placeholder {
-        color: var(--text-muted, #666);
-      }
-    }
-  }
-
-  .input-hint {
-    font-size: 12px;
-    color: var(--text-muted, #666);
-    margin: 8px 0 0;
-  }
+/* ---- 链接输入 ---- */
+.input-group {
+  position: relative;
+  display: flex;
+  align-items: center;
 }
 
-.video-area {
-  .video-tabs {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 16px;
-  }
-
-  .video-tab-btn {
-    flex: 1;
-    padding: 10px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 8px;
-    color: var(--text-secondary, #aaa);
-    font-size: 13px;
-    cursor: pointer;
-    transition: all 0.2s;
-
-    &.active {
-      background: rgba(0, 102, 255, 0.1);
-      border-color: rgba(0, 102, 255, 0.3);
-      color: var(--tech-blue, #0066FF);
-    }
-  }
+.input-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--t3);
+  pointer-events: none;
 }
 
+.url-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px 0 38px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  outline: none;
+  transition: border-color var(--d-fast) var(--ease-out);
+}
+
+.url-input::placeholder {
+  color: var(--t3);
+  font-family: var(--font-body);
+}
+
+.url-input:focus {
+  border-color: var(--gold-line);
+}
+
+.input-hint {
+  font-size: 10.5px;
+  color: var(--t3);
+}
+
+/* ---- 进度 ---- */
 .processing-area {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
-  padding: 24px 0;
+  gap: 14px;
+  padding: 10px 0 4px;
 }
 
 .progress-ring-container {
   position: relative;
-  width: 120px;
-  height: 120px;
+  width: 128px;
+  height: 128px;
 }
 
 .progress-ring {
@@ -511,16 +481,16 @@ function handleClose() {
 
 .progress-ring-bg {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.06);
-  stroke-width: 8;
+  stroke: var(--line);
+  stroke-width: 2;
 }
 
 .progress-ring-fill {
   fill: none;
-  stroke: var(--tech-blue, #0066FF);
-  stroke-width: 8;
+  stroke: var(--gold);
+  stroke-width: 2;
   stroke-linecap: round;
-  transition: stroke-dashoffset 0.5s ease;
+  transition: stroke-dashoffset 400ms var(--ease-out);
 }
 
 .progress-text {
@@ -529,105 +499,132 @@ function handleClose() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
-  font-weight: 700;
-  color: var(--text-primary, #fff);
+  font-family: var(--font-mono);
+  font-size: 26px;
+  color: var(--text);
 }
 
 .progress-message {
-  font-size: 15px;
-  color: var(--text-secondary, #aaa);
-  margin: 0;
+  font-size: var(--fs-micro);
+  color: var(--t2);
+  text-align: center;
 }
 
 .progress-steps {
-  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
+  width: 100%;
+  max-width: 320px;
+  border-top: 1px solid var(--line);
 }
 
 .step-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
-  border-radius: 8px;
-
-  &.done {
-    .step-indicator { color: #10b981; }
-    .step-label { color: var(--text-secondary, #aaa); text-decoration: line-through; }
-  }
-
-  &.active {
-    background: rgba(0, 102, 255, 0.05);
-    .step-indicator { color: var(--tech-blue, #0066FF); }
-    .step-label { color: var(--text-primary, #fff); font-weight: 500; }
-  }
-
-  &.pending {
-    .step-indicator { color: var(--text-muted, #555); }
-    .step-label { color: var(--text-muted, #555); }
-  }
+  gap: 10px;
+  padding: 9px 2px;
+  border-bottom: 1px solid var(--line);
 }
 
 .step-indicator {
-  width: 24px;
-  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--t3);
+}
+
+.step-item.done .step-indicator {
+  color: var(--success);
+}
+
+.step-item.active .step-indicator {
+  color: var(--gold);
 }
 
 .step-dot {
-  width: 8px;
-  height: 8px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: currentColor;
+  background: var(--line-strong);
 }
 
 .step-label {
-  font-size: 14px;
+  font-size: var(--fs-micro);
+  color: var(--t3);
+}
+
+.step-item.done .step-label {
+  color: var(--t2);
+}
+
+.step-item.active .step-label {
+  color: var(--text);
 }
 
 .spinning {
-  animation: spin 1s linear infinite;
+  animation: spin 900ms linear infinite;
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.cancel-btn {
-  padding: 10px 24px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  color: var(--text-secondary, #aaa);
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s;
-
-  &:hover {
-    background: rgba(239, 68, 68, 0.1);
-    border-color: rgba(239, 68, 68, 0.3);
-    color: #ef4444;
+  to {
+    transform: rotate(360deg);
   }
 }
 
+.cancel-btn {
+  height: 30px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-micro);
+  color: var(--t2);
+  transition: color var(--d-fast) var(--ease-out), border-color var(--d-fast) var(--ease-out);
+}
+
+.cancel-btn:hover {
+  color: var(--danger);
+  border-color: var(--danger-line);
+}
+
+/* ---- 进出场 ---- */
 .modal-enter-active,
 .modal-leave-active {
-  transition: all 0.3s ease;
+  transition: opacity var(--d-base) var(--ease-out);
 }
 
 .modal-enter-from,
 .modal-leave-to {
   opacity: 0;
+}
+
+.modal-enter-active .modal-container,
+.modal-leave-active .modal-container {
+  transition: transform var(--d-base) var(--ease-out);
+}
+
+.modal-enter-from .modal-container,
+.modal-leave-to .modal-container {
+  transform: translateY(8px) scale(0.99);
+}
+
+@media (max-width: 767px) {
+  .modal-overlay {
+    padding: 12px;
+  }
 
   .modal-container {
-    transform: scale(0.95) translateY(10px);
+    max-height: 92vh;
+  }
+
+  .modal-body {
+    padding: 16px;
+  }
+
+  .drop-zone {
+    padding: 30px 16px;
   }
 }
 </style>
