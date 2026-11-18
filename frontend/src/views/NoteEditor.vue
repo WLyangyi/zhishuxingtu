@@ -1,1190 +1,1215 @@
 <template>
-  <div class="note-editor-page">
-    <div class="editor-main">
-      <div class="editor-header">
-        <div class="header-left">
-          <button @click="goBack" class="back-btn" title="返回上一页">
-            <ArrowLeft :size="16" />
-            <span class="back-text">返回</span>
-          </button>
-          <button @click="goHome" class="home-btn" title="返回主页">
-            <Home :size="16" />
-          </button>
-          <input 
-            v-model="title"
-            type="text"
-            placeholder="输入笔记标题..."
-            class="title-input"
-          />
-          <div class="save-status" v-if="saving">
-            <span class="status-dot"></span>
-            保存中...
-          </div>
-          <div class="word-stats" v-if="content">
-            <span class="stat-item">
-              <FileText :size="14" />
-              <span class="stat-value">{{ wordCount }}</span>
-              <span class="stat-label">字</span>
-            </span>
-            <span class="stat-divider"></span>
-            <span class="stat-item">
-              <Clock :size="14" />
-              <span class="stat-value">{{ readTime }}</span>
-              <span class="stat-label">分钟</span>
-            </span>
-          </div>
-        </div>
-        <div class="editor-actions">
-          <div class="view-toggle">
-            <button 
-              class="toggle-btn-item" 
-              :class="{ active: viewMode === 'edit' }"
-              @click="viewMode = 'edit'"
-              title="编辑模式"
-            >
-              <Edit3 :size="16" />
-            </button>
-            <button 
-              class="toggle-btn-item" 
-              :class="{ active: viewMode === 'preview' }"
-              @click="viewMode = 'preview'"
-              title="预览模式"
-            >
-              <Eye :size="16" />
-            </button>
-            <div class="link-hint" :class="{ show: showLinkHint }">
-              <div class="hint-header">双向链接语法</div>
-              <div class="hint-content">
-                <code>[[笔记标题]]</code> → 链接到其他笔记<br/>
-                <span class="hint-example">示例：[[Vue3学习笔记]]</span>
-              </div>
-            </div>
-            <button 
-              class="help-btn"
-              @mouseenter="showLinkHint = true"
-              @mouseleave="showLinkHint = false"
-              title="查看语法帮助"
-            >
-              <HelpCircle :size="14" />
-            </button>
-          </div>
-          <button @click="saveNote" class="btn-save" :disabled="saving">
-            <Save :size="16" />
-            {{ saving ? '保存中' : '保存' }}
-          </button>
-          <button @click="deleteNote" class="btn-delete" v-if="noteId">
-            <Trash2 :size="16" />
-            删除
-          </button>
-        </div>
+  <div class="editor">
+    <div class="editor__outline outline-word" aria-hidden="true">READ · OBSERVE</div>
+
+    <div class="editor__bar">
+      <Breadcrumb :items="breadcrumb" class="editor__breadcrumb" />
+
+      <div class="editor__status">
+        <span :class="['editor__dot', `editor__dot--${saveState}`]" aria-hidden="true" />
+        <span class="editor__save-text">{{ saveText }}</span>
       </div>
-      
-      <div class="editor-container">
-        <div class="editor-pane" v-show="viewMode === 'edit'">
-          <textarea 
-            v-model="content"
-            placeholder="开始编写你的笔记...&#10;&#10;💡 使用 [[笔记标题]] 创建双向链接"
-            class="editor-textarea"
-          />
-        </div>
-        <div class="preview-pane" v-show="viewMode === 'preview'">
-          <div class="preview-content" v-html="renderedContent" />
-        </div>
-      </div>
-    </div>
-    
-    <div class="editor-sidebar" :class="{ collapsed: !showSidebar }">
-      <button @click="showSidebar = !showSidebar" class="toggle-btn">
-        <ChevronLeft v-if="showSidebar" :size="16" />
-        <ChevronRight v-else :size="16" />
+
+      <span v-if="!isNew" class="readout editor__readout">{{ words.toLocaleString('zh-CN') }} 字</span>
+      <span v-if="!isNew" class="readout editor__readout">{{ readTime }} MIN READ</span>
+
+      <SegmentedControl
+        :model-value="mode"
+        :items="modeItems"
+        size="sm"
+        aria-label="编辑或预览"
+        @update:model-value="setMode"
+      />
+
+      <button type="button" class="editor__props" @click="propsOpen = true">
+        <SlidersHorizontal :size="14" :stroke-width="1.8" />
+        属性
       </button>
-      
-      <div v-if="showSidebar" class="sidebar-content">
-        <div class="sidebar-section">
-          <h4 class="section-title">
-            <Folder :size="14" class="section-icon" />
-            文件夹
-          </h4>
-          <select v-model="folderId" class="folder-select">
-            <option :value="null">根目录</option>
-            <template v-for="folder in flatFolders" :key="folder.id">
-              <option :value="folder.id">
-                {{ folder.level > 0 ? '　└ ' : '' }}{{ folder.name }}
-              </option>
-            </template>
-          </select>
-        </div>
-        
-        <div class="sidebar-section">
-          <h4 class="section-title">
-            <Tag :size="14" class="section-icon" />
-            标签
-            <button class="add-tag-btn" @click="showNewTagInput = true" title="新建标签">
-              <Plus :size="12" />
-            </button>
-          </h4>
-          <div class="tag-selector">
-            <label 
-              v-for="tag in tagsStore.tags" 
-              :key="tag.id" 
-              class="tag-checkbox"
-              :class="{ checked: selectedTagIds.includes(tag.id) }"
+
+      <AppButton v-if="isNew || saveState === 'error'" size="sm" @click="save(false)">保存</AppButton>
+    </div>
+
+    <div class="editor__layout">
+      <main class="editor__main">
+        <div ref="bodyRef" class="editor__body">
+          <div v-if="loading" class="editor__loading">
+            <Skeleton :lines="3" :height="18" />
+            <Skeleton :lines="6" :height="12" />
+          </div>
+
+          <EmptyState v-else-if="notFound" title="笔记不存在" description="它可能已被删除，或链接失效。">
+            <AppButton size="sm" @click="router.push('/library')">返回笔记库</AppButton>
+          </EmptyState>
+
+          <template v-else>
+            <textarea
+              ref="titleRef"
+              v-model="title"
+              class="editor__title"
+              rows="1"
+              placeholder="无标题"
+              aria-label="笔记标题"
+              @input="resizeTitle"
+              @keydown="onTitleKeydown"
+            />
+
+            <div class="editor__meta">
+              <span>NOTE</span>
+              <span>·</span>
+              <span>{{ outgoing.length }} LINKS</span>
+              <span>·</span>
+              <span>创建 {{ createdLabel }}</span>
+              <span>·</span>
+              <span>{{ readTime }} MIN READ</span>
+            </div>
+
+            <div class="editor__divider" />
+
+            <textarea
+              v-if="mode === 'edit'"
+              ref="inputRef"
+              v-model="content"
+              class="editor__input"
+              placeholder="开始编写…  输入 [[ 链接另一篇笔记"
+              aria-label="笔记正文"
+              @input="onInput"
+              @click="onCaretMove"
+              @keyup="onCaretMove"
+              @keydown="onKeydown"
+              @blur="onBlur"
+            />
+
+            <article
+              v-else
+              class="prose"
+              @click="onPreviewClick"
+              v-html="renderedContent"
+            />
+
+            <div
+              v-if="suggestion.open"
+              class="wiki-pop"
+              :style="{ left: `${suggestion.left}px`, top: `${suggestion.top}px` }"
             >
-              <input type="checkbox" :value="tag.id" v-model="selectedTagIds" />
-              <span 
-                class="tag-label"
-                :style="{ 
-                  backgroundColor: selectedTagIds.includes(tag.id) ? tag.color + '20' : 'transparent',
-                  borderColor: tag.color,
-                  color: tag.color
-                }"
+              <div class="wiki-pop__head readout">链接到笔记 · LINK TO NOTE</div>
+              <button
+                v-for="(item, index) in suggestion.items"
+                :key="item.id"
+                type="button"
+                :class="['wiki-pop__item', index === suggestion.index && 'wiki-pop__item--active']"
+                @mousedown.prevent="insertSuggestion(item)"
               >
-                {{ tag.name }}
-              </span>
-            </label>
-            <div v-if="showNewTagInput" class="new-tag-input">
-              <input
-                ref="newTagInputRef"
-                v-model="newTagName"
-                type="text"
-                placeholder="输入标签名称"
-                @keyup.enter="createNewTag"
-                @keyup.escape="cancelNewTag"
-                @blur="cancelNewTag"
-              />
-              <div class="color-options">
-                <span 
-                  v-for="color in tagColors" 
-                  :key="color"
-                  class="color-dot"
-                  :class="{ active: newTagColor === color }"
-                  :style="{ backgroundColor: color }"
-                  @click="newTagColor = color"
-                />
+                <FileText :size="12" :stroke-width="1.8" />
+                <span class="wiki-pop__label">{{ item.title }}</span>
+                <span class="readout">NOTE</span>
+              </button>
+              <div v-if="!suggestion.items.length" class="wiki-pop__empty">
+                没有匹配的笔记，继续输入或 Esc 关闭。
               </div>
+              <div class="wiki-pop__foot">↑↓ 选择 · Enter 插入 · Esc 关闭</div>
             </div>
-            <div v-if="tagsStore.tags.length === 0 && !showNewTagInput" class="empty-tags" @click="showNewTagInput = true">
-              <Plus :size="14" />
-              点击创建标签
-            </div>
-          </div>
+          </template>
         </div>
-        
-        <div class="sidebar-section">
-          <h4 class="section-title">
-            <Link :size="14" class="section-icon" />
-            反向链接
-            <span class="help-icon" title="反向链接是指向当前笔记的其他笔记。点击链接即可跳转到对应笔记。">
-              <HelpCircle :size="12" />
-            </span>
-            <span class="count-badge" v-if="backlinks.length > 0">{{ backlinks.length }}</span>
-          </h4>
-          <div class="backlinks-list" v-if="backlinks.length > 0">
-            <div 
-              v-for="link in backlinks" 
-              :key="link.id"
-              class="backlink-item"
-              @click="openNote(link.id)"
+      </main>
+
+      <aside class="editor__rail">
+        <section class="rail__block">
+          <header class="rail__head">
+            <span class="readout">出链 · OUTGOING</span>
+            <span class="num">{{ outgoing.length }}</span>
+          </header>
+          <button
+            v-for="link in outgoing"
+            :key="link.title"
+            type="button"
+            :class="['rail__row', !link.note && 'rail__row--broken']"
+            @click="link.note && router.push(`/notes/${link.note.id}`)"
+          >
+            <span class="rail__label">{{ link.title }}</span>
+            <span class="readout">{{ link.note ? 'NOTE' : 'BROKEN' }}</span>
+          </button>
+          <p v-if="!outgoing.length" class="rail__empty">还没有双链。正文输入 [[ 开始。</p>
+        </section>
+
+        <section class="rail__block">
+          <header class="rail__head">
+            <span class="readout">入链 · BACKLINKS</span>
+            <span class="num">{{ backlinks.length }}</span>
+          </header>
+          <button
+            v-for="link in backlinks"
+            :key="link.id"
+            type="button"
+            class="rail__row"
+            @click="router.push(`/notes/${link.id}`)"
+          >
+            <span class="rail__label">{{ link.title }}</span>
+            <span class="readout">NOTE</span>
+          </button>
+          <p v-if="!backlinks.length" class="rail__empty">还没有其他笔记引用它。</p>
+        </section>
+      </aside>
+    </div>
+
+    <AppModal v-model:open="propsOpen" title="笔记属性" size="sm">
+      <div class="props">
+        <AppSelect
+          :model-value="folderId ?? ''"
+          label="文件夹"
+          placeholder="未归档"
+          :options="folderOptions"
+          @update:model-value="folderId = $event || null"
+        />
+
+        <div class="props__tags">
+          <span class="readout">TAGS · 标签</span>
+          <div class="props__tag-list">
+            <button
+              v-for="tag in allTags"
+              :key="tag.id"
+              type="button"
+              :class="['props__tag', selectedTagIds.includes(tag.id) && 'props__tag--on']"
+              @click="toggleTag(tag.id)"
             >
-              <ArrowRight :size="14" class="link-icon" />
-              {{ link.title }}
-            </div>
-          </div>
-          <div class="empty-tip" v-else>
-            <p>暂无反向链接</p>
-            <p class="tip-text">在其他笔记中使用 [[笔记标题]] 链接到当前笔记</p>
+              #{{ tag.name }}
+            </button>
+            <span v-if="!allTags.length" class="props__empty">还没有标签。</span>
           </div>
         </div>
       </div>
-    </div>
+      <template #footer>
+        <AppButton size="sm" @click="propsOpen = false">完成</AppButton>
+      </template>
+    </AppModal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
-import { useNotesStore } from '@/stores/notes'
+import { FileText, SlidersHorizontal } from 'lucide-vue-next'
+import AppButton from '@/components/ui/AppButton.vue'
+import AppModal from '@/components/ui/AppModal.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
+import Breadcrumb from '@/components/ui/Breadcrumb.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import SegmentedControl from '@/components/ui/SegmentedControl.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
+import { notesApi } from '@/api/notes'
+import { useCategoryStore } from '@/stores/category'
 import { useFoldersStore } from '@/stores/folders'
 import { useTagsStore } from '@/stores/tags'
-import { useNotificationStore } from '@/stores/notification'
-import { reportNoteView } from '@/lib/readTracker'
-import type { Backlink } from '@/types'
+import { flattenFolders, folderPath } from '@/lib/library'
 import {
-  ArrowLeft, Edit3, Eye, HelpCircle, Save, Trash2,
-  Folder, Tag, Plus, Link, ArrowRight, FileText, Clock,
-  ChevronLeft, ChevronRight, Home
-} from 'lucide-vue-next'
+  detectWikiQuery,
+  parseWikiLinks,
+  readMinutes,
+  renderWikiMarkup,
+  suggestNotes,
+  wordCount
+} from '@/lib/editor'
+import { reportNoteView } from '@/lib/readTracker'
+import { parseServerTime } from '@/lib/time'
+import type { Note } from '@/types/note'
+
+interface Backlink {
+  id: string
+  title: string
+  created_at: string
+}
 
 const route = useRoute()
 const router = useRouter()
-const notesStore = useNotesStore()
+const categoryStore = useCategoryStore()
 const foldersStore = useFoldersStore()
 const tagsStore = useTagsStore()
-const notification = useNotificationStore()
 
-const noteId = computed(() => route.params.id as string)
-const isNewNote = computed(() => route.name === 'NewNote' || noteId.value === 'new')
-
-const wordCount = computed(() => {
-  if (!content.value) return 0
-  const text = content.value.replace(/[#*`\[\]]/g, '').trim()
-  return text.length
-})
-
-const readTime = computed(() => {
-  const words = wordCount.value
-  const minutes = Math.ceil(words / 250)
-  return minutes
-})
+const titleRef = ref<HTMLTextAreaElement | null>(null)
+const inputRef = ref<HTMLTextAreaElement | null>(null)
+const bodyRef = ref<HTMLDivElement | null>(null)
 
 const title = ref('')
 const content = ref('')
 const folderId = ref<string | null>(null)
 const selectedTagIds = ref<string[]>([])
-const saving = ref(false)
-const showSidebar = ref(true)
+const createdAt = ref('')
 const backlinks = ref<Backlink[]>([])
-const showNewTagInput = ref(false)
-const newTagName = ref('')
-const newTagColor = ref('#f59e0b')
-const newTagInputRef = ref<HTMLInputElement | null>(null)
-const viewMode = ref<'edit' | 'preview'>('edit')
-const showLinkHint = ref(false)
+const allNotes = ref<Note[]>([])
 
-const tagColors = [
-  '#f59e0b', '#3b82f6', '#10b981', '#ef4444',
-  '#8b5cf6', '#ec4899', '#06b6d4', '#6366f1'
+const loading = ref(true)
+const notFound = ref(false)
+const propsOpen = ref(false)
+const mode = ref<'edit' | 'preview'>('edit')
+const saveState = ref<'saved' | 'dirty' | 'saving' | 'unsaved' | 'error'>('saved')
+const lastSaved = ref('')
+const saveError = ref('')
+
+const modeItems = [
+  { label: '编辑', value: 'edit' },
+  { label: '预览', value: 'preview' }
 ]
 
-interface FlatFolder {
-  id: string
-  name: string
-  level: number
-}
-
-const flatFolders = computed(() => {
-  const result: FlatFolder[] = []
-  
-  function flatten(folders: any[], level: number = 0) {
-    for (const folder of folders) {
-      result.push({ id: folder.id, name: folder.name, level })
-      if (folder.children && folder.children.length > 0) {
-        flatten(folder.children, level + 1)
-      }
-    }
-  }
-  
-  flatten(foldersStore.folders)
-  return result
+const suggestion = reactive({
+  open: false,
+  items: [] as Note[],
+  index: 0,
+  left: 0,
+  top: 0,
+  queryStart: 0,
+  caret: 0
 })
 
-const md = new MarkdownIt({
-  html: false,
-  linkify: true,
-  typographer: true
+const md = new MarkdownIt({ html: true, linkify: true, typographer: true })
+
+let saveTimer: ReturnType<typeof setTimeout> | undefined
+let hydrating = false
+let skipNextLoad = false
+
+const noteId = computed(() => (route.params.id as string) || '')
+const isNew = computed(() => route.name === 'NewNote' || noteId.value === 'new')
+const words = computed(() => wordCount(content.value))
+const readTime = computed(() => readMinutes(words.value))
+const allTags = computed(() => tagsStore.tags)
+const flatFolders = computed(() => flattenFolders(foldersStore.folders))
+
+const notesByTitle = computed(() => new Map(allNotes.value.map((note) => [note.title.trim(), note])))
+
+const outgoing = computed(() =>
+  parseWikiLinks(content.value).map((titleText) => ({
+    title: titleText,
+    note: notesByTitle.value.get(titleText) ?? null
+  }))
+)
+
+const folderOptions = computed(() => [
+  { label: '未归档', value: '' },
+  ...flatFolders.value.map((folder) => ({
+    label: `${'　'.repeat(folder.level)}${folder.name}`,
+    value: folder.id
+  }))
+])
+
+const currentFolder = computed(() =>
+  folderId.value ? flatFolders.value.find((folder) => folder.id === folderId.value) ?? null : null
+)
+
+const path = computed(() => (folderId.value ? folderPath(flatFolders.value, folderId.value) : []))
+
+const breadcrumb = computed(() => {
+  const items: Array<{ label: string; to?: string }> = [{ label: '我的笔记', to: '/library' }]
+
+  if (currentFolder.value?.category_id) {
+    const category = categoryStore.categories.find(
+      (item) => item.id === currentFolder.value?.category_id
+    )
+    if (category) {
+      items.push({ label: category.name, to: `/library/${category.id}` })
+    }
+  }
+
+  path.value.forEach((folder) => {
+    items.push({ label: folder.name })
+  })
+
+  items.push({ label: title.value.trim() || '未命名' })
+  return items
+})
+
+const createdLabel = computed(() => {
+  if (!createdAt.value) return '—'
+  const date = parseServerTime(createdAt.value)
+  return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
+})
+
+const saveText = computed(() => {
+  if (saveState.value === 'saving') return '保存中…'
+  if (saveState.value === 'dirty') return '未保存…'
+  if (saveState.value === 'unsaved') return '未保存'
+  if (saveState.value === 'error') return saveError.value || '保存失败'
+  return lastSaved.value ? `已保存 ${lastSaved.value}` : '已保存'
 })
 
 const renderedContent = computed(() => {
-  let html = md.render(content.value || '*开始编写笔记内容...*')
-  html = DOMPurify.sanitize(html)
-  html = html.replace(/\[\[([^\]]+)\]\]/g, (_match: string, titleText: string) => {
-    const note = notesStore.notes.find(n => n.title === titleText)
-    if (note) {
-      return `<a href="/notes/${note.id}" class="internal-link">${titleText}</a>`
-    }
-    return `<span class="broken-link">${titleText}</span>`
-  })
-  return html
+  const markup = renderWikiMarkup(content.value || '', allNotes.value)
+  return DOMPurify.sanitize(md.render(markup), { ADD_ATTR: ['target'] })
 })
 
-onMounted(async () => {
-  await foldersStore.fetchFolders()
-  await tagsStore.fetchTags()
-  await loadNote()
-})
+function resizeTitle() {
+  const element = titleRef.value
+  if (!element) return
+  element.style.height = 'auto'
+  element.style.height = `${element.scrollHeight}px`
+}
 
-async function loadNote() {
-  if (isNewNote.value) {
-    title.value = ''
-    content.value = ''
-    folderId.value = null
-    selectedTagIds.value = []
-    backlinks.value = []
-    return
+function resizeInput() {
+  const element = inputRef.value
+  if (!element) return
+  element.style.height = 'auto'
+  element.style.height = `${Math.max(element.scrollHeight, window.innerHeight * 0.5)}px`
+}
+
+function setMode(next: string) {
+  mode.value = next === 'preview' ? 'preview' : 'edit'
+  closeSuggestion()
+
+  if (mode.value === 'preview' && saveState.value === 'dirty') {
+    void save(true)
   }
-  
-  const note = await notesStore.getNote(noteId.value)
-  if (note) {
-    title.value = note.title
-    content.value = note.content || ''
-    folderId.value = note.folder_id
-    selectedTagIds.value = note.tags.map(t => t.id)
-    await notesStore.fetchBacklinks(noteId.value)
-    backlinks.value = [...notesStore.backlinks]
-    reportNoteView(noteId.value)
-  } else {
-    router.push('/')
+  if (mode.value === 'edit') {
+    nextTick(() => {
+      resizeInput()
+      inputRef.value?.focus()
+    })
   }
 }
 
+function toggleTag(tagId: string) {
+  if (selectedTagIds.value.includes(tagId)) {
+    selectedTagIds.value = selectedTagIds.value.filter((id) => id !== tagId)
+  } else {
+    selectedTagIds.value = [...selectedTagIds.value, tagId]
+  }
+}
+
+function nowLabel() {
+  return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
+
+function scheduleSave() {
+  if (saveTimer) clearTimeout(saveTimer)
+  if (isNew.value) return
+  saveTimer = setTimeout(() => {
+    void save(true)
+  }, 900)
+}
+
+function markDirty() {
+  if (hydrating) return
+  saveState.value = isNew.value ? 'unsaved' : 'dirty'
+  scheduleSave()
+}
+
+watch([title, content, folderId, selectedTagIds], markDirty, { deep: true })
+
+async function save(auto: boolean) {
+  if (saveState.value === 'saving') return
+
+  if (!title.value.trim()) {
+    if (!auto) {
+      saveError.value = '请先填写标题'
+      saveState.value = 'error'
+    }
+    return
+  }
+
+  const payload = {
+    title: title.value.trim(),
+    content: content.value,
+    folder_id: folderId.value,
+    tag_ids: selectedTagIds.value
+  }
+
+  saveState.value = 'saving'
+  saveError.value = ''
+
+  try {
+    if (isNew.value) {
+      const response = await notesApi.create(payload)
+      skipNextLoad = true
+      await router.replace(`/notes/${response.data.id}`)
+      createdAt.value = response.data.created_at
+    } else {
+      await notesApi.update(noteId.value, payload)
+    }
+
+    saveState.value = 'saved'
+    lastSaved.value = nowLabel()
+  } catch {
+    saveState.value = 'error'
+    saveError.value = '保存失败，请重试'
+  }
+}
+
+function onKeydown(event: KeyboardEvent) {
+  if (!suggestion.open) return
+
+  if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    suggestion.index = (suggestion.index + 1) % Math.max(1, suggestion.items.length)
+    return
+  }
+  if (event.key === 'ArrowUp') {
+    event.preventDefault()
+    suggestion.index =
+      (suggestion.index - 1 + suggestion.items.length) %
+      Math.max(1, suggestion.items.length)
+    return
+  }
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    const item = suggestion.items[suggestion.index]
+    if (item) insertSuggestion(item)
+    return
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeSuggestion()
+  }
+}
+
+function onTitleKeydown(event: KeyboardEvent) {
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    inputRef.value?.focus()
+  }
+}
+
+function updateSuggestions() {
+  const element = inputRef.value
+  if (!element || mode.value !== 'edit') {
+    closeSuggestion()
+    return
+  }
+
+  const caret = element.selectionStart
+  const before = element.value.slice(0, caret)
+  const found = detectWikiQuery(before)
+
+  if (!found) {
+    closeSuggestion()
+    return
+  }
+
+  const items = suggestNotes(allNotes.value, found.query, isNew.value ? null : noteId.value)
+  const coords = caretCoordinates(element, before)
+
+  suggestion.open = true
+  suggestion.items = items
+  suggestion.index = 0
+  suggestion.queryStart = found.start
+  suggestion.caret = caret
+  suggestion.left = coords.left
+  suggestion.top = coords.top
+}
+
+function caretCoordinates(element: HTMLTextAreaElement, before: string) {
+  const style = getComputedStyle(element)
+  const lineHeight = parseFloat(style.lineHeight) || 26
+  const paddingLeft = parseFloat(style.paddingLeft) || 0
+  const paddingTop = parseFloat(style.paddingTop) || 0
+  const bodyRect = bodyRef.value?.getBoundingClientRect()
+  const rect = element.getBoundingClientRect()
+
+  const lines = before.split('\n')
+  const line = lines.length - 1
+  const column = lines[line].length
+  const charWidth = 7.8
+
+  const rawLeft = paddingLeft + column * charWidth
+  const maxLeft = Math.max(8, element.clientWidth - 280)
+  const left = Math.min(rawLeft, maxLeft)
+  const top = paddingTop + (line + 1) * lineHeight - element.scrollTop
+
+  return {
+    left: Math.max(8, left),
+    top: Math.max(8, top + (bodyRect ? rect.top - bodyRect.top : 0))
+  }
+}
+
+function insertSuggestion(item: Note) {
+  const element = inputRef.value
+  if (!element) return
+
+  const caret = element.selectionStart
+  const current = element.value
+  const before = current.slice(0, suggestion.queryStart)
+  const after = current.slice(caret)
+  const inserted = `[[${item.title}]]`
+
+  content.value = `${before}${inserted}${after}`
+  closeSuggestion()
+
+  nextTick(() => {
+    element.focus()
+    const position = before.length + inserted.length
+    element.setSelectionRange(position, position)
+    resizeInput()
+  })
+}
+
+function closeSuggestion() {
+  suggestion.open = false
+  suggestion.items = []
+  suggestion.index = 0
+}
+
+function onCaretMove() {
+  updateSuggestions()
+}
+
+function onBlur() {
+  setTimeout(closeSuggestion, 120)
+}
+
+function onInput() {
+  resizeInput()
+  updateSuggestions()
+}
+
+function onPreviewClick(event: MouseEvent) {
+  const target = (event.target as HTMLElement).closest('a.wiki-link') as HTMLAnchorElement | null
+  const targetId = target?.dataset.noteId
+  if (targetId) {
+    event.preventDefault()
+    router.push(`/notes/${targetId}`)
+  }
+}
+
+async function loadAllNotes() {
+  try {
+    const first = await notesApi.list({ page_size: 100, page: 1 })
+    const items = [...first.data.items]
+    const total = first.data.total
+    let page = 1
+
+    while (items.length < total && page < 5) {
+      page += 1
+      const next = await notesApi.list({ page_size: 100, page })
+      items.push(...next.data.items)
+    }
+
+    allNotes.value = items
+  } catch {
+    allNotes.value = []
+  }
+}
+
+async function loadNote() {
+  hydrating = true
+  loading.value = true
+  notFound.value = false
+
+  try {
+    if (isNew.value) {
+      title.value = ''
+      content.value = ''
+      folderId.value = (route.query.folder as string) || null
+      selectedTagIds.value = []
+      createdAt.value = ''
+      backlinks.value = []
+      mode.value = 'edit'
+      saveState.value = 'unsaved'
+      lastSaved.value = ''
+      return
+    }
+
+    const response = await notesApi.get(noteId.value)
+    const note = response.data
+    title.value = note.title
+    content.value = note.content || ''
+    folderId.value = note.folder_id
+    selectedTagIds.value = note.tags.map((tag) => tag.id)
+    createdAt.value = note.created_at
+    mode.value = 'preview'
+    saveState.value = 'saved'
+    lastSaved.value = parseServerTime(note.updated_at).toLocaleTimeString('zh-CN', {
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+
+    const links = await notesApi.getBacklinks(noteId.value)
+    backlinks.value = links.data
+
+    reportNoteView(noteId.value)
+  } catch {
+    notFound.value = true
+  } finally {
+    loading.value = false
+    hydrating = false
+    nextTick(() => {
+      resizeTitle()
+      resizeInput()
+    })
+  }
+}
+
+function onGlobalKeydown(event: KeyboardEvent) {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+    event.preventDefault()
+    void save(false)
+  }
+}
+
+function onBeforeUnload(event: BeforeUnloadEvent) {
+  if (['dirty', 'unsaved', 'saving'].includes(saveState.value)) {
+    event.preventDefault()
+    event.returnValue = ''
+  }
+}
+
+onBeforeRouteLeave(async () => {
+  if (saveTimer) clearTimeout(saveTimer)
+  if (!isNew.value && ['dirty', 'unsaved'].includes(saveState.value) && title.value.trim()) {
+    await save(false)
+  }
+})
+
 watch(
   () => route.params.id,
-  async (newId, oldId) => {
-    const newIsNew = route.name === 'NewNote' || newId === 'new'
-    const oldIsNew = oldId === undefined || oldId === 'new'
-    
-    if (newId !== oldId || newIsNew !== oldIsNew) {
-      await loadNote()
+  async (next, previous) => {
+    if (skipNextLoad) {
+      skipNextLoad = false
+      return
     }
+    if (next !== previous) await loadNote()
   }
 )
 
 watch(
   () => route.name,
-  async (newName, oldName) => {
-    if (newName === 'NewNote' && oldName !== 'NewNote') {
-      await loadNote()
-    }
+  async (next, previous) => {
+    if (next === 'NewNote' && previous !== 'NewNote') await loadNote()
   }
 )
 
-async function saveNote() {
-  if (!title.value.trim()) {
-    notification.warning('请输入笔记标题', '标题不能为空')
-    return
-  }
-  
-  saving.value = true
-  try {
-    const data = {
-      title: title.value,
-      content: content.value,
-      folder_id: folderId.value,
-      tag_ids: selectedTagIds.value
-    }
-    
-    if (isNewNote.value) {
-      const note = await notesStore.createNote(data)
-      router.replace(`/notes/${note.id}`)
-    } else {
-      await notesStore.updateNote(noteId.value, data)
-    }
-  } catch (error) {
-  } finally {
-    saving.value = false
-  }
-}
+onMounted(async () => {
+  await Promise.allSettled([
+    foldersStore.fetchFolders(),
+    tagsStore.fetchTags(),
+    categoryStore.fetchCategories(),
+    loadAllNotes()
+  ])
+  await loadNote()
+  window.addEventListener('keydown', onGlobalKeydown)
+  window.addEventListener('beforeunload', onBeforeUnload)
+})
 
-async function deleteNote() {
-  if (!confirm('确定要删除这篇笔记吗？此操作无法撤销。')) return
-  
-  try {
-    await notesStore.deleteNote(noteId.value)
-    router.push('/')
-  } catch (error) {
-  }
-}
-
-function openNote(id: string) {
-  router.push(`/notes/${id}`)
-}
-
-function goBack() {
-  router.back()
-}
-
-function goHome() {
-  router.push('/')
-}
-
-async function createNewTag() {
-  const name = newTagName.value.trim()
-  if (!name) {
-    notification.warning('请输入标签名称')
-    return
-  }
-
-  try {
-    const tag = await tagsStore.createTag({ name, color: newTagColor.value })
-    selectedTagIds.value.push(tag.id)
-    notification.success('标签创建成功', `「${name}」已添加`)
-    cancelNewTag()
-  } catch (error: any) {
-    notification.error('创建失败', error.response?.data?.detail || '操作失败')
-  }
-}
-
-function cancelNewTag() {
-  showNewTagInput.value = false
-  newTagName.value = ''
-  newTagColor.value = '#f59e0b'
-}
-
-watch(showNewTagInput, (val) => {
-  if (val) {
-    nextTick(() => {
-      newTagInputRef.value?.focus()
-    })
-  }
+onBeforeUnmount(() => {
+  if (saveTimer) clearTimeout(saveTimer)
+  window.removeEventListener('keydown', onGlobalKeydown)
+  window.removeEventListener('beforeunload', onBeforeUnload)
 })
 </script>
 
-<style scoped lang="scss">
-.note-editor-page {
-  display: flex;
-  height: calc(100vh - 0px);
-  background: var(--bg-primary);
+<style scoped>
+.editor {
+  position: relative;
+  min-height: 100%;
 }
 
-.editor-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
+.editor__outline {
+  right: -30px;
+  bottom: -40px;
+  font-size: clamp(100px, 13vw, 200px);
+  opacity: 0.28;
+  pointer-events: none;
 }
 
-.editor-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 20px;
-  background: var(--bg-tertiary);
-  border-bottom: 1px solid var(--border-subtle);
-  flex-shrink: 0;
-}
-
-.header-left {
+.editor__bar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
   display: flex;
   align-items: center;
-  gap: 16px;
-  flex: 1;
-  min-width: 0;
+  gap: 14px;
+  min-height: 46px;
+  padding: 8px 28px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(8px);
 }
 
-.back-btn {
-  display: flex;
+.editor__breadcrumb {
+  min-width: 0;
+  flex: 1;
+}
+
+.editor__status {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 14px;
-  background: transparent;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  font-size: 13px;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-
-  &:hover {
-    background: var(--bg-hover);
-    border-color: var(--border-strong);
-    color: var(--text-primary);
-    transform: translateX(-2px);
-  }
-
-  &:active {
-    transform: translateX(0);
-  }
-
-  .back-text {
-    font-weight: 500;
-  }
+  flex: none;
 }
 
-.home-btn {
-  width: 34px;
-  height: 34px;
-  display: flex;
+.editor__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--t3);
+}
+
+.editor__dot--saved {
+  background: var(--success);
+}
+
+.editor__dot--dirty,
+.editor__dot--saving {
+  background: var(--gold);
+  animation: save-pulse 1.2s ease-in-out infinite;
+}
+
+.editor__dot--error {
+  background: var(--danger);
+}
+
+.editor__save-text {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--t3);
+}
+
+.editor__readout {
+  color: var(--t3);
+  flex: none;
+}
+
+.editor__props {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-
-  &:hover {
-    background: var(--bg-hover);
-    border-color: var(--border-strong);
-    color: var(--text-primary);
-    transform: translateY(-1px);
-  }
-
-  &:active {
-    transform: translateY(0);
-  }
-}
-
-.title-input {
-  flex: 1;
-  font-size: 18px;
-  font-weight: 600;
-  border: none;
-  background: transparent;
-  color: var(--text-primary);
-  padding: 8px 0;
-  
-  &:focus {
-    outline: none;
-  }
-  
-  &::placeholder {
-    color: var(--text-muted);
-  }
-}
-
-.save-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--text-tertiary);
-  
-  .status-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--primary-color);
-    animation: pulse 1s infinite;
-  }
-}
-
-.word-stats {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 6px 12px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  font-size: 12px;
-  color: var(--text-tertiary);
-  
-  .stat-item {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-  
-  .stat-value {
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-  
-  .stat-label {
-    color: var(--text-muted);
-  }
-  
-  .stat-divider {
-    width: 1px;
-    height: 12px;
-    background: var(--border-default);
-  }
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-.editor-actions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.view-toggle {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 4px;
-  position: relative;
-}
-
-.toggle-btn-item {
-  width: 32px;
+  gap: 5px;
   height: 28px;
+  padding: 0 8px;
+  border-radius: var(--r-sm);
+  font-size: 11px;
+  color: var(--t3);
+  flex: none;
+}
+
+.editor__props:hover {
+  color: var(--gold);
+  background: var(--panel-2);
+}
+
+.editor__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 286px;
+}
+
+.editor__main {
   display: flex;
-  align-items: center;
   justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  color: var(--text-muted);
-  transition: all var(--transition-fast);
-  
-  &:hover {
-    color: var(--text-primary);
-    background: var(--bg-hover);
-  }
-  
-  &.active {
-    background: var(--bg-active);
-    color: var(--primary-color);
-  }
+  min-width: 0;
+  padding: 34px 32px 90px;
 }
 
-.help-btn {
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  color: var(--text-muted);
-  margin-left: 4px;
-  transition: all var(--transition-fast);
-  
-  &:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-  }
+.editor__body {
+  position: relative;
+  width: 100%;
+  max-width: 660px;
 }
 
-.link-hint {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  width: 260px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  padding: 14px;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(-4px);
-  transition: all var(--transition-base);
-  z-index: 100;
-  
-  &.show {
-    opacity: 1;
-    visibility: visible;
-    transform: translateY(0);
-  }
-  
-  .hint-header {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--primary-color);
-    margin-bottom: 10px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-  
-  .hint-content {
-    font-size: 13px;
-    color: var(--text-secondary);
-    line-height: 1.7;
-    
-    code {
-      background: var(--primary-muted);
-      padding: 2px 6px;
-      border-radius: var(--radius-sm);
-      color: var(--primary-color);
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 12px;
-    }
-  }
-  
-  .hint-example {
-    display: block;
-    margin-top: 8px;
-    color: var(--text-muted);
-    font-size: 12px;
-  }
-}
-
-.btn-save, .btn-delete {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.btn-save {
-  background: var(--primary-color);
-  border: none;
-  color: #000;
-  
-  &:hover:not(:disabled) {
-    background: var(--primary-hover);
-    transform: translateY(-1px);
-  }
-  
-  &:active:not(:disabled) {
-    transform: translateY(0);
-  }
-  
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-}
-
-.btn-delete {
-  background: transparent;
-  border: 1px solid var(--border-default);
-  color: var(--text-tertiary);
-  
-  &:hover {
-    background: rgba(239, 68, 68, 0.1);
-    border-color: var(--accent-red);
-    color: var(--accent-red);
-  }
-}
-
-.editor-container {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
-}
-
-.editor-pane, .preview-pane {
-  flex: 1;
+.editor__loading {
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  gap: 22px;
+  padding-top: 10px;
 }
 
-.editor-textarea {
-  flex: 1;
-  padding: 24px 32px;
-  border: none;
+.editor__title {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
   background: transparent;
-  color: var(--text-primary);
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  font-size: 14px;
-  line-height: 1.8;
+  border: 0;
+  outline: none;
   resize: none;
-  
-  &:focus {
-    outline: none;
-  }
-  
-  &::placeholder {
-    color: var(--text-muted);
-    line-height: 1.6;
-  }
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-size: 38px;
+  font-weight: 500;
+  line-height: 1.18;
+  letter-spacing: -0.035em;
+  color: var(--text);
 }
 
-.preview-pane {
-  background: var(--bg-secondary);
-  border-left: 1px solid var(--border-subtle);
+.editor__title::placeholder {
+  color: var(--t3);
 }
 
-.preview-content {
-  flex: 1;
-  padding: 24px 32px;
-  overflow-y: auto;
-  color: var(--text-primary);
-  line-height: 1.8;
-  
-  :deep(h1), :deep(h2), :deep(h3) {
-    color: var(--text-primary);
-    margin-bottom: 12px;
-    margin-top: 24px;
-    font-weight: 600;
-    
-    &:first-child {
-      margin-top: 0;
-    }
-  }
-  
-  :deep(h1) { font-size: 26px; }
-  :deep(h2) { font-size: 22px; }
-  :deep(h3) { font-size: 18px; }
-  
-  :deep(p) {
-    margin-bottom: 14px;
-  }
-  
-  :deep(code) {
-    background: var(--primary-muted);
-    padding: 2px 6px;
-    border-radius: var(--radius-sm);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-    color: var(--primary-color);
-  }
-  
-  :deep(pre) {
-    background: var(--bg-tertiary);
-    padding: 16px;
-    border-radius: var(--radius-md);
-    overflow-x: auto;
-    margin-bottom: 14px;
-    border: 1px solid var(--border-subtle);
-    
-    code {
-      background: transparent;
-      padding: 0;
-      color: var(--text-primary);
-    }
-  }
-  
-  :deep(ul), :deep(ol) {
-    margin-bottom: 14px;
-    padding-left: 24px;
-  }
-  
-  :deep(li) {
-    margin-bottom: 6px;
-  }
-  
-  :deep(blockquote) {
-    border-left: 3px solid var(--primary-color);
-    padding-left: 16px;
-    margin: 16px 0;
-    color: var(--text-tertiary);
-  }
-  
-  :deep(.internal-link) {
-    color: var(--primary-color);
-    cursor: pointer;
-    border-bottom: 1px dashed transparent;
-    transition: all var(--transition-fast);
-    
-    &:hover {
-      border-bottom-color: var(--primary-color);
-    }
-  }
-  
-  :deep(.broken-link) {
-    color: var(--accent-red);
-    text-decoration: line-through;
-    opacity: 0.7;
-  }
-}
-
-.editor-sidebar {
-  width: 280px;
-  background: var(--bg-secondary);
-  border-left: 1px solid var(--border-subtle);
-  position: relative;
-  transition: width var(--transition-base);
-  
-  &.collapsed {
-    width: 36px;
-  }
-}
-
-.toggle-btn {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 24px;
-  height: 48px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-subtle);
-  border-left: none;
-  border-radius: 0 var(--radius-md) var(--radius-md) 0;
-  cursor: pointer;
-  color: var(--text-muted);
+.editor__meta {
   display: flex;
   align-items: center;
-  justify-content: center;
-  transition: all var(--transition-fast);
-  
-  &:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-  }
+  gap: 7px;
+  margin-top: 14px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--t3);
 }
 
-.sidebar-content {
-  padding: 20px;
-  margin-left: 24px;
+.editor__divider {
+  height: 1px;
+  margin: 18px 0 24px;
+  background: var(--line);
 }
 
-.sidebar-section {
-  margin-bottom: 24px;
+.editor__input {
+  display: block;
+  width: 100%;
+  min-height: 52vh;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.95;
+  color: var(--t2);
+  caret-color: var(--gold);
 }
 
-.section-title {
+.editor__input::placeholder {
+  color: var(--t3);
+}
+
+.editor__rail {
+  align-self: start;
+  position: sticky;
+  top: 46px;
   display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 28px 20px 40px;
+  border-left: 1px solid var(--line);
+  max-height: calc(100vh - 46px);
+  overflow-y: auto;
+}
+
+.rail__block {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.rail__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 6px;
+}
+
+.rail__head .num {
+  font-size: 9px;
+  color: var(--t3);
+}
+
+.rail__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 28px;
+  padding: 0 4px;
+  border-radius: var(--r-sm);
+  color: var(--t2);
+  text-align: left;
+}
+
+.rail__row:hover {
+  background: var(--panel-2);
+  color: var(--gold);
+}
+
+.rail__row--broken {
+  color: var(--danger);
+}
+
+.rail__label {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail__empty {
+  padding: 4px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--t3);
+}
+
+.wiki-pop {
+  position: absolute;
+  z-index: 5;
+  width: 272px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-float);
+}
+
+.wiki-pop__head {
+  padding: 6px 8px;
+  font-size: 8.5px;
+  color: var(--t3);
+}
+
+.wiki-pop__item {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 12px;
-}
-
-.section-icon {
-  color: var(--text-tertiary);
-}
-
-.add-tag-btn {
-  margin-left: auto;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  
-  &:hover {
-    background: var(--bg-hover);
-    border-color: var(--primary-color);
-    color: var(--primary-color);
-  }
-}
-
-.count-badge {
-  margin-left: auto;
-  background: var(--primary-muted);
-  color: var(--primary-color);
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.folder-select {
   width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  font-size: 13px;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  
-  &:hover, &:focus {
-    border-color: var(--border-default);
-    outline: none;
-  }
-  
-  option {
-    background: var(--bg-elevated);
-    color: var(--text-primary);
-  }
+  min-height: 30px;
+  padding: 0 8px;
+  border-radius: var(--r-sm);
+  color: var(--t2);
+  text-align: left;
 }
 
-.tag-selector {
+.wiki-pop__item:hover,
+.wiki-pop__item--active {
+  background: var(--panel-2);
+  color: var(--gold);
+}
+
+.wiki-pop__label {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wiki-pop__empty {
+  padding: 8px;
+  font-size: 11px;
+  color: var(--t3);
+}
+
+.wiki-pop__foot {
+  padding: 7px 8px 3px;
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.03em;
+  color: var(--t3);
+}
+
+.props {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 4px 0 8px;
+}
+
+.props__tags {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.props__tag-list {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
 
-.tag-checkbox {
-  cursor: pointer;
-  
-  input {
-    display: none;
-  }
-  
-  .tag-label {
-    display: block;
-    padding: 5px 10px;
-    border-radius: var(--radius-lg);
-    font-size: 12px;
-    font-weight: 500;
-    border: 1px solid;
-    transition: all var(--transition-fast);
-  }
-  
-  &.checked .tag-label {
-    box-shadow: 0 0 0 1px currentColor;
-  }
-  
-  &:hover .tag-label {
-    transform: translateY(-1px);
-  }
+.props__tag {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--t3);
 }
 
-.empty-tags {
-  color: var(--text-muted);
-  font-size: 12px;
-  padding: 12px 14px;
-  text-align: center;
-  border: 1px dashed var(--border-default);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  
-  &:hover {
-    border-color: var(--primary-color);
-    color: var(--primary-color);
-    background: var(--primary-muted);
-  }
+.props__tag:hover {
+  border-color: var(--line-strong);
+  color: var(--t2);
 }
 
-.new-tag-input {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  margin-bottom: 6px;
-  
-  input {
-    width: 100%;
-    padding: 8px 10px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    font-size: 13px;
-    
-    &:focus {
-      outline: none;
-      border-color: var(--primary-color);
-    }
-    
-    &::placeholder {
-      color: var(--text-muted);
-    }
-  }
-  
-  .color-options {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-  
-  .color-dot {
-    display: inline-block;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    border: 2px solid transparent;
-    
-    &:hover {
-      transform: scale(1.15);
-    }
-    
-    &.active {
-      border-color: var(--text-primary);
-    }
-  }
+.props__tag--on {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: var(--gold-soft);
 }
 
-.backlinks-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.props__empty {
+  font-size: 11px;
+  color: var(--t3);
 }
 
-.help-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: 4px;
-  color: var(--text-muted);
+.prose {
+  font-size: 15px;
+  line-height: 1.9;
+  color: var(--t2);
+}
+
+.prose :deep(h1),
+.prose :deep(h2),
+.prose :deep(h3) {
+  margin: 1.6em 0 0.7em;
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--gold);
+}
+
+.prose :deep(h1)::before {
+  content: '# ';
+  font-family: var(--font-mono);
+  font-size: 0.72em;
+  opacity: 0.7;
+}
+
+.prose :deep(h2)::before {
+  content: '## ';
+  font-family: var(--font-mono);
+  font-size: 0.72em;
+  opacity: 0.7;
+}
+
+.prose :deep(h2) {
+  font-size: 22px;
+}
+
+.prose :deep(h3) {
+  font-size: 17px;
+  color: var(--text);
+}
+
+.prose :deep(p) {
+  margin: 0 0 1.05em;
+}
+
+.prose :deep(strong) {
+  color: var(--text);
+}
+
+.prose :deep(a) {
+  color: var(--gold);
+  text-decoration: none;
+}
+
+.prose :deep(a.wiki-link) {
+  border-bottom: 1px dashed color-mix(in srgb, var(--gold) 60%, transparent);
+}
+
+.prose :deep(.wiki-link--broken) {
+  color: var(--danger);
+  border-bottom: 1px dashed color-mix(in srgb, var(--danger) 55%, transparent);
   cursor: help;
-  
-  &:hover {
-    color: var(--text-primary);
+}
+
+.prose :deep(ul),
+.prose :deep(ol) {
+  margin: 0 0 1.1em;
+  padding-left: 1.4em;
+}
+
+.prose :deep(li::marker) {
+  color: var(--gold);
+}
+
+.prose :deep(blockquote) {
+  margin: 1.3em 0;
+  padding: 6px 0 6px 16px;
+  border-left: 2px solid var(--gold);
+  color: var(--t2);
+}
+
+.prose :deep(code) {
+  padding: 1px 5px;
+  background: var(--panel-2);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  color: var(--gold);
+}
+
+.prose :deep(pre) {
+  margin: 1.2em 0;
+  padding: 14px 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow-x: auto;
+}
+
+.prose :deep(pre code) {
+  padding: 0;
+  background: transparent;
+  color: var(--t2);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.prose :deep(hr) {
+  height: 1px;
+  margin: 2em 0;
+  background: var(--line);
+  border: 0;
+}
+
+.prose :deep(img) {
+  max-width: 100%;
+  border-radius: var(--r-md);
+}
+
+@keyframes save-pulse {
+  50% {
+    opacity: 0.35;
   }
 }
 
-.empty-tip {
-  padding: 12px;
-  text-align: center;
-  
-  p {
-    color: var(--text-tertiary);
-    font-size: 12px;
-    margin: 0;
+@media (max-width: 1100px) {
+  .editor__layout {
+    grid-template-columns: minmax(0, 1fr);
   }
-  
-  .tip-text {
-    color: var(--text-muted);
-    margin-top: 4px;
+
+  .editor__rail {
+    position: static;
+    max-height: none;
+    padding: 20px 28px 32px;
+    border-left: 0;
+    border-top: 1px solid var(--line);
   }
 }
 
-.backlink-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  background: var(--bg-tertiary);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--text-secondary);
-  transition: all var(--transition-fast);
-  
-  &:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-    
-    .link-icon {
-      color: var(--primary-color);
-    }
-  }
-  
-  .link-icon {
-    color: var(--text-muted);
-    transition: color var(--transition-fast);
-  }
-}
-
-@media (max-width: 900px) {
-  .editor-sidebar {
-    display: none;
-  }
-  
-  .word-stats {
-    display: none;
-  }
-}
-
-@media (max-width: 600px) {
-  .editor-header {
-    padding: 10px 16px;
+@media (max-width: 767px) {
+  .editor__bar {
     flex-wrap: wrap;
-    gap: 12px;
+    gap: 8px;
+    padding: 8px 16px;
   }
-  
-  .header-left {
-    width: 100%;
+
+  .editor__breadcrumb {
+    flex-basis: 100%;
   }
-  
-  .editor-actions {
-    width: 100%;
-    justify-content: flex-end;
+
+  .editor__readout {
+    display: none;
   }
-  
-  .editor-textarea {
-    padding: 16px;
+
+  .editor__main {
+    padding: 24px 16px 56px;
   }
-  
-  .preview-content {
-    padding: 16px;
+
+  .editor__title {
+    font-size: 30px;
+  }
+
+  .editor__meta {
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  .editor__input {
+    font-size: 13px;
+  }
+
+  .wiki-pop {
+    width: min(272px, calc(100vw - 48px));
   }
 }
 </style>
