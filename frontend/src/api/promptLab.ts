@@ -11,12 +11,12 @@ import type {
 export const promptLabApi = {
   fewShot: {
     async create(data: FewShotExampleCreate): Promise<FewShotExample> {
-      const response = await api.post('/prompts/few-shot', data)
+      const response = await api.post('/prompts/few-shot/', data)
       return response.data.data
     },
 
     async list(params?: { scenario?: string; prompt_id?: string; min_quality?: number }): Promise<FewShotExample[]> {
-      const response = await api.get('/prompts/few-shot', { params })
+      const response = await api.get('/prompts/few-shot/', { params })
       return response.data.data
     },
 
@@ -93,7 +93,7 @@ export const promptLabApi = {
 
   promptChain: {
     async list(isActive?: boolean): Promise<PromptChain[]> {
-      const response = await api.get('/prompt-chains', { params: { is_active: isActive } })
+      const response = await api.get('/prompt-chains/', { params: { is_active: isActive } })
       return response.data.data
     },
 
@@ -103,7 +103,7 @@ export const promptLabApi = {
     },
 
     async create(data: PromptChainCreate): Promise<PromptChain> {
-      const response = await api.post('/prompt-chains', data)
+      const response = await api.post('/prompt-chains/', data)
       return response.data.data
     },
 

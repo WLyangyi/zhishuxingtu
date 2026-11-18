@@ -1,25 +1,17 @@
 <template>
   <div class="skills-page">
-    <div class="page-header">
-      <div class="header-left">
-        <div class="header-top">
-          <button @click="goHome" class="back-btn" title="返回主页">
-            <Home :size="18" />
-          </button>
-          <h1 class="page-title">
-            <Zap :size="28" class="title-icon" />
-            Skill 智能模块
-          </h1>
-        </div>
-        <p class="page-subtitle">创建和管理智能技能，自动化知识处理流程</p>
-      </div>
-      <div class="header-actions">
-        <button @click="showCreateModal = true" class="create-btn">
-          <Plus :size="18" />
+    <PageHeader
+      kicker="LAB · SKILLS"
+      title="Skill 智能模块"
+      description="把重复的知识处理流程固化为可执行技能，支持手动触发与定时运行。"
+    >
+      <template #actions>
+        <AppButton size="sm" @click="showCreateModal = true">
+          <template #icon><Plus :size="14" /></template>
           创建 Skill
-        </button>
-      </div>
-    </div>
+        </AppButton>
+      </template>
+    </PageHeader>
 
     <div class="templates-section">
       <h2 class="section-title">
@@ -53,26 +45,13 @@
           <Rocket :size="18" class="title-icon" />
           我的 Skills
         </h2>
-        <div class="filter-tabs">
-          <button 
-            :class="{ active: filterType === 'all' }"
-            @click="filterType = 'all'"
-          >
-            全部
-          </button>
-          <button 
-            :class="{ active: filterType === 'manual' }"
-            @click="filterType = 'manual'"
-          >
-            手动
-          </button>
-          <button 
-            :class="{ active: filterType === 'scheduled' }"
-            @click="filterType = 'scheduled'"
-          >
-            定时
-          </button>
-        </div>
+        <SegmentedControl
+          :items="filterItems"
+          :model-value="filterType"
+          size="sm"
+          aria-label="按触发方式筛选"
+          @update:model-value="filterType = $event as 'all' | 'manual' | 'scheduled'"
+        />
       </div>
 
       <div class="skills-grid">
@@ -231,17 +210,16 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 import { useCategoryStore } from '@/stores/category'
+import { AppButton, PageHeader, SegmentedControl } from '@/components/ui'
 import { useNotificationStore } from '@/stores/notification'
 import { skillsApi } from '@/api/skills'
 import type { Skill, SkillTemplate } from '@/types/skill'
-import { 
-  Home, Zap, Plus, Package, Sparkles, Rocket, Play, Pause,
+import {
+  Zap, Plus, Package, Sparkles, Play, Pause,
   Edit3, Trash2, BarChart3, Calendar, X
 } from 'lucide-vue-next'
 
-const router = useRouter()
 const categoryStore = useCategoryStore()
 const notification = useNotificationStore()
 
@@ -259,15 +237,26 @@ const newSkill = ref({
   name: '',
   description: '',
   icon: '⚡',
-  color: '#0066FF',
+  color: '',
   trigger_type: 'manual',
   output_category_id: null as string | null
 })
 
-const colorOptions = [
-  '#0066FF', '#f59e0b', '#10b981', '#ef4444',
-  '#ec4899', '#8b5cf6', '#06b6d4', '#3b82f6'
+// 色板取自设计令牌，避免在组件里散落 hex；值在挂载时读取。
+const SWATCH_TOKENS = ['--gold', '--steel', '--sage', '--danger', '--success']
+const colorOptions = ref<string[]>([])
+
+const filterItems = [
+  { label: '全部', value: 'all' },
+  { label: '手动', value: 'manual' },
+  { label: '定时', value: 'scheduled' }
 ]
+
+function loadSwatches() {
+  const styles = getComputedStyle(document.documentElement)
+  colorOptions.value = SWATCH_TOKENS.map((token) => styles.getPropertyValue(token).trim()).filter(Boolean)
+  if (!newSkill.value.color) newSkill.value.color = colorOptions.value[0] ?? ''
+}
 
 const filteredSkills = computed(() => {
   if (filterType.value === 'all') return skills.value
@@ -275,6 +264,7 @@ const filteredSkills = computed(() => {
 })
 
 onMounted(async () => {
+  loadSwatches()
   await Promise.all([
     loadTemplates(),
     loadSkills(),
@@ -338,7 +328,7 @@ function resetNewSkill() {
     name: '',
     description: '',
     icon: '⚡',
-    color: '#0066FF',
+    color: colorOptions.value[0] ?? '',
     trigger_type: 'manual',
     output_category_id: null
   }
@@ -408,563 +398,524 @@ function formatDate(date: string): string {
   return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
 }
 
-function goHome() {
-  router.push('/')
-}
 </script>
 
-<style scoped lang="scss">
+<style scoped>
 .skills-page {
-  padding: 24px;
-  max-width: 1400px;
+  position: relative;
+  width: 100%;
+  max-width: 1200px;
   margin: 0 auto;
-  background: var(--bg-primary);
-  min-height: 100%;
-}
-
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 32px;
-}
-
-.header-left {
+  padding: 32px 48px 72px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 28px;
 }
 
-.header-top {
+.templates-section,
+.skills-section {
   display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.back-btn {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-hover);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  color: var(--text-secondary);
-  transition: all 0.2s;
-
-  &:hover {
-    background: var(--bg-active);
-    color: var(--text-primary);
-  }
-}
-
-.page-title {
-  font-size: 28px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--text-primary);
-  
-  .title-icon {
-    color: var(--tech-blue);
-  }
-}
-
-.page-subtitle {
-  font-size: 14px;
-  color: var(--text-muted);
-}
-
-.create-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 24px;
-  background: var(--primary-color);
-  border: none;
-  border-radius: var(--radius-md);
-  color: #000;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  
-  &:hover {
-    background: var(--primary-hover);
-    transform: translateY(-1px);
-  }
-}
-
-.templates-section, .skills-section {
-  margin-bottom: 32px;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .section-title {
-  font-size: 16px;
-  font-weight: 600;
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 20px;
-  color: var(--text-primary);
-  
-  .title-icon {
-    color: var(--tech-blue);
-  }
+  gap: 8px;
+  font-family: var(--font-display);
+  font-size: var(--fs-title-2);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.section-title .title-icon {
+  color: var(--t3);
 }
 
 .section-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
 }
 
-.filter-tabs {
-  display: flex;
-  gap: 8px;
-  
-  button {
-    padding: 8px 16px;
-    background: var(--bg-hover);
-    border: 1px solid var(--border-subtle);
-    border-radius: 20px;
-    color: var(--text-secondary);
-    font-size: 13px;
-    cursor: pointer;
-    transition: all 0.2s;
-    
-    &:hover {
-      background: var(--bg-active);
-    }
-    
-    &.active {
-      background: var(--tech-blue-muted);
-      border-color: var(--tech-blue);
-      color: var(--tech-blue);
-    }
-  }
-}
-
+/* ---- 模板库 ---- */
 .templates-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
 }
 
 .template-card {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 20px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-xl);
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--panel);
   cursor: pointer;
-  transition: all 0.2s;
-  
-  &:hover {
-    transform: translateY(-2px);
-    border-color: var(--border-default);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-  }
-  
-  .template-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  
-  .template-info {
-    flex: 1;
-  }
-  
-  .template-name {
-    font-size: 15px;
-    font-weight: 600;
-    margin-bottom: 4px;
-    color: var(--text-primary);
-  }
-  
-  .template-desc {
-    font-size: 12px;
-    color: var(--text-muted);
-  }
-  
-  .template-badge {
-    padding: 4px 10px;
-    border-radius: 10px;
-    font-size: 11px;
-    font-weight: 500;
-  }
+  transition: border-color var(--d-fast) var(--ease-out), background var(--d-fast) var(--ease-out);
 }
 
+.template-card:hover {
+  border-color: var(--gold-line);
+  background: var(--panel-2);
+}
+
+.template-icon {
+  flex: none;
+  display: inline-flex;
+}
+
+.template-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.template-name {
+  font-size: var(--fs-body);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.template-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 3px;
+  font-size: var(--fs-micro);
+  line-height: 1.7;
+  color: var(--t2);
+}
+
+.template-badge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+/* ---- 我的 Skills ---- */
 .skills-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 16px;
+  gap: 12px;
 }
 
 .skill-card {
-  position: relative;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-xl);
-  padding: 24px;
-  transition: all 0.2s;
-  
-  &:hover {
-    transform: translateY(-2px);
-    border-color: var(--border-default);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-  }
-  
-  &.inactive {
-    opacity: 0.6;
-  }
-  
-  .card-content {
-    position: relative;
-    z-index: 1;
-  }
-  
-  .card-header {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    margin-bottom: 12px;
-  }
-  
-  .skill-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  
-  .skill-info {
-    flex: 1;
-  }
-  
-  .skill-name {
-    font-size: 17px;
-    font-weight: 600;
-    margin-bottom: 6px;
-    color: var(--text-primary);
-  }
-  
-  .skill-type {
-    display: inline-block;
-    padding: 3px 10px;
-    border-radius: 10px;
-    font-size: 11px;
-    font-weight: 500;
-  }
-  
-  .skill-actions {
-    display: flex;
-    gap: 6px;
-    
-    .action-btn {
-      width: 28px;
-      height: 28px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: var(--bg-hover);
-      border: none;
-      border-radius: var(--radius-md);
-      cursor: pointer;
-      color: var(--text-secondary);
-      transition: all 0.2s;
-      
-      &:hover {
-        background: var(--bg-active);
-        color: var(--text-primary);
-      }
-      
-      &.danger:hover {
-        background: rgba(239, 68, 68, 0.1);
-        color: var(--accent-red);
-      }
-    }
-  }
-  
-  .skill-description {
-    font-size: 13px;
-    color: var(--text-muted);
-    line-height: 1.6;
-    margin-bottom: 16px;
-  }
-  
-  .card-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  
-  .skill-meta {
-    display: flex;
-    gap: 16px;
-  }
-  
-  .meta-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    color: var(--text-muted);
-  }
-  
-  .execute-btn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
-    background: var(--primary-color);
-    border: none;
-    border-radius: var(--radius-md);
-    color: #000;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-    
-    &:hover:not(:disabled) {
-      background: var(--primary-hover);
-      transform: translateY(-1px);
-    }
-    
-    &:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-  }
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--panel);
+  transition: border-color var(--d-fast) var(--ease-out);
 }
 
+.skill-card:hover {
+  border-color: var(--line-strong);
+}
+
+.skill-card.inactive {
+  opacity: 0.62;
+}
+
+.card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+}
+
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.skill-icon {
+  flex: none;
+  display: inline-flex;
+  margin-top: 1px;
+}
+
+.skill-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.skill-name {
+  font-size: var(--fs-body);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.skill-type {
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+.skill-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.action-btn {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-sm);
+  color: var(--t3);
+  transition: color var(--d-fast) var(--ease-out), background var(--d-fast) var(--ease-out);
+}
+
+.action-btn:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.action-btn.danger:hover {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.skill-description {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: var(--fs-micro);
+  line-height: 1.7;
+  color: var(--t2);
+}
+
+.card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.skill-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--t3);
+}
+
+.execute-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--gold-line);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-micro);
+  color: var(--gold);
+  transition: background var(--d-fast) var(--ease-out);
+}
+
+.execute-btn:hover:not(:disabled) {
+  background: var(--gold-soft);
+}
+
+.execute-btn:disabled {
+  border-color: var(--line);
+  color: var(--t3);
+  cursor: not-allowed;
+}
+
+/* ---- 空态 ---- */
 .empty-state {
+  grid-column: 1 / -1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 60px;
+  gap: 8px;
+  padding: 56px 16px;
   text-align: center;
-  
-  .empty-icon {
-    color: var(--text-muted);
-    margin-bottom: 16px;
-    opacity: 0.5;
-  }
-  
-  h3 {
-    font-size: 18px;
-    font-weight: 600;
-    margin-bottom: 8px;
-    color: var(--text-secondary);
-  }
-  
-  p {
-    font-size: 14px;
-    color: var(--text-muted);
-  }
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+  color: var(--t3);
 }
 
+.empty-icon {
+  color: var(--line-strong);
+}
+
+.empty-state h3 {
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  font-weight: 500;
+  color: var(--t2);
+}
+
+.empty-state p {
+  font-size: var(--fs-micro);
+  line-height: 1.7;
+}
+
+/* ---- 弹窗 ---- */
 .modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
+  inset: 0;
+  z-index: 60;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  padding: 24px;
+  background: var(--overlay);
+  backdrop-filter: blur(2px);
 }
 
 .modal {
-  width: 500px;
-  max-height: 80vh;
-  overflow-y: auto;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-xl);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 520px;
+  max-height: 86vh;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--panel);
+  overflow: hidden;
 }
 
 .modal-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 20px;
-  border-bottom: 1px solid var(--border-subtle);
-  
-  h3 {
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-  
-  .close-btn {
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    
-    &:hover {
-      color: var(--text-primary);
-    }
-  }
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.modal-header h3 {
+  font-family: var(--font-display);
+  font-size: var(--fs-title-3);
+  font-weight: 600;
+}
+
+.close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-sm);
+  color: var(--t3);
+}
+
+.close-btn:hover {
+  color: var(--text);
+  background: var(--panel-2);
 }
 
 .modal-body {
-  padding: 20px;
-}
-
-.form-group {
-  margin-bottom: 16px;
-  
-  label {
-    display: block;
-    font-size: 13px;
-    color: var(--text-secondary);
-    margin-bottom: 8px;
-  }
-  
-  input, textarea, select {
-    width: 100%;
-    padding: 10px 14px;
-    background: var(--bg-hover);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    color: var(--text-primary);
-    font-size: 14px;
-    
-    &:focus {
-      outline: none;
-      border-color: var(--tech-blue);
-    }
-    
-    &::placeholder {
-      color: var(--text-muted);
-    }
-  }
-  
-  textarea {
-    resize: vertical;
-    min-height: 80px;
-  }
-  
-  select option {
-    background: var(--bg-elevated);
-  }
-}
-
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-.color-picker {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.color-dot {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  cursor: pointer;
-  border: 2px solid transparent;
-  transition: all 0.2s;
-  
-  &:hover {
-    transform: scale(1.15);
-  }
-  
-  &.active {
-    border-color: var(--text-primary);
-  }
-}
-
-.execute-result {
-  margin-top: 16px;
-  padding: 16px;
-  background: var(--bg-hover);
-  border-radius: var(--radius-md);
-  
-  h4 {
-    font-size: 13px;
-    color: var(--text-secondary);
-    margin-bottom: 8px;
-  }
-  
-  pre {
-    font-size: 12px;
-    color: var(--tech-blue);
-    white-space: pre-wrap;
-    word-break: break-all;
-  }
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  overflow-y: auto;
 }
 
 .modal-footer {
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
-  padding: 20px;
-  border-top: 1px solid var(--border-subtle);
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--line);
 }
 
-.btn-cancel, .btn-confirm {
-  padding: 10px 20px;
-  border-radius: var(--radius-md);
-  font-size: 14px;
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-group label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+  color: var(--t3);
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--fs-micro);
+  outline: none;
+  transition: border-color var(--d-fast) var(--ease-out);
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  border-color: var(--gold-line);
+}
+
+.form-group textarea {
+  font-family: var(--font-mono);
+  line-height: 1.7;
+  resize: vertical;
+}
+
+.color-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.color-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
   cursor: pointer;
-  transition: all 0.2s;
+  border: 2px solid transparent;
+  transition: border-color var(--d-fast) var(--ease-out), transform var(--d-fast) var(--ease-out);
+}
+
+.color-dot:hover {
+  transform: scale(1.1);
+}
+
+.color-dot.active {
+  outline: 1px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.execute-result {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+}
+
+.execute-result h4 {
+  margin-bottom: 6px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+  color: var(--t3);
+}
+
+.execute-result pre {
+  max-height: 260px;
+  margin: 0;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.7;
+  color: var(--t2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.btn-cancel,
+.btn-confirm {
+  height: 30px;
+  padding: 0 14px;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-micro);
 }
 
 .btn-cancel {
-  background: transparent;
-  border: 1px solid var(--border-default);
-  color: var(--text-secondary);
-  
-  &:hover {
-    background: var(--bg-hover);
-  }
+  border: 1px solid var(--line-strong);
+  color: var(--t2);
+}
+
+.btn-cancel:hover {
+  color: var(--text);
 }
 
 .btn-confirm {
-  background: var(--primary-color);
-  border: none;
-  color: #000;
+  background: var(--gold);
+  color: var(--gold-ink);
   font-weight: 500;
-  
-  &:hover:not(:disabled) {
-    background: var(--primary-hover);
-  }
-  
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+}
+
+.btn-confirm:hover:not(:disabled) {
+  background: var(--gold-deep);
+}
+
+.btn-confirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 1024px) {
+  .skills-page {
+    padding: 28px 24px 64px;
   }
 }
 
-@media (max-width: 768px) {
-  .page-header {
-    flex-direction: column;
-    gap: 16px;
+@media (max-width: 767px) {
+  .skills-page {
+    padding: 24px 16px 56px;
+    gap: 24px;
   }
-  
-  .skills-grid, .templates-grid {
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .templates-grid,
+  .skills-grid {
     grid-template-columns: 1fr;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .modal {
+    max-height: 92vh;
   }
 }
 </style>

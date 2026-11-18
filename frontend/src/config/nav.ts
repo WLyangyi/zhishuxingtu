@@ -50,9 +50,9 @@ const PAGE_META: Record<string, PageMeta> = {
   Graph: { title: '关系图谱', kicker: 'STAR ATLAS', group: 'observe' },
   AIAssistant: { title: 'AI 助手', kicker: 'OBSERVER', group: 'ai' },
   AgentObservability: { title: '可观测面板', kicker: 'OBSERVABILITY', group: 'ai' },
-  Skills: { title: 'Skills', kicker: 'SKILLS', group: 'lab' },
+  Skills: { title: 'Skill 模块', kicker: 'SKILLS', group: 'lab' },
   PromptLab: { title: '提示词实验室', kicker: 'LAB', group: 'lab' },
-  Prompts: { title: 'Prompts', kicker: 'PROMPTS', group: 'lab' },
+  Prompts: { title: '提示词管理', kicker: 'PROMPTS', group: 'lab' },
   Search: { title: '全局搜索', kicker: 'SEARCH', group: 'create' },
   ImportHistory: { title: '导入历史', kicker: 'IMPORT', group: 'create' },
   DevUI: { title: '组件库', kicker: 'DESIGN SYSTEM', group: 'dev' }
