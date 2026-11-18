@@ -41,8 +41,11 @@
           <span
             class="tree__more"
             role="button"
+            tabindex="0"
             aria-label="管理分类"
             @click.stop="openTreeMenu($event, { type: 'category', id: category.id, name: category.name })"
+            @keydown.enter.stop.prevent="openTreeMenu($event, { type: 'category', id: category.id, name: category.name })"
+            @keydown.space.stop.prevent="openTreeMenu($event, { type: 'category', id: category.id, name: category.name })"
           >
             <MoreHorizontal :size="13" :stroke-width="1.8" />
           </span>
@@ -62,8 +65,11 @@
           <span
             class="tree__more"
             role="button"
+            tabindex="0"
             aria-label="管理文件夹"
             @click.stop="openTreeMenu($event, { type: 'folder', id: folder.id, name: folder.name, categoryId: folder.category_id, parentId: folder.parent_id })"
+            @keydown.enter.stop.prevent="openTreeMenu($event, { type: 'folder', id: folder.id, name: folder.name, categoryId: folder.category_id, parentId: folder.parent_id })"
+            @keydown.space.stop.prevent="openTreeMenu($event, { type: 'folder', id: folder.id, name: folder.name, categoryId: folder.category_id, parentId: folder.parent_id })"
           >
             <MoreHorizontal :size="13" :stroke-width="1.8" />
           </span>
@@ -470,7 +476,7 @@ const treeMenu = reactive({
   target: null as TreeMenuTarget | null
 })
 
-function openTreeMenu(event: MouseEvent, target: TreeMenuTarget) {
+function openTreeMenu(event: MouseEvent | KeyboardEvent, target: TreeMenuTarget) {
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
   treeMenu.open = true
   treeMenu.x = rect.right + 6

@@ -1,6 +1,6 @@
 <template>
   <div ref="wrap" class="graph">
-    <canvas ref="canvas" class="graph__canvas" />
+    <canvas ref="canvas" class="graph__canvas" role="img" aria-label="知识图谱画布，使用页面内的搜索、类型过滤与布局控件浏览，节点可在画布上拖拽调整" />
 
     <div class="graph__outline outline-word" aria-hidden="true">STAR ATLAS</div>
 
