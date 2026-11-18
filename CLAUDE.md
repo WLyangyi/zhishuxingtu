@@ -46,9 +46,9 @@ npm run build
 
 | 层级 | 技术 |
 |------|------|
-| 前端 | Vue 3.4 + TypeScript + Pinia + Naive UI + Tailwind CSS + D3 |
+| 前端 | Vue 3.4 + TypeScript + Pinia + vue-router + Tailwind CSS + D3 + Reka UI（naive-ui / gsap / lenis / sass 均已移除；设计方向见 `docs/design/深空观测站-前端设计文档.md` v2.2，P0–P6 已完成） |
 | 后端 | Python 3.11 + FastAPI + SQLAlchemy + FAISS + LangChain + LangGraph |
-| AI | DeepSeek agent（LangGraph 编排器 + 4 专职子 Agent + ReAct + 三查）+ qwen Embedding + GLM 裁判 + RAG + SSE |
+| AI | DeepSeek agent（LangGraph 编排器 + 4 专职子 Agent + ReAct + 三查）+ qwen Embedding/裁判 + RAG + SSE |
 
 ## 架构概览
 
@@ -79,7 +79,7 @@ npm run build
 - **MCP Server**: `backend/app/services/mcp_server.py` - 知识库 MCP 化（`/mcp` 端点，API Key 认证，与 agent 共享工具层）
 - **AI 问答**: `backend/app/services/rag_chain.py` - RAG 检索 + 流式输出（agent 降级 fallback）
 - **向量检索**: `backend/app/services/vector_store.py` - FAISS 向量索引 + 混合检索
-- **评估体系**: `backend/eval/` + `services/llm/judge_metrics.py` - 50 条 eval set（含 `expected_intent` 标注）+ 14 条意图边界用例 + `JUDGE_PROVIDER` 独立裁判（默认 GLM-5.3-Flash，P22 坏输出容错）+ 延迟/token/路由准确率口径（`run_eval.py` 新旧对比，报告在 `eval/reports/`）
+- **评估体系**: `backend/eval/` + `services/llm/judge_metrics.py` - 50 条 eval set（含 `expected_intent` 标注）+ 14 条意图边界用例 + `QWEN_JUDGE_MODEL` 独立裁判（P22 坏输出容错）+ 延迟/token/路由准确率口径（`run_eval.py` 新旧对比，报告在 `eval/reports/`）
 - **Prompt 系统**: PromptLab + Skill Chain + Few-Shot 学习
 
 ## 数据模型
@@ -97,15 +97,13 @@ npm run build
 ## 环境变量
 
 后端需要配置 `backend/.env` 文件（参考 `.env.example`）：
-- `DASHSCOPE_API_KEY` - 阿里云 DashScope API（向量化）
+- `DASHSCOPE_API_KEY` - 阿里云 DashScope API（向量化 + 裁判）
 - `JWT_SECRET_KEY` - JWT 认证密钥
 - `DATABASE_URL` - SQLite 数据库路径
 - `FAISS_INDEX_PATH` - 向量索引路径
 - `DEEPSEEK_API_KEY` / `DEEPSEEK_MODEL=deepseek-v4-flash` / `DEEPSEEK_THINKING=disabled` - Agent 推理（M1，P2 必须关思考）
 - `QWEN_EMBEDDING_MODEL=qwen3.7-text-embedding` - Embedding（M0）
-- `JUDGE_PROVIDER=glm` - 评估裁判实现（glm=智谱 GLM-5.3-Flash，qwen=回退千问；跨裁判分数不可直接比较）
-- `GLM_API_KEY` / `GLM_BASE_URL` / `GLM_JUDGE_MODEL=glm-5.3-flash` - 智谱 OpenAI 兼容端点裁判（结构化输出走 JSON mode；GLM 的 tool_choice 仅支持 auto）
-- `QWEN_JUDGE_MODEL` - 仅 `JUDGE_PROVIDER=qwen` 时使用的回退裁判（历史口径：qwen3.7-max/plus 额度耗尽 403、flash 拼写漂移→P22 容错）
+- `QWEN_JUDGE_MODEL=qwen3.7-plus-2026-05-26` - 评估裁判（qwen3.7-max/plus 免费额度连环耗尽 403、qwen3.7-flash 拼写漂移不可用→P22 容错已加；勿切回耗尽的模型）
 - `AGENT_MULTI_AGENT=false` - M7 A′ 多 Agent 图开关（true=编排器路由 4 子 Agent 的平铺图，false=单 Agent 图回退位）
 - `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL` - 可观测（M2，fail-silent；trace 上报遗留，需干净 `.venv-clean`）
 - `MCP_API_KEY` - MCP Server `/mcp` 认证（M3，为空则 fail-closed 拒绝所有请求）
@@ -136,3 +134,4 @@ npm run build
 - [Agentic RAG 实施计划](docs/agentic-rag-upgrade/实施计划.md) — M0-M7 执行步骤清单（含验收标准与 eval 硬门槛）
 - [M7 多 Agent 协作计划](docs/agentic-rag-upgrade/多Agent协作计划.md) — 三方案对比 / A′ 平铺图定稿 / P0 风险清单 / 决策拍板
 - [Agentic RAG 待做清单](docs/agentic-rag-upgrade/待做清单.md) — 收尾遗留与新发现缺陷（含 M7 盘点）
+- [升级开发文档](docs/upgrade-2026-11-18/升级开发文档.md) — 前端重构收官后的下一阶段路线图（P0 稳健性加固 / P1 数据层与测试 / P2 体验增强，含验收标准）
