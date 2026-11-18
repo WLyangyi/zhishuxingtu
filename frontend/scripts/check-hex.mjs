@@ -3,7 +3,7 @@ import { extname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = fileURLToPath(new URL('../src/', import.meta.url))
-const TARGETS = ['components/ui', 'components/domain', 'components/layout', 'lib', 'views/DevUI.vue', 'views/Home.vue', 'views/Login.vue', 'views/GraphView.vue', 'views/Library.vue', 'views/NoteEditor.vue']
+const TARGETS = ['components/ui', 'components/domain', 'components/layout', 'lib', 'views/DevUI.vue', 'views/Home.vue', 'views/Login.vue', 'views/GraphView.vue', 'views/Library.vue', 'views/NoteEditor.vue', 'views/SearchResults.vue', 'views/ImportHistory.vue']
 const EXTENSIONS = new Set(['.vue', '.css', '.ts', '.js'])
 const HEX = /#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g
 

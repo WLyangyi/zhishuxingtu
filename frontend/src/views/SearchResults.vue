@@ -1,579 +1,516 @@
 <template>
-  <div class="search-page">
-    <div class="search-header">
-      <div class="header-top">
-        <button @click="goHome" class="back-btn" title="返回主页">
-          <Home :size="18" />
+  <div class="search">
+    <div class="search__inner">
+      <header class="search__head">
+        <span class="readout">SEARCH · 全局搜索</span>
+
+        <div class="search__input-wrap">
+          <Search :size="18" :stroke-width="1.8" class="search__icon" />
+          <input
+            ref="inputRef"
+            v-model="query"
+            class="search__input"
+            type="text"
+            placeholder="搜索标题、正文、标签或 [[双链]]…"
+            aria-label="全局搜索"
+            @keydown.esc="query = ''"
+          />
+          <Kbd keys="ESC" />
+        </div>
+      </header>
+
+      <nav v-if="query.trim()" class="search__tabs" aria-label="结果类型">
+        <button
+          v-for="tab in tabs"
+          :key="tab.value"
+          type="button"
+          :class="['search__tab', filter === tab.value && 'search__tab--active']"
+          @click="filter = tab.value"
+        >
+          {{ tab.label }}
+          <span class="num search__tab-count">{{ tab.count }}</span>
         </button>
-        <h1 class="page-title">
-          <Search :size="24" class="title-icon" />
-          全局搜索
-        </h1>
-      </div>
-      <div class="search-input-wrapper">
-        <Search :size="20" class="search-icon" />
-        <input
-          ref="searchInputRef"
-          v-model="searchQuery"
-          type="text"
-          placeholder="搜索笔记、标签、链接..."
-          class="search-input"
-          @input="handleSearch"
-        />
-        <kbd class="search-shortcut">ESC</kbd>
-      </div>
-    </div>
+      </nav>
 
-    <div class="search-content">
-      <div class="results-section" v-if="searchQuery">
-        <div class="results-header">
-          <span class="results-count">找到 {{ totalResults }} 个结果</span>
-          <div class="filter-tabs">
-            <button 
-              :class="{ active: filterType === 'all' }"
-              @click="filterType = 'all'"
-            >
-              全部
-            </button>
-            <button 
-              :class="{ active: filterType === 'notes' }"
-              @click="filterType = 'notes'"
-            >
-              笔记
-            </button>
-            <button 
-              :class="{ active: filterType === 'tags' }"
-              @click="filterType = 'tags'"
-            >
-              标签
-            </button>
-          </div>
+      <div v-if="loading" class="search__skeleton">
+        <Skeleton v-for="index in 5" :key="index" :height="16" />
+      </div>
+
+      <div v-else-if="!query.trim()" class="search__start">
+        <Search :size="30" :stroke-width="1.4" class="search__start-icon" />
+        <h1 class="search__start-title">搜索你的知识库</h1>
+        <p class="search__start-desc">标题、正文、标签与双链，一次搜完。输入关键词开始。</p>
+        <div class="search__tips">
+          <span><code>#标签</code> 定位标签</span>
+          <span><code>[[标题]]</code> 查双链</span>
+          <span><Kbd keys="ESC" /> 清空</span>
         </div>
+      </div>
 
-        <div class="results-list">
-          <div 
-            v-for="result in filteredResults" 
-            :key="result.id"
-            class="result-item"
-            @click="openResult(result)"
+      <div v-else-if="!total" class="search__state">
+        <EmptyState
+          title="没有找到结果"
+          :description="`没有与「${query.trim()}」匹配的笔记、标签或链接。`"
+        >
+          <AppButton size="sm" variant="secondary" @click="askAi">向 AI 提问</AppButton>
+        </EmptyState>
+      </div>
+
+      <div v-else class="search__results">
+        <section v-if="showNotes && noteHits.length" class="search__group">
+          <header class="search__group-head">
+            <span class="readout">NOTES · 笔记</span>
+            <span class="num">{{ noteHits.length }}</span>
+          </header>
+
+          <RouterLink
+            v-for="note in noteHits"
+            :key="note.id"
+            :to="`/notes/${note.id}`"
+            class="hit"
           >
-            <div class="result-icon">
-              <FileText v-if="result.type === 'note'" :size="20" />
-              <Tag v-else-if="result.type === 'tag'" :size="20" />
-              <Link v-else :size="20" />
+            <div class="hit__main">
+              <h2 class="hit__title" v-html="highlightHtml(note.title, query)" />
+              <p class="hit__excerpt" v-html="highlightHtml(excerptOf(note), query)" />
             </div>
-            <div class="result-content">
-              <h3 class="result-title" v-html="highlightText(result.title)"></h3>
-              <p class="result-excerpt" v-if="result.excerpt" v-html="highlightText(result.excerpt)"></p>
-              <div class="result-meta">
-                <span class="meta-item">
-                  <Folder :size="12" />
-                  {{ result.category || '未分类' }}
-                </span>
-                <span class="meta-item" v-if="result.updated_at">
-                  <Clock :size="12" />
-                  {{ formatDate(result.updated_at) }}
-                </span>
-              </div>
+            <span class="readout hit__meta">
+              {{ folderName(note) }} · {{ relativeTime(note.updated_at) }}
+            </span>
+          </RouterLink>
+        </section>
+
+        <section v-if="showTags && tagHits.length" class="search__group">
+          <header class="search__group-head">
+            <span class="readout">TAGS · 标签</span>
+            <span class="num">{{ tagHits.length }}</span>
+          </header>
+
+          <button
+            v-for="tag in tagHits"
+            :key="tag.id"
+            type="button"
+            class="hit"
+            @click="router.push({ path: '/library', query: { tag: tag.id } })"
+          >
+            <div class="hit__main">
+              <h2 class="hit__title" v-html="highlightHtml(`#${tag.name}`, query)" />
+              <p class="hit__excerpt">{{ tag.count }} 篇笔记使用</p>
             </div>
-            <ChevronRight :size="16" class="result-arrow" />
-          </div>
+            <span class="readout hit__meta">TAG</span>
+          </button>
+        </section>
 
-          <div v-if="filteredResults.length === 0" class="empty-results">
-            <Search :size="48" class="empty-icon" />
-            <h3>未找到结果</h3>
-            <p>尝试使用不同的关键词</p>
-          </div>
-        </div>
-      </div>
+        <section v-if="showLinks && linkHits.length" class="search__group">
+          <header class="search__group-head">
+            <span class="readout">LINKS · 双链</span>
+            <span class="num">{{ linkHits.length }}</span>
+          </header>
 
-      <div class="empty-state" v-else>
-        <Search :size="64" class="empty-icon" />
-        <h2>搜索你的知识库</h2>
-        <p>输入关键词查找笔记、标签和链接</p>
-        <div class="quick-tips">
-          <div class="tip">
-            <Hash :size="14" />
-            使用 <code>#标签</code> 搜索特定标签
-          </div>
-          <div class="tip">
-            <Link :size="14" />
-            使用 <code>[[标题]]</code> 搜索双向链接
-          </div>
-        </div>
+          <button
+            v-for="hit in linkHits"
+            :key="hit.title"
+            type="button"
+            class="hit"
+            @click="openLink(hit)"
+          >
+            <div class="hit__main">
+              <h2 class="hit__title" v-html="highlightHtml(`[[${hit.title}]]`, query)" />
+              <p class="hit__excerpt">来自「{{ hit.sourceTitle }}」{{ hit.targetId ? ' · 目标笔记存在' : ' · 断链' }}</p>
+            </div>
+            <span class="readout hit__meta">{{ hit.targetId ? 'NOTE' : 'BROKEN' }}</span>
+          </button>
+        </section>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useNotesStore } from '@/stores/notes'
-import { useTagsStore } from '@/stores/tags'
-import { useCategoryStore } from '@/stores/category'
-import { 
-  Search, Home, FileText, Tag, Link, Folder, Clock,
-  ChevronRight, Hash
-} from 'lucide-vue-next'
+import { Search } from 'lucide-vue-next'
+import AppButton from '@/components/ui/AppButton.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import Kbd from '@/components/ui/Kbd.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
+import { notesApi } from '@/api/notes'
+import { useFoldersStore } from '@/stores/folders'
+import { flattenFolders, tagCounts } from '@/lib/library'
+import {
+  collectLinkHits,
+  excerptAround,
+  highlightHtml,
+  matchNotes,
+  type LinkHit
+} from '@/lib/search'
+import { relativeTime } from '@/lib/time'
+import type { Note } from '@/types/note'
 
 const route = useRoute()
 const router = useRouter()
-const notesStore = useNotesStore()
-const tagsStore = useTagsStore()
-const categoryStore = useCategoryStore()
+const foldersStore = useFoldersStore()
 
-const searchQuery = ref('')
-const filterType = ref<'all' | 'notes' | 'tags'>('all')
-const searchInputRef = ref<HTMLInputElement | null>(null)
+const inputRef = ref<HTMLInputElement | null>(null)
+const allNotes = ref<Note[]>([])
+const loading = ref(true)
+const query = ref('')
+const filter = ref<'all' | 'notes' | 'tags' | 'links'>('all')
 
-interface SearchResult {
-  id: string
-  type: 'note' | 'tag' | 'link'
-  title: string
-  excerpt?: string
-  category?: string
-  updated_at?: string
-}
+const noteHits = computed(() => matchNotes(allNotes.value, query.value))
+const tagHits = computed(() => {
+  const keyword = query.value.trim().toLowerCase()
+  if (!keyword) return []
+  return tagCounts(allNotes.value).filter((tag) => tag.name.toLowerCase().includes(keyword))
+})
+const linkHits = computed(() => collectLinkHits(allNotes.value, query.value))
 
-const results = computed<SearchResult[]>(() => {
-  if (!searchQuery.value.trim()) return []
-  
-  const query = searchQuery.value.toLowerCase()
-  const results: SearchResult[] = []
-  
-  notesStore.notes.forEach(note => {
-    if (note.title.toLowerCase().includes(query) || 
-        (note.content && note.content.toLowerCase().includes(query))) {
-      const cat = categoryStore.categories.find(c => c.id === note.category_id)
-      results.push({
-        id: note.id,
-        type: 'note',
-        title: note.title,
-        excerpt: getExcerpt(note.content, query),
-        category: cat?.name,
-        updated_at: note.updated_at
-      })
-    }
-  })
-  
-  tagsStore.tags.forEach(tag => {
-    if (tag.name.toLowerCase().includes(query)) {
-      results.push({
-        id: tag.id,
-        type: 'tag',
-        title: tag.name
-      })
-    }
-  })
-  
-  return results
+const total = computed(() => noteHits.value.length + tagHits.value.length + linkHits.value.length)
+
+const tabs = computed(() => [
+  { label: '全部', value: 'all' as const, count: total.value },
+  { label: '笔记', value: 'notes' as const, count: noteHits.value.length },
+  { label: '标签', value: 'tags' as const, count: tagHits.value.length },
+  { label: '链接', value: 'links' as const, count: linkHits.value.length }
+])
+
+const showNotes = computed(() => filter.value === 'all' || filter.value === 'notes')
+const showTags = computed(() => filter.value === 'all' || filter.value === 'tags')
+const showLinks = computed(() => filter.value === 'all' || filter.value === 'links')
+
+const folderNames = computed(() => {
+  const map = new Map<string, string>()
+  for (const folder of flattenFolders(foldersStore.folders)) {
+    map.set(folder.id, folder.name)
+  }
+  return map
 })
 
-const filteredResults = computed(() => {
-  if (filterType.value === 'all') return results.value
-  if (filterType.value === 'notes') return results.value.filter(r => r.type === 'note')
-  if (filterType.value === 'tags') return results.value.filter(r => r.type === 'tag')
-  return results.value
-})
-
-const totalResults = computed(() => results.value.length)
-
-function getExcerpt(content: string | null | undefined, query: string): string {
-  if (!content) return ''
-  const lowerContent = content.toLowerCase()
-  const index = lowerContent.indexOf(query)
-  if (index === -1) return content.slice(0, 100)
-  
-  const start = Math.max(0, index - 30)
-  const end = Math.min(content.length, index + query.length + 50)
-  return (start > 0 ? '...' : '') + content.slice(start, end) + (end < content.length ? '...' : '')
+function folderName(note: Note) {
+  return (note.folder_id && folderNames.value.get(note.folder_id)) || '未归档'
 }
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
+function excerptOf(note: Note) {
+  return excerptAround(note.content, query.value)
 }
 
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+function openLink(hit: LinkHit) {
+  router.push(`/notes/${hit.targetId ?? hit.sourceId}`)
 }
 
-function highlightText(text: string): string {
-  if (!searchQuery.value) return escapeHtml(text)
-  const escapedText = escapeHtml(text)
-  const escapedQuery = escapeRegExp(escapeHtml(searchQuery.value))
-  const regex = new RegExp(`(${escapedQuery})`, 'gi')
-  return escapedText.replace(regex, '<mark>$1</mark>')
+function askAi() {
+  router.push({ path: '/ai', query: { q: query.value.trim() } })
 }
 
-function formatDate(date: string): string {
-  const d = new Date(date)
-  return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
-}
+async function loadAllNotes() {
+  loading.value = true
+  try {
+    const first = await notesApi.list({ page_size: 100, page: 1 })
+    const items = [...first.data.items]
+    const totalCount = first.data.total
+    let page = 1
 
-function handleSearch() {
-}
+    while (items.length < totalCount && page < 5) {
+      page += 1
+      const next = await notesApi.list({ page_size: 100, page })
+      items.push(...next.data.items)
+    }
 
-function openResult(result: SearchResult) {
-  if (result.type === 'note') {
-    router.push(`/notes/${result.id}`)
-  } else if (result.type === 'tag') {
-    router.push({ path: '/search', query: { q: `#${result.title}` } })
+    allNotes.value = items
+  } catch {
+    allNotes.value = []
+  } finally {
+    loading.value = false
   }
 }
 
-function goHome() {
-  router.push('/')
+function syncQuery() {
+  const value = route.query.q
+  query.value = typeof value === 'string' ? value : ''
 }
+
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') query.value = ''
+}
+
+watch(() => route.query.q, syncQuery)
+
+watch(query, (value) => {
+  if (value.trim()) {
+    router.replace({ path: '/search', query: { q: value.trim() } })
+  } else {
+    router.replace({ path: '/search' })
+  }
+})
 
 onMounted(async () => {
-  await Promise.all([
-    notesStore.fetchNotes(),
-    tagsStore.fetchTags(),
-    categoryStore.fetchCategories()
-  ])
-  
-  if (route.query.q) {
-    searchQuery.value = route.query.q as string
-  }
-  
-  searchInputRef.value?.focus()
-  
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      searchQuery.value = ''
-    }
-  })
+  syncQuery()
+  await Promise.allSettled([loadAllNotes(), foldersStore.fetchFolders()])
+  inputRef.value?.focus()
+  window.addEventListener('keydown', onKeydown)
 })
 
-watch(() => route.query.q, (q) => {
-  if (q) {
-    searchQuery.value = q as string
-  }
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
 })
 </script>
 
-<style scoped lang="scss">
-.search-page {
+<style scoped>
+.search {
   min-height: 100%;
-  background: var(--bg-primary);
+  padding: 44px 32px 80px;
 }
 
-.search-header {
-  padding: 24px 32px;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.header-top {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.back-btn {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-hover);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  color: var(--text-secondary);
-  transition: all 0.2s;
-
-  &:hover {
-    background: var(--bg-active);
-    color: var(--text-primary);
-  }
-}
-
-.page-title {
-  font-size: 24px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--text-primary);
-  
-  .title-icon {
-    color: var(--tech-blue);
-  }
-}
-
-.search-input-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 20px;
-  background: var(--bg-hover);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-xl);
-  transition: all 0.2s;
-  
-  &:focus-within {
-    border-color: var(--tech-blue);
-    box-shadow: 0 0 0 3px var(--tech-blue-muted);
-  }
-  
-  .search-icon {
-    color: var(--text-muted);
-  }
-  
-  .search-input {
-    flex: 1;
-    background: transparent;
-    border: none;
-    font-size: 16px;
-    color: var(--text-primary);
-    
-    &:focus {
-      outline: none;
-    }
-    
-    &::placeholder {
-      color: var(--text-muted);
-    }
-  }
-  
-  .search-shortcut {
-    padding: 4px 8px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    font-size: 11px;
-    color: var(--text-muted);
-    font-family: 'JetBrains Mono', monospace;
-  }
-}
-
-.search-content {
-  padding: 24px 32px;
-  max-width: 900px;
+.search__inner {
+  width: 100%;
+  max-width: 880px;
   margin: 0 auto;
 }
 
-.results-section {
-  .results-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-  }
-  
-  .results-count {
-    font-size: 14px;
-    color: var(--text-muted);
-  }
-}
-
-.filter-tabs {
-  display: flex;
-  gap: 8px;
-  
-  button {
-    padding: 6px 14px;
-    background: var(--bg-hover);
-    border: 1px solid var(--border-subtle);
-    border-radius: 16px;
-    color: var(--text-secondary);
-    font-size: 13px;
-    cursor: pointer;
-    transition: all 0.2s;
-    
-    &:hover {
-      background: var(--bg-active);
-    }
-    
-    &.active {
-      background: var(--tech-blue-muted);
-      border-color: var(--tech-blue);
-      color: var(--tech-blue);
-    }
-  }
-}
-
-.results-list {
+.search__head {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 18px;
 }
 
-.result-item {
+.search__input-wrap {
   display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  padding: 20px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-xl);
-  cursor: pointer;
-  transition: all 0.2s;
-  
-  &:hover {
-    background: var(--bg-hover);
-    border-color: var(--border-default);
-    transform: translateX(4px);
-    
-    .result-arrow {
-      opacity: 1;
-      transform: translateX(4px);
-    }
-  }
-  
-  .result-icon {
-    width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--tech-blue-muted);
-    border-radius: var(--radius-lg);
-    color: var(--tech-blue);
-    flex-shrink: 0;
-  }
-  
-  .result-content {
-    flex: 1;
-    min-width: 0;
-  }
-  
-  .result-title {
-    font-size: 16px;
-    font-weight: 600;
-    margin-bottom: 6px;
-    color: var(--text-primary);
-    
-    :deep(mark) {
-      background: var(--primary-muted);
-      color: var(--primary-color);
-      padding: 0 2px;
-      border-radius: 2px;
-    }
-  }
-  
-  .result-excerpt {
-    font-size: 13px;
-    color: var(--text-muted);
-    margin-bottom: 8px;
-    line-height: 1.5;
-    
-    :deep(mark) {
-      background: var(--primary-muted);
-      color: var(--primary-color);
-      padding: 0 2px;
-      border-radius: 2px;
-    }
-  }
-  
-  .result-meta {
-    display: flex;
-    gap: 16px;
-  }
-  
-  .meta-item {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 12px;
-    color: var(--text-muted);
-  }
-  
-  .result-arrow {
-    color: var(--text-muted);
-    opacity: 0;
-    transition: all 0.2s;
-    margin-top: 12px;
-  }
-}
-
-.empty-results {
-  display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 60px;
-  text-align: center;
-  
-  .empty-icon {
-    color: var(--text-muted);
-    margin-bottom: 16px;
-    opacity: 0.5;
-  }
-  
-  h3 {
-    font-size: 18px;
-    font-weight: 600;
-    margin-bottom: 8px;
-    color: var(--text-secondary);
-  }
-  
-  p {
-    font-size: 14px;
-    color: var(--text-muted);
-  }
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 80px 20px;
-  text-align: center;
-  
-  .empty-icon {
-    color: var(--text-muted);
-    margin-bottom: 24px;
-    opacity: 0.3;
-  }
-  
-  h2 {
-    font-size: 24px;
-    font-weight: 600;
-    margin-bottom: 8px;
-    color: var(--text-primary);
-  }
-  
-  p {
-    font-size: 15px;
-    color: var(--text-muted);
-    margin-bottom: 32px;
-  }
-}
-
-.quick-tips {
-  display: flex;
-  flex-direction: column;
   gap: 12px;
-  
-  .tip {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 20px;
-    background: var(--bg-hover);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
-    font-size: 13px;
-    color: var(--text-secondary);
-    
-    code {
-      padding: 2px 8px;
-      background: var(--tech-blue-muted);
-      color: var(--tech-blue);
-      border-radius: 4px;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 12px;
-    }
+  padding: 10px 0 12px;
+  border-bottom: 1px solid var(--line-strong);
+  transition: border-color var(--d-fast) var(--ease-out);
+}
+
+.search__input-wrap:focus-within {
+  border-color: var(--gold);
+}
+
+.search__icon {
+  color: var(--t3);
+  flex: none;
+}
+
+.search__input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: none;
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  color: var(--text);
+}
+
+.search__input::placeholder {
+  font-size: 20px;
+  color: var(--t3);
+}
+
+.search__tabs {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-top: 26px;
+  border-bottom: 1px solid var(--line);
+}
+
+.search__tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 0 10px;
+  font-size: 12px;
+  color: var(--t3);
+  transition: color var(--d-fast) var(--ease-out);
+}
+
+.search__tab:hover {
+  color: var(--t2);
+}
+
+.search__tab--active {
+  color: var(--gold);
+}
+
+.search__tab--active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: var(--gold);
+}
+
+.search__tab-count {
+  font-size: 9px;
+}
+
+.search__skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 28px;
+}
+
+.search__start {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 90px 20px 40px;
+  text-align: center;
+}
+
+.search__start-icon {
+  color: var(--gold);
+  margin-bottom: 16px;
+}
+
+.search__start-title {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+
+.search__start-desc {
+  margin-top: 8px;
+  max-width: 380px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--t3);
+}
+
+.search__tips {
+  display: flex;
+  gap: 22px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 24px;
+  font-size: 11px;
+  color: var(--t3);
+}
+
+.search__tips code {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--gold);
+}
+
+.search__state {
+  padding-top: 30px;
+}
+
+.search__group {
+  margin-top: 30px;
+}
+
+.search__group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.search__group-head .num {
+  font-size: 9px;
+  color: var(--t3);
+}
+
+.hit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 24px;
+  width: 100%;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  transition: transform var(--d-base) var(--ease-out),
+    background-color var(--d-base) var(--ease-out);
+}
+
+.hit:hover {
+  transform: translateX(5px);
+  background: color-mix(in srgb, var(--panel) 45%, transparent);
+}
+
+.hit__main {
+  min-width: 0;
+}
+
+.hit__title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hit:hover .hit__title {
+  color: var(--gold);
+}
+
+.hit__title :deep(mark),
+.hit__excerpt :deep(mark) {
+  background: transparent;
+  color: var(--gold);
+  border-bottom: 1px solid color-mix(in srgb, var(--gold) 65%, transparent);
+}
+
+.hit__excerpt {
+  margin-top: 5px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--t3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hit__meta {
+  font-size: 9px;
+  color: var(--t3);
+  transition: color var(--d-fast) var(--ease-out);
+}
+
+.hit:hover .hit__meta {
+  color: var(--t2);
+}
+
+@media (max-width: 767px) {
+  .search {
+    padding: 24px 16px 56px;
+  }
+
+  .search__input {
+    font-size: 20px;
+  }
+
+  .search__input::placeholder {
+    font-size: 15px;
+  }
+
+  .search__tabs {
+    gap: 16px;
+    overflow-x: auto;
+  }
+
+  .hit {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .hit__meta {
+    text-align: left;
   }
 }
 </style>
