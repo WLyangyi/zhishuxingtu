@@ -131,88 +131,86 @@
       </div>
     </div>
 
-    <div v-if="showCreateModal" class="modal-overlay" @click.self="closeCreateModal">
-      <div class="modal modal-large">
-        <div class="modal-header">
-          <h3>{{ editingPrompt ? '编辑提示词' : '创建提示词' }}</h3>
-          <button @click="closeCreateModal" class="close-btn">
-            <X :size="20" />
-          </button>
+    <AppModal
+      :open="showCreateModal"
+      :title="editingPrompt ? '编辑提示词' : '创建提示词'"
+      size="lg"
+      @update:open="(value) => !value && closeCreateModal()"
+    >
+      <div class="prompt-form">
+      <div class="form-row">
+        <div class="form-group">
+          <label>提示词名称 <span class="required">*</span></label>
+          <input v-model="promptForm.name" type="text" placeholder="输入提示词名称" />
         </div>
-        <div class="modal-body">
-          <div class="form-row">
-            <div class="form-group">
-              <label>提示词名称 <span class="required">*</span></label>
-              <input v-model="promptForm.name" type="text" placeholder="输入提示词名称" />
-            </div>
-            <div class="form-group">
-              <label>分类</label>
-              <select v-model="promptForm.category">
-                <option value="ai_chat">AI 对话</option>
-                <option value="ai_search">AI 搜索</option>
-                <option value="skill">技能模板</option>
-                <option value="custom">自定义</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label>描述</label>
-            <input v-model="promptForm.description" type="text" placeholder="简短描述此提示词的用途" />
-          </div>
-
-          <div class="form-group">
-            <label>系统提示词 (System Prompt) <span class="required">*</span></label>
-            <div class="variable-hint">
-              支持变量：{variable_name}，可用变量：current_date, current_weekday, context, question, conversation, content, resume_text
-            </div>
-            <textarea
-              v-model="promptForm.system_prompt"
-              placeholder="定义 AI 的角色、行为规则、限制等..."
-              rows="8"
-              class="code-textarea"
-            ></textarea>
-          </div>
-
-          <div class="form-group">
-            <label>用户提示词模板 (User Prompt Template)</label>
-            <div class="variable-hint">
-              用户输入将插入到此模板中，支持变量替换
-            </div>
-            <textarea
-              v-model="promptForm.user_prompt_template"
-              placeholder="可选，用于格式化用户输入..."
-              rows="4"
-              class="code-textarea"
-            ></textarea>
-          </div>
-
-          <div class="form-group">
-            <label>输出格式说明</label>
-            <input v-model="promptForm.output_format" type="text" placeholder="描述期望的输出格式，如：JSON、自由文本等" />
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button @click="closeCreateModal" class="btn-cancel">取消</button>
-          <button @click="handleSavePrompt" class="btn-confirm">
-            {{ editingPrompt ? '保存' : '创建' }}
-          </button>
+        <div class="form-group">
+          <label>分类</label>
+          <select v-model="promptForm.category">
+            <option value="ai_chat">AI 对话</option>
+            <option value="ai_search">AI 搜索</option>
+            <option value="skill">技能模板</option>
+            <option value="custom">自定义</option>
+          </select>
         </div>
       </div>
-    </div>
+
+      <div class="form-group">
+        <label>描述</label>
+        <input v-model="promptForm.description" type="text" placeholder="简短描述此提示词的用途" />
+      </div>
+
+      <div class="form-group">
+        <label>系统提示词 (System Prompt) <span class="required">*</span></label>
+        <div class="variable-hint">
+          支持变量：{variable_name}，可用变量：current_date, current_weekday, context, question, conversation, content, resume_text
+        </div>
+        <textarea
+          v-model="promptForm.system_prompt"
+          placeholder="定义 AI 的角色、行为规则、限制等..."
+          rows="8"
+          class="code-textarea"
+        ></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>用户提示词模板 (User Prompt Template)</label>
+        <div class="variable-hint">
+          用户输入将插入到此模板中，支持变量替换
+        </div>
+        <textarea
+          v-model="promptForm.user_prompt_template"
+          placeholder="可选，用于格式化用户输入..."
+          rows="4"
+          class="code-textarea"
+        ></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>输出格式说明</label>
+        <input v-model="promptForm.output_format" type="text" placeholder="描述期望的输出格式，如：JSON、自由文本等" />
+      </div>
+      </div>
+
+      <template #footer>
+        <AppButton variant="secondary" size="sm" @click="closeCreateModal">取消</AppButton>
+        <AppButton size="sm" @click="handleSavePrompt">
+          {{ editingPrompt ? '保存' : '创建' }}
+        </AppButton>
+      </template>
+    </AppModal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useNotificationStore } from '@/stores/notification'
-import { AppButton, PageHeader, SegmentedControl } from '@/components/ui'
+import { AppButton, AppModal, PageHeader, SegmentedControl } from '@/components/ui'
 import { promptsApi } from '@/api/prompts'
 import type { Prompt, PromptTemplate, PromptCategory } from '@/types/prompt'
 import { PROMPT_CATEGORIES } from '@/types/prompt'
 import {
   MessageSquare, Plus, Sparkles, BookOpen, Copy,
-  FileText, Edit3, Trash2, Play, Pause, Clock, X, RefreshCw
+  FileText, Edit3, Trash2, Play, Pause, Clock, RefreshCw
 } from 'lucide-vue-next'
 
 const notification = useNotificationStore()
@@ -735,79 +733,11 @@ function formatDate(date: string): string {
   line-height: 1.7;
 }
 
-/* ---- 弹窗 ---- */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: var(--overlay);
-  backdrop-filter: blur(2px);
-}
-
-.modal {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  max-width: 520px;
-  max-height: 86vh;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-lg);
-  background: var(--panel);
-  overflow: hidden;
-}
-
-.modal-large {
-  max-width: 720px;
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--line);
-}
-
-.modal-header h3 {
-  font-family: var(--font-display);
-  font-size: var(--fs-title-3);
-  font-weight: 600;
-}
-
-.close-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--r-sm);
-  color: var(--t3);
-}
-
-.close-btn:hover {
-  color: var(--text);
-  background: var(--panel-2);
-}
-
-.modal-body {
+/* ---- 弹窗内表单 ---- */
+.prompt-form {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 18px;
-  overflow-y: auto;
-}
-
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 18px;
-  border-top: 1px solid var(--line);
 }
 
 .form-row {
@@ -873,33 +803,6 @@ function formatDate(date: string): string {
   font-size: 9.5px;
   line-height: 1.7;
   color: var(--t3);
-}
-
-.btn-cancel,
-.btn-confirm {
-  height: 30px;
-  padding: 0 14px;
-  border-radius: var(--r-sm);
-  font-size: var(--fs-micro);
-}
-
-.btn-cancel {
-  border: 1px solid var(--line-strong);
-  color: var(--t2);
-}
-
-.btn-cancel:hover {
-  color: var(--text);
-}
-
-.btn-confirm {
-  background: var(--gold);
-  color: var(--gold-ink);
-  font-weight: 500;
-}
-
-.btn-confirm:hover {
-  background: var(--gold-deep);
 }
 
 .spinning {

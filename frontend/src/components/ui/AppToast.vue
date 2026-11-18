@@ -6,12 +6,12 @@
           v-for="item in toasts"
           :key="item.id"
           class="toast"
-          :class="`toast--${item.tone}`"
+          :class="`toast--${item.type}`"
           role="status"
         >
           <div class="toast__content">
             <p class="toast__title">{{ item.title }}</p>
-            <p v-if="item.description" class="toast__description">{{ item.description }}</p>
+            <p v-if="item.message" class="toast__description">{{ item.message }}</p>
           </div>
           <button class="toast__close" type="button" aria-label="关闭提示" @click="dismiss(item.id)">
             ×
@@ -23,9 +23,10 @@
 </template>
 
 <script setup lang="ts">
-import { useToast } from '@/lib/toast'
+import { useNotificationStore } from '@/stores/notification'
 
-const { toasts, dismiss } = useToast()
+const store = useNotificationStore()
+const { notifications: toasts, removeNotification: dismiss } = store
 </script>
 
 <style scoped>
@@ -56,6 +57,14 @@ const { toasts, dismiss } = useToast()
 
 .toast--error {
   border-left-color: var(--danger);
+}
+
+.toast--warning {
+  border-left-color: var(--gold-deep);
+}
+
+.toast--info {
+  border-left-color: var(--steel);
 }
 
 .toast__content {

@@ -1,17 +1,11 @@
 <template>
-  <Teleport to="body">
-    <Transition name="modal">
-      <div v-if="importStore.showResultModal && importStore.currentTask?.result" class="modal-overlay" @click.self="handleClose">
-        <div class="modal-container">
-          <div class="modal-header">
-            <h2 class="modal-title">导入结果</h2>
-            <button class="close-btn" @click="handleClose">
-              <X :size="20" />
-            </button>
-          </div>
-
-          <div class="modal-body">
-            <div class="result-section">
+  <AppModal
+    :open="importStore.showResultModal && !!importStore.currentTask?.result"
+    title="导入结果"
+    size="lg"
+    @update:open="(value) => !value && handleClose()"
+  >
+    <div class="result-section">
               <div class="field-group">
                 <div class="field-header">
                   <label class="field-label">标题</label>
@@ -123,21 +117,16 @@
                   <pre>{{ importStore.currentTask?.extracted_content || '无原始内容' }}</pre>
                 </div>
               </div>
-            </div>
-          </div>
-
-          <div class="modal-footer">
-            <button class="btn-secondary" @click="handleClose">取消</button>
-            <button class="btn-primary" @click="handleSave" :disabled="saving">
-              <Loader2 v-if="saving" :size="16" class="spinning" />
-              <Check v-else :size="16" />
-              <span>{{ saving ? '保存中...' : '保存为笔记' }}</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    </Transition>
-  </Teleport>
+    </div>
+    <template #footer>
+      <AppButton variant="secondary" size="sm" @click="handleClose">取消</AppButton>
+      <AppButton size="sm" :disabled="saving" @click="handleSave">
+        <Loader2 v-if="saving" :size="16" class="spinning" />
+        <Check v-else :size="16" />
+        <span>{{ saving ? '保存中...' : '保存为笔记' }}</span>
+      </AppButton>
+    </template>
+  </AppModal>
 </template>
 
 <script setup lang="ts">
@@ -146,6 +135,7 @@ import { useImportStore } from '@/stores/import'
 import { useFoldersStore } from '@/stores/folders'
 import { importApi } from '@/api/import'
 import { useNotificationStore } from '@/stores/notification'
+import { AppButton, AppModal } from '@/components/ui'
 import { X, Plus, Check, FileText, Globe, Video, Clock, ChevronDown, ChevronUp, Loader2, RefreshCw } from 'lucide-vue-next'
 
 const importStore = useImportStore()
@@ -249,69 +239,6 @@ function handleClose() {
 </script>
 
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: var(--overlay);
-  backdrop-filter: blur(6px);
-}
-
-.modal-container {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  max-width: 640px;
-  max-height: 88vh;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-lg);
-  background: var(--panel);
-  overflow: hidden;
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--line);
-}
-
-.modal-title {
-  font-family: var(--font-display);
-  font-size: var(--fs-title-3);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-.close-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--r-sm);
-  color: var(--t3);
-  transition: color var(--d-fast) var(--ease-out), background var(--d-fast) var(--ease-out);
-}
-
-.close-btn:hover {
-  color: var(--text);
-  background: var(--panel-2);
-}
-
-.modal-body {
-  display: flex;
-  flex-direction: column;
-  padding: 20px;
-  overflow-y: auto;
-}
-
 .result-section {
   display: flex;
   flex-direction: column;
@@ -567,49 +494,6 @@ function handleClose() {
 }
 
 /* ---- 底部 ---- */
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 20px;
-  border-top: 1px solid var(--line);
-}
-
-.btn-secondary,
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 14px;
-  border-radius: var(--r-sm);
-  font-size: var(--fs-micro);
-}
-
-.btn-secondary {
-  border: 1px solid var(--line-strong);
-  color: var(--t2);
-}
-
-.btn-secondary:hover {
-  color: var(--text);
-}
-
-.btn-primary {
-  background: var(--gold);
-  color: var(--gold-ink);
-  font-weight: 500;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--gold-deep);
-}
-
-.btn-primary:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
 .spinning {
   animation: spin 900ms linear infinite;
 }
@@ -617,40 +501,6 @@ function handleClose() {
 @keyframes spin {
   to {
     transform: rotate(360deg);
-  }
-}
-
-.modal-enter-active,
-.modal-leave-active {
-  transition: opacity var(--d-base) var(--ease-out);
-}
-
-.modal-enter-from,
-.modal-leave-to {
-  opacity: 0;
-}
-
-.modal-enter-active .modal-container,
-.modal-leave-active .modal-container {
-  transition: transform var(--d-base) var(--ease-out);
-}
-
-.modal-enter-from .modal-container,
-.modal-leave-to .modal-container {
-  transform: translateY(8px) scale(0.99);
-}
-
-@media (max-width: 767px) {
-  .modal-overlay {
-    padding: 12px;
-  }
-
-  .modal-container {
-    max-height: 92vh;
-  }
-
-  .modal-body {
-    padding: 14px;
   }
 }
 </style>

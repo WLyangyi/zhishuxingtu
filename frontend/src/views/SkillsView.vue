@@ -115,109 +115,103 @@
       </div>
     </div>
 
-    <div v-if="showCreateModal" class="modal-overlay" @click.self="showCreateModal = false">
-      <div class="modal">
-        <div class="modal-header">
-          <h3>创建 Skill</h3>
-          <button @click="showCreateModal = false" class="close-btn">
-            <X :size="20" />
-          </button>
+    <AppModal
+      :open="showCreateModal"
+      title="创建 Skill"
+      size="md"
+      @update:open="(value) => (showCreateModal = value)"
+    >
+      <div class="skill-form">
+        <div class="form-group">
+          <label>Skill 名称</label>
+          <input v-model="newSkill.name" type="text" placeholder="输入 Skill 名称" />
         </div>
-        <div class="modal-body">
+        <div class="form-group">
+          <label>描述</label>
+          <textarea v-model="newSkill.description" placeholder="描述这个 Skill 的功能"></textarea>
+        </div>
+        <div class="form-row">
           <div class="form-group">
-            <label>Skill 名称</label>
-            <input v-model="newSkill.name" type="text" placeholder="输入 Skill 名称" />
+            <label>图标</label>
+            <input v-model="newSkill.icon" type="text" placeholder="如：⚡" />
           </div>
           <div class="form-group">
-            <label>描述</label>
-            <textarea v-model="newSkill.description" placeholder="描述这个 Skill 的功能"></textarea>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>图标</label>
-              <input v-model="newSkill.icon" type="text" placeholder="如：⚡" />
-            </div>
-            <div class="form-group">
-              <label>颜色</label>
-              <div class="color-picker">
-                <span 
-                  v-for="color in colorOptions" 
-                  :key="color"
-                  class="color-dot"
-                  :class="{ active: newSkill.color === color }"
-                  :style="{ backgroundColor: color }"
-                  @click="newSkill.color = color"
-                />
-              </div>
+            <label>颜色</label>
+            <div class="color-picker">
+              <span
+                v-for="color in colorOptions"
+                :key="color"
+                class="color-dot"
+                :class="{ active: newSkill.color === color }"
+                :style="{ backgroundColor: color }"
+                @click="newSkill.color = color"
+              />
             </div>
           </div>
-          <div class="form-group">
-            <label>触发类型</label>
-            <select v-model="newSkill.trigger_type">
-              <option value="manual">手动触发</option>
-              <option value="scheduled">定时执行</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>输出分类</label>
-            <select v-model="newSkill.output_category_id">
-              <option :value="null">不保存到知识库</option>
-              <option v-for="cat in categoryStore.categories" :key="cat.id" :value="cat.id">
-                {{ cat.name }}
-              </option>
-            </select>
-          </div>
         </div>
-        <div class="modal-footer">
-          <button @click="showCreateModal = false" class="btn-cancel">取消</button>
-          <button @click="handleCreateSkill" class="btn-confirm">创建</button>
+        <div class="form-group">
+          <label>触发类型</label>
+          <select v-model="newSkill.trigger_type">
+            <option value="manual">手动触发</option>
+            <option value="scheduled">定时执行</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>输出分类</label>
+          <select v-model="newSkill.output_category_id">
+            <option :value="null">不保存到知识库</option>
+            <option v-for="cat in categoryStore.categories" :key="cat.id" :value="cat.id">
+              {{ cat.name }}
+            </option>
+          </select>
         </div>
       </div>
-    </div>
+      <template #footer>
+        <AppButton variant="secondary" size="sm" @click="showCreateModal = false">取消</AppButton>
+        <AppButton size="sm" @click="handleCreateSkill">创建</AppButton>
+      </template>
+    </AppModal>
 
-    <div v-if="showExecuteModal" class="modal-overlay" @click.self="showExecuteModal = false">
-      <div class="modal">
-        <div class="modal-header">
-          <h3>执行 Skill: {{ currentSkill?.name }}</h3>
-          <button @click="showExecuteModal = false" class="close-btn">
-            <X :size="20" />
-          </button>
+    <AppModal
+      :open="showExecuteModal"
+      :title="`执行 Skill: ${currentSkill?.name ?? ''}`"
+      size="md"
+      @update:open="(value) => (showExecuteModal = value)"
+    >
+      <div class="skill-form">
+        <div class="form-group">
+          <label>输入数据 (JSON 格式)</label>
+          <textarea
+            v-model="executeInput"
+            placeholder='{"key": "value"}'
+            rows="6"
+          ></textarea>
         </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label>输入数据 (JSON 格式)</label>
-            <textarea 
-              v-model="executeInput" 
-              placeholder='{"key": "value"}'
-              rows="6"
-            ></textarea>
-          </div>
-          <div v-if="executeResult" class="execute-result">
-            <h4>执行结果</h4>
-            <pre>{{ JSON.stringify(executeResult, null, 2) }}</pre>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button @click="showExecuteModal = false" class="btn-cancel">关闭</button>
-          <button @click="handleExecuteSkill" class="btn-confirm" :disabled="executing">
-            {{ executing ? '执行中...' : '执行' }}
-          </button>
+        <div v-if="executeResult" class="execute-result">
+          <h4>执行结果</h4>
+          <pre>{{ JSON.stringify(executeResult, null, 2) }}</pre>
         </div>
       </div>
-    </div>
+      <template #footer>
+        <AppButton variant="secondary" size="sm" @click="showExecuteModal = false">关闭</AppButton>
+        <AppButton size="sm" :disabled="executing" @click="handleExecuteSkill">
+          {{ executing ? '执行中...' : '执行' }}
+        </AppButton>
+      </template>
+    </AppModal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useCategoryStore } from '@/stores/category'
-import { AppButton, PageHeader, SegmentedControl } from '@/components/ui'
+import { AppButton, AppModal, PageHeader, SegmentedControl } from '@/components/ui'
 import { useNotificationStore } from '@/stores/notification'
 import { skillsApi } from '@/api/skills'
 import type { Skill, SkillTemplate } from '@/types/skill'
 import {
   Zap, Plus, Package, Sparkles, Play, Pause,
-  Edit3, Trash2, BarChart3, Calendar, X
+  Edit3, Trash2, BarChart3, Calendar
 } from 'lucide-vue-next'
 
 const categoryStore = useCategoryStore()
@@ -686,75 +680,11 @@ function formatDate(date: string): string {
   line-height: 1.7;
 }
 
-/* ---- 弹窗 ---- */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: var(--overlay);
-  backdrop-filter: blur(2px);
-}
-
-.modal {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  max-width: 520px;
-  max-height: 86vh;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-lg);
-  background: var(--panel);
-  overflow: hidden;
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--line);
-}
-
-.modal-header h3 {
-  font-family: var(--font-display);
-  font-size: var(--fs-title-3);
-  font-weight: 600;
-}
-
-.close-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--r-sm);
-  color: var(--t3);
-}
-
-.close-btn:hover {
-  color: var(--text);
-  background: var(--panel-2);
-}
-
-.modal-body {
+/* ---- 弹窗内表单 ---- */
+.skill-form {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 18px;
-  overflow-y: auto;
-}
-
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 18px;
-  border-top: 1px solid var(--line);
 }
 
 .form-row {
@@ -853,38 +783,6 @@ function formatDate(date: string): string {
   color: var(--t2);
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-.btn-cancel,
-.btn-confirm {
-  height: 30px;
-  padding: 0 14px;
-  border-radius: var(--r-sm);
-  font-size: var(--fs-micro);
-}
-
-.btn-cancel {
-  border: 1px solid var(--line-strong);
-  color: var(--t2);
-}
-
-.btn-cancel:hover {
-  color: var(--text);
-}
-
-.btn-confirm {
-  background: var(--gold);
-  color: var(--gold-ink);
-  font-weight: 500;
-}
-
-.btn-confirm:hover:not(:disabled) {
-  background: var(--gold-deep);
-}
-
-.btn-confirm:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 @media (max-width: 1024px) {

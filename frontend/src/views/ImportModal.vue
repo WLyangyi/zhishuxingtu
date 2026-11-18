@@ -1,152 +1,144 @@
 <template>
-  <Teleport to="body">
-    <Transition name="modal">
-      <div v-if="importStore.showImportModal" class="modal-overlay" @click.self="handleClose">
-        <div class="modal-container">
-          <div class="modal-header">
-            <h2 class="modal-title">智能导入</h2>
-            <button class="close-btn" @click="handleClose">
-              <X :size="20" />
-            </button>
-          </div>
+  <AppModal
+    :open="importStore.showImportModal"
+    title="智能导入"
+    size="md"
+    @update:open="(value) => !value && handleClose()"
+  >
+    <div class="import-body">
+      <div v-if="!importStore.isImporting" class="source-tabs">
+        <SegmentedControl
+          :items="sourceItems"
+          :model-value="activeTab"
+          aria-label="导入来源"
+          @update:model-value="activeTab = $event as 'pdf' | 'url' | 'video'"
+        />
+      </div>
 
-          <div class="modal-body">
-            <div v-if="!importStore.isImporting" class="source-tabs">
-              <SegmentedControl
-                :items="sourceItems"
-                :model-value="activeTab"
-                aria-label="导入来源"
-                @update:model-value="activeTab = $event as 'pdf' | 'url' | 'video'"
+      <div v-if="!importStore.isImporting" class="tab-content">
+        <div v-if="activeTab === 'pdf'" class="upload-area">
+          <div
+            class="drop-zone"
+            :class="{ dragging: isDragging }"
+            @dragover.prevent="isDragging = true"
+            @dragleave.prevent="isDragging = false"
+            @drop.prevent="handlePdfDrop"
+            @click="pdfInputRef?.click()"
+          >
+            <FileText :size="48" class="drop-icon" />
+            <p class="drop-text">拖拽 PDF 文件到此处，或点击选择</p>
+            <p class="drop-hint">支持 .pdf 格式，最大 200MB</p>
+            <input
+              ref="pdfInputRef"
+              type="file"
+              accept=".pdf"
+              class="hidden-input"
+              @change="handlePdfSelect"
+            />
+          </div>
+        </div>
+
+        <div v-if="activeTab === 'url'" class="url-area">
+          <div class="input-group">
+            <Globe :size="18" class="input-icon" />
+            <input
+              v-model="urlInput"
+              type="url"
+              placeholder="输入网页链接，如 https://arxiv.org/abs/..."
+              class="url-input"
+              @keyup.enter="handleUrlSubmit"
+            />
+          </div>
+          <p class="input-hint">支持学术论文、博客、技术文档等网页</p>
+        </div>
+
+        <div v-if="activeTab === 'video'" class="video-area">
+          <SegmentedControl
+            :items="videoItems"
+            :model-value="videoTab"
+            size="sm"
+            aria-label="视频来源"
+            @update:model-value="videoTab = $event as 'local' | 'online'"
+          />
+
+          <div v-if="videoTab === 'local'" class="upload-area">
+            <div
+              class="drop-zone"
+              :class="{ dragging: isDragging }"
+              @dragover.prevent="isDragging = true"
+              @dragleave.prevent="isDragging = false"
+              @drop.prevent="handleVideoDrop"
+              @click="videoInputRef?.click()"
+            >
+              <Video :size="48" class="drop-icon" />
+              <p class="drop-text">拖拽视频文件到此处，或点击选择</p>
+              <p class="drop-hint">支持 MP4/MKV/AVI/MOV，最大 200MB</p>
+              <input
+                ref="videoInputRef"
+                type="file"
+                accept=".mp4,.mkv,.avi,.mov"
+                class="hidden-input"
+                @change="handleVideoSelect"
               />
             </div>
+          </div>
 
-            <div v-if="!importStore.isImporting" class="tab-content">
-              <div v-if="activeTab === 'pdf'" class="upload-area">
-                <div
-                  class="drop-zone"
-                  :class="{ dragging: isDragging }"
-                  @dragover.prevent="isDragging = true"
-                  @dragleave.prevent="isDragging = false"
-                  @drop.prevent="handlePdfDrop"
-                  @click="pdfInputRef?.click()"
-                >
-                  <FileText :size="48" class="drop-icon" />
-                  <p class="drop-text">拖拽 PDF 文件到此处，或点击选择</p>
-                  <p class="drop-hint">支持 .pdf 格式，最大 200MB</p>
-                  <input
-                    ref="pdfInputRef"
-                    type="file"
-                    accept=".pdf"
-                    class="hidden-input"
-                    @change="handlePdfSelect"
-                  />
-                </div>
-              </div>
-
-              <div v-if="activeTab === 'url'" class="url-area">
-                <div class="input-group">
-                  <Globe :size="18" class="input-icon" />
-                  <input
-                    v-model="urlInput"
-                    type="url"
-                    placeholder="输入网页链接，如 https://arxiv.org/abs/..."
-                    class="url-input"
-                    @keyup.enter="handleUrlSubmit"
-                  />
-                </div>
-                <p class="input-hint">支持学术论文、博客、技术文档等网页</p>
-              </div>
-
-              <div v-if="activeTab === 'video'" class="video-area">
-                <SegmentedControl
-                  :items="videoItems"
-                  :model-value="videoTab"
-                  size="sm"
-                  aria-label="视频来源"
-                  @update:model-value="videoTab = $event as 'local' | 'online'"
-                />
-
-                <div v-if="videoTab === 'local'" class="upload-area">
-                  <div
-                    class="drop-zone"
-                    :class="{ dragging: isDragging }"
-                    @dragover.prevent="isDragging = true"
-                    @dragleave.prevent="isDragging = false"
-                    @drop.prevent="handleVideoDrop"
-                    @click="videoInputRef?.click()"
-                  >
-                    <Video :size="48" class="drop-icon" />
-                    <p class="drop-text">拖拽视频文件到此处，或点击选择</p>
-                    <p class="drop-hint">支持 MP4/MKV/AVI/MOV，最大 200MB</p>
-                    <input
-                      ref="videoInputRef"
-                      type="file"
-                      accept=".mp4,.mkv,.avi,.mov"
-                      class="hidden-input"
-                      @change="handleVideoSelect"
-                    />
-                  </div>
-                </div>
-
-                <div v-if="videoTab === 'online'" class="url-area">
-                  <div class="input-group">
-                    <Youtube :size="18" class="input-icon" />
-                    <input
-                      v-model="videoUrlInput"
-                      type="url"
-                      placeholder="输入视频链接，如 YouTube、Bilibili..."
-                      class="url-input"
-                      @keyup.enter="handleVideoUrlSubmit"
-                    />
-                  </div>
-                  <p class="input-hint">支持 YouTube、Bilibili、抖音等主流平台</p>
-                </div>
-              </div>
+          <div v-if="videoTab === 'online'" class="url-area">
+            <div class="input-group">
+              <Youtube :size="18" class="input-icon" />
+              <input
+                v-model="videoUrlInput"
+                type="url"
+                placeholder="输入视频链接，如 YouTube、Bilibili..."
+                class="url-input"
+                @keyup.enter="handleVideoUrlSubmit"
+              />
             </div>
-
-            <div v-if="importStore.isImporting" class="processing-area">
-              <div class="progress-ring-container">
-                <svg class="progress-ring" viewBox="0 0 120 120">
-                  <circle class="progress-ring-bg" cx="60" cy="60" r="52" />
-                  <circle
-                    class="progress-ring-fill"
-                    cx="60" cy="60" r="52"
-                    :stroke-dasharray="circumference"
-                    :stroke-dashoffset="circumference - (progress / 100) * circumference"
-                  />
-                </svg>
-                <div class="progress-text">{{ progress }}%</div>
-              </div>
-              <p class="progress-message">{{ importStore.currentTask?.progress_message || '处理中...' }}</p>
-              <div class="progress-steps">
-                <div
-                  v-for="(step, index) in currentSteps"
-                  :key="index"
-                  class="step-item"
-                  :class="getStepClass(index)"
-                >
-                  <div class="step-indicator">
-                    <Check v-if="getStepStatus(index) === 'done'" :size="14" />
-                    <Loader2 v-else-if="getStepStatus(index) === 'active'" :size="14" class="spinning" />
-                    <div v-else class="step-dot"></div>
-                  </div>
-                  <span class="step-label">{{ step }}</span>
-                </div>
-              </div>
-              <button class="cancel-btn" @click="handleCancel">取消导入</button>
-            </div>
+            <p class="input-hint">支持 YouTube、Bilibili、抖音等主流平台</p>
           </div>
         </div>
       </div>
-    </Transition>
-  </Teleport>
+
+      <div v-if="importStore.isImporting" class="processing-area">
+        <div class="progress-ring-container">
+          <svg class="progress-ring" viewBox="0 0 120 120">
+            <circle class="progress-ring-bg" cx="60" cy="60" r="52" />
+            <circle
+              class="progress-ring-fill"
+              cx="60" cy="60" r="52"
+              :stroke-dasharray="circumference"
+              :stroke-dashoffset="circumference - (progress / 100) * circumference"
+            />
+          </svg>
+          <div class="progress-text">{{ progress }}%</div>
+        </div>
+        <p class="progress-message">{{ importStore.currentTask?.progress_message || '处理中...' }}</p>
+        <div class="progress-steps">
+          <div
+            v-for="(step, index) in currentSteps"
+            :key="index"
+            class="step-item"
+            :class="getStepClass(index)"
+          >
+            <div class="step-indicator">
+              <Check v-if="getStepStatus(index) === 'done'" :size="14" />
+              <Loader2 v-else-if="getStepStatus(index) === 'active'" :size="14" class="spinning" />
+              <div v-else class="step-dot"></div>
+            </div>
+            <span class="step-label">{{ step }}</span>
+          </div>
+        </div>
+        <button class="cancel-btn" @click="handleCancel">取消导入</button>
+      </div>
+    </div>
+  </AppModal>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useImportStore } from '@/stores/import'
-import { SegmentedControl } from '@/components/ui'
-import { FileText, Globe, Video, X, Check, Loader2, Youtube } from 'lucide-vue-next'
+import { AppModal, SegmentedControl } from '@/components/ui'
+import { FileText, Globe, Video, Check, Loader2, Youtube } from 'lucide-vue-next'
 
 const importStore = useImportStore()
 
@@ -286,68 +278,10 @@ function handleClose() {
 </script>
 
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: var(--overlay);
-  backdrop-filter: blur(6px);
-}
-
-.modal-container {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  max-width: 560px;
-  max-height: 88vh;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-lg);
-  background: var(--panel);
-  overflow: hidden;
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--line);
-}
-
-.modal-title {
-  font-family: var(--font-display);
-  font-size: var(--fs-title-3);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-.close-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--r-sm);
-  color: var(--t3);
-  transition: color var(--d-fast) var(--ease-out), background var(--d-fast) var(--ease-out);
-}
-
-.close-btn:hover {
-  color: var(--text);
-  background: var(--panel-2);
-}
-
-.modal-body {
+.import-body {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  padding: 20px;
-  overflow-y: auto;
 }
 
 .source-tabs {
@@ -589,40 +523,7 @@ function handleClose() {
   border-color: var(--danger-line);
 }
 
-/* ---- 进出场 ---- */
-.modal-enter-active,
-.modal-leave-active {
-  transition: opacity var(--d-base) var(--ease-out);
-}
-
-.modal-enter-from,
-.modal-leave-to {
-  opacity: 0;
-}
-
-.modal-enter-active .modal-container,
-.modal-leave-active .modal-container {
-  transition: transform var(--d-base) var(--ease-out);
-}
-
-.modal-enter-from .modal-container,
-.modal-leave-to .modal-container {
-  transform: translateY(8px) scale(0.99);
-}
-
 @media (max-width: 767px) {
-  .modal-overlay {
-    padding: 12px;
-  }
-
-  .modal-container {
-    max-height: 92vh;
-  }
-
-  .modal-body {
-    padding: 16px;
-  }
-
   .drop-zone {
     padding: 30px 16px;
   }

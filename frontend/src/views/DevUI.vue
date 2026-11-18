@@ -260,10 +260,10 @@ import MessageBubble from '@/components/domain/MessageBubble.vue'
 import ApprovalCard from '@/components/domain/ApprovalCard.vue'
 import CodeBlock from '@/components/domain/CodeBlock.vue'
 import { useThemeStore } from '@/stores/theme'
-import { useToast } from '@/lib/toast'
+import { useNotificationStore } from '@/stores/notification'
 
 const themeStore = useThemeStore()
-const toast = useToast()
+const toast = useNotificationStore()
 
 const themeMode = ref(themeStore.isDark ? 'dark' : 'light')
 const themeItems = [

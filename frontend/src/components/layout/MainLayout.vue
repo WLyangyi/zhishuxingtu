@@ -32,7 +32,6 @@
     </AppDrawer>
 
     <CommandHost />
-    <AppToast />
   </div>
 </template>
 
@@ -44,7 +43,6 @@ import TopBar from './TopBar.vue'
 import MobileNav from './MobileNav.vue'
 import CommandHost from './CommandHost.vue'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
-import AppToast from '@/components/ui/AppToast.vue'
 import StarField from '@/components/domain/StarField.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useFoldersStore } from '@/stores/folders'

@@ -271,261 +271,231 @@
       </div>
     </div>
 
-    <div v-if="showExampleModal" class="modal-overlay" @click.self="closeExampleModal">
-      <div class="modal modal-large">
-        <div class="modal-header">
-          <h3>{{ editingExample ? '编辑示例' : '添加示例' }}</h3>
-          <button @click="closeExampleModal" class="close-btn">
-            <X :size="20" />
-          </button>
+    <AppModal
+      :open="showExampleModal"
+      :title="editingExample ? '编辑示例' : '添加示例'"
+      size="lg"
+      @update:open="(value) => !value && closeExampleModal()"
+    >
+      <div class="lab-modal-form">
+        <div class="form-group">
+          <label>场景</label>
+          <select v-model="exampleForm.scenario">
+            <option v-for="s in SCENARIOS" :key="s.value" :value="s.value">{{ s.label }}</option>
+          </select>
         </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label>场景</label>
-            <select v-model="exampleForm.scenario">
-              <option v-for="s in SCENARIOS" :key="s.value" :value="s.value">{{ s.label }}</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>输入示例</label>
-            <textarea v-model="exampleForm.input_example" placeholder="输入示例内容..." rows="6"></textarea>
-          </div>
-          <div class="form-group">
-            <label>输出示例</label>
-            <textarea v-model="exampleForm.output_example" placeholder="期望的输出内容..." rows="6"></textarea>
-          </div>
-          <div class="form-group">
-            <label>质量评分 (1-10)</label>
-            <input v-model.number="exampleForm.quality_score" type="number" min="1" max="10" step="0.1" />
-          </div>
+        <div class="form-group">
+          <label>输入示例</label>
+          <textarea v-model="exampleForm.input_example" placeholder="输入示例内容..." rows="6"></textarea>
         </div>
-        <div class="modal-footer">
-          <button @click="closeExampleModal" class="btn-cancel">取消</button>
-          <button @click="handleSaveExample" class="btn-confirm">{{ editingExample ? '保存' : '创建' }}</button>
+        <div class="form-group">
+          <label>输出示例</label>
+          <textarea v-model="exampleForm.output_example" placeholder="期望的输出内容..." rows="6"></textarea>
+        </div>
+        <div class="form-group">
+          <label>质量评分 (1-10)</label>
+          <input v-model.number="exampleForm.quality_score" type="number" min="1" max="10" step="0.1" />
         </div>
       </div>
-    </div>
+      <template #footer>
+        <AppButton variant="secondary" size="sm" @click="closeExampleModal">取消</AppButton>
+        <AppButton size="sm" @click="handleSaveExample">{{ editingExample ? '保存' : '创建' }}</AppButton>
+      </template>
+    </AppModal>
 
-    <div v-if="showExampleDetailModal" class="modal-overlay" @click.self="showExampleDetailModal = false">
-      <div class="modal modal-large">
-        <div class="modal-header">
-          <h3>示例详情</h3>
-          <button @click="showExampleDetailModal = false" class="close-btn">
-            <X :size="20" />
-          </button>
+    <AppModal
+      :open="showExampleDetailModal"
+      title="示例详情"
+      size="lg"
+      @update:open="(value) => !value && (showExampleDetailModal = false)"
+    >
+      <div v-if="currentExample" class="lab-modal-form">
+        <div class="example-detail-header">
+          <span class="scenario-badge">{{ getScenarioLabel(currentExample.scenario) }}</span>
+          <span class="quality-score">
+            <Star :size="14" />
+            质量评分: {{ currentExample.quality_score.toFixed(1) }}
+          </span>
         </div>
-        <div class="modal-body" v-if="currentExample">
-          <div class="example-detail-header">
-            <span class="scenario-badge">{{ getScenarioLabel(currentExample.scenario) }}</span>
-            <span class="quality-score">
-              <Star :size="14" />
-              质量评分: {{ currentExample.quality_score.toFixed(1) }}
-            </span>
-          </div>
-          <div class="example-detail-section">
-            <h5>输入示例</h5>
-            <pre class="example-detail-content">{{ currentExample.input_example }}</pre>
-          </div>
-          <div class="example-detail-section">
-            <h5>输出示例</h5>
-            <pre class="example-detail-content">{{ currentExample.output_example }}</pre>
-          </div>
-          <div class="example-detail-meta">
-            <span>创建时间: {{ formatDate(currentExample.created_at) }}</span>
-          </div>
+        <div class="example-detail-section">
+          <h5>输入示例</h5>
+          <pre class="example-detail-content">{{ currentExample.input_example }}</pre>
         </div>
-        <div class="modal-footer">
-          <button @click="showExampleDetailModal = false" class="btn-cancel">关闭</button>
-          <button @click="editExample(currentExample!); showExampleDetailModal = false" class="btn-confirm">编辑</button>
+        <div class="example-detail-section">
+          <h5>输出示例</h5>
+          <pre class="example-detail-content">{{ currentExample.output_example }}</pre>
+        </div>
+        <div class="example-detail-meta">
+          <span>创建时间: {{ formatDate(currentExample.created_at) }}</span>
         </div>
       </div>
-    </div>
+      <template #footer>
+        <AppButton variant="secondary" size="sm" @click="showExampleDetailModal = false">关闭</AppButton>
+        <AppButton size="sm" @click="editExample(currentExample!); showExampleDetailModal = false">编辑</AppButton>
+      </template>
+    </AppModal>
 
-    <div v-if="showExperimentModal" class="modal-overlay" @click.self="closeExperimentModal">
-      <div class="modal">
-        <div class="modal-header">
-          <h3>{{ editingExperiment ? '编辑实验' : '创建实验' }}</h3>
-          <button @click="closeExperimentModal" class="close-btn">
-            <X :size="20" />
-          </button>
+    <AppModal
+      :open="showExperimentModal"
+      :title="editingExperiment ? '编辑实验' : '创建实验'"
+      size="md"
+      @update:open="(value) => !value && closeExperimentModal()"
+    >
+      <div class="lab-modal-form">
+        <div class="form-group">
+          <label>实验名称</label>
+          <input v-model="experimentForm.name" type="text" placeholder="输入实验名称" />
         </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label>实验名称</label>
-            <input v-model="experimentForm.name" type="text" placeholder="输入实验名称" />
+        <div class="form-group">
+          <label>描述</label>
+          <textarea v-model="experimentForm.description" placeholder="描述实验目的..." rows="3"></textarea>
+        </div>
+        <div class="form-group">
+          <label>流量分配 A/B</label>
+          <div class="traffic-slider">
+            <input v-model.number="experimentForm.traffic_split" type="range" min="0.1" max="0.9" step="0.1" />
+            <span>{{ (experimentForm.traffic_split * 100).toFixed(0) }}% / {{ ((1 - experimentForm.traffic_split) * 100).toFixed(0) }}%</span>
           </div>
-          <div class="form-group">
-            <label>描述</label>
-            <textarea v-model="experimentForm.description" placeholder="描述实验目的..." rows="3"></textarea>
+        </div>
+      </div>
+      <template #footer>
+        <AppButton variant="secondary" size="sm" @click="closeExperimentModal">取消</AppButton>
+        <AppButton size="sm" @click="handleSaveExperiment">{{ editingExperiment ? '保存' : '创建' }}</AppButton>
+      </template>
+    </AppModal>
+
+    <AppModal
+      :open="showChainModal"
+      title="从预设创建链"
+      size="md"
+      @update:open="(value) => !value && (showChainModal = false)"
+    >
+      <div class="preset-list">
+        <div v-for="preset in presetChains" :key="preset.type" class="preset-option" @click="createFromPreset(preset.type); showChainModal = false">
+          <div class="preset-option-icon"><Zap :size="20" /></div>
+          <div class="preset-option-info">
+            <h4>{{ preset.name }}</h4>
+            <p>{{ preset.description }}</p>
           </div>
-          <div class="form-group">
-            <label>流量分配 A/B</label>
-            <div class="traffic-slider">
-              <input v-model.number="experimentForm.traffic_split" type="range" min="0.1" max="0.9" step="0.1" />
-              <span>{{ (experimentForm.traffic_split * 100).toFixed(0) }}% / {{ ((1 - experimentForm.traffic_split) * 100).toFixed(0) }}%</span>
+        </div>
+      </div>
+    </AppModal>
+
+    <AppModal
+      :open="showExecuteModal"
+      :title="`执行链: ${currentChain?.name}`"
+      size="md"
+      @update:open="(value) => !value && (showExecuteModal = false)"
+    >
+      <div class="lab-modal-form">
+        <div class="form-group">
+          <label>输入数据 (JSON)</label>
+          <textarea v-model="chainInput" placeholder='{"content": "文章内容..."}' rows="6"></textarea>
+        </div>
+        <div v-if="chainOutput" class="execute-result">
+          <h4>执行结果</h4>
+          <pre>{{ chainOutput }}</pre>
+        </div>
+      </div>
+      <template #footer>
+        <AppButton variant="secondary" size="sm" @click="showExecuteModal = false">关闭</AppButton>
+        <AppButton size="sm" :disabled="executingChain" @click="handleExecuteChain">
+          {{ executingChain ? '执行中...' : '执行' }}
+        </AppButton>
+      </template>
+    </AppModal>
+
+    <AppModal
+      :open="showEditChainModal"
+      title="编辑链"
+      size="md"
+      @update:open="(value) => !value && closeEditChainModal()"
+    >
+      <div class="lab-modal-form">
+        <div class="form-group">
+          <label>链名称</label>
+          <input v-model="chainForm.name" type="text" placeholder="输入链名称" />
+        </div>
+        <div class="form-group">
+          <label>描述</label>
+          <textarea v-model="chainForm.description" placeholder="描述链的用途..." rows="3"></textarea>
+        </div>
+      </div>
+      <template #footer>
+        <AppButton variant="secondary" size="sm" @click="closeEditChainModal">取消</AppButton>
+        <AppButton size="sm" @click="handleSaveChain">保存</AppButton>
+      </template>
+    </AppModal>
+
+    <AppModal
+      :open="showStatsModal"
+      title="实验统计"
+      size="md"
+      @update:open="(value) => !value && (showStatsModal = false)"
+    >
+      <div class="stats-overview">
+        <div class="stats-header">
+          <h4>{{ currentExperiment?.name }}</h4>
+          <span class="status-badge" :class="currentExperiment?.status">{{ getStatusLabel(currentExperiment?.status || '') }}</span>
+        </div>
+        <div class="stats-grid">
+          <div class="stats-card version-a">
+            <h5>版本 A</h5>
+            <div class="stats-number">{{ stats?.version_a_samples || 0 }}</div>
+            <div class="stats-label">样本数</div>
+            <div v-if="stats?.version_a_avg_feedback" class="stats-detail">
+              平均反馈: {{ stats.version_a_avg_feedback.toFixed(2) }}
+            </div>
+          </div>
+          <div class="stats-card version-b">
+            <h5>版本 B</h5>
+            <div class="stats-number">{{ stats?.version_b_samples || 0 }}</div>
+            <div class="stats-label">样本数</div>
+            <div v-if="stats?.version_b_avg_feedback" class="stats-detail">
+              平均反馈: {{ stats.version_b_avg_feedback.toFixed(2) }}
             </div>
           </div>
         </div>
-        <div class="modal-footer">
-          <button @click="closeExperimentModal" class="btn-cancel">取消</button>
-          <button @click="handleSaveExperiment" class="btn-confirm">{{ editingExperiment ? '保存' : '创建' }}</button>
+        <div class="total-samples">
+          总样本数: {{ stats?.total_samples || 0 }}
         </div>
       </div>
-    </div>
+      <template #footer>
+        <AppButton variant="secondary" size="sm" @click="showStatsModal = false">关闭</AppButton>
+      </template>
+    </AppModal>
 
-    <div v-if="showChainModal" class="modal-overlay" @click.self="showChainModal = false">
-      <div class="modal">
-        <div class="modal-header">
-          <h3>从预设创建链</h3>
-          <button @click="showChainModal = false" class="close-btn">
-            <X :size="20" />
-          </button>
+    <AppModal
+      :open="showCotPreviewModal"
+      title="思维链模板详情"
+      size="lg"
+      @update:open="(value) => !value && (showCotPreviewModal = false)"
+    >
+      <div v-if="selectedCotType" class="cot-detail">
+        <h4 class="cot-detail-title">{{ COT_TEMPLATES.find(t => t.type === selectedCotType)?.name }}</h4>
+        <p class="cot-detail-desc">{{ COT_TEMPLATES.find(t => t.type === selectedCotType)?.description }}</p>
+        <div class="cot-detail-section">
+          <h5>提示词模板</h5>
+          <pre class="cot-full-template">{{ getCotFullTemplate(selectedCotType) }}</pre>
         </div>
-        <div class="modal-body">
-          <div class="preset-list">
-            <div v-for="preset in presetChains" :key="preset.type" class="preset-option" @click="createFromPreset(preset.type); showChainModal = false">
-              <div class="preset-option-icon"><Zap :size="20" /></div>
-              <div class="preset-option-info">
-                <h4>{{ preset.name }}</h4>
-                <p>{{ preset.description }}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="showExecuteModal" class="modal-overlay" @click.self="showExecuteModal = false">
-      <div class="modal">
-        <div class="modal-header">
-          <h3>执行链: {{ currentChain?.name }}</h3>
-          <button @click="showExecuteModal = false" class="close-btn">
-            <X :size="20" />
-          </button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label>输入数据 (JSON)</label>
-            <textarea v-model="chainInput" placeholder='{"content": "文章内容..."}' rows="6"></textarea>
-          </div>
-          <div v-if="chainOutput" class="execute-result">
-            <h4>执行结果</h4>
-            <pre>{{ chainOutput }}</pre>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button @click="showExecuteModal = false" class="btn-cancel">关闭</button>
-          <button @click="handleExecuteChain" class="btn-confirm" :disabled="executingChain">
-            {{ executingChain ? '执行中...' : '执行' }}
-          </button>
+        <div class="cot-detail-section">
+          <h5>适用场景</h5>
+          <ul class="cot-scenarios">
+            <li v-for="scenario in getCotScenarios(selectedCotType)" :key="scenario">{{ scenario }}</li>
+          </ul>
         </div>
       </div>
-    </div>
-
-    <div v-if="showEditChainModal" class="modal-overlay" @click.self="closeEditChainModal">
-      <div class="modal">
-        <div class="modal-header">
-          <h3>编辑链</h3>
-          <button @click="closeEditChainModal" class="close-btn">
-            <X :size="20" />
-          </button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label>链名称</label>
-            <input v-model="chainForm.name" type="text" placeholder="输入链名称" />
-          </div>
-          <div class="form-group">
-            <label>描述</label>
-            <textarea v-model="chainForm.description" placeholder="描述链的用途..." rows="3"></textarea>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button @click="closeEditChainModal" class="btn-cancel">取消</button>
-          <button @click="handleSaveChain" class="btn-confirm">保存</button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="showStatsModal" class="modal-overlay" @click.self="showStatsModal = false">
-      <div class="modal">
-        <div class="modal-header">
-          <h3>实验统计</h3>
-          <button @click="showStatsModal = false" class="close-btn">
-            <X :size="20" />
-          </button>
-        </div>
-        <div class="modal-body">
-          <div class="stats-overview">
-            <div class="stats-header">
-              <h4>{{ currentExperiment?.name }}</h4>
-              <span class="status-badge" :class="currentExperiment?.status">{{ getStatusLabel(currentExperiment?.status || '') }}</span>
-            </div>
-            <div class="stats-grid">
-              <div class="stats-card version-a">
-                <h5>版本 A</h5>
-                <div class="stats-number">{{ stats?.version_a_samples || 0 }}</div>
-                <div class="stats-label">样本数</div>
-                <div v-if="stats?.version_a_avg_feedback" class="stats-detail">
-                  平均反馈: {{ stats.version_a_avg_feedback.toFixed(2) }}
-                </div>
-              </div>
-              <div class="stats-card version-b">
-                <h5>版本 B</h5>
-                <div class="stats-number">{{ stats?.version_b_samples || 0 }}</div>
-                <div class="stats-label">样本数</div>
-                <div v-if="stats?.version_b_avg_feedback" class="stats-detail">
-                  平均反馈: {{ stats.version_b_avg_feedback.toFixed(2) }}
-                </div>
-              </div>
-            </div>
-            <div class="total-samples">
-              总样本数: {{ stats?.total_samples || 0 }}
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button @click="showStatsModal = false" class="btn-cancel">关闭</button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="showCotPreviewModal" class="modal-overlay" @click.self="showCotPreviewModal = false">
-      <div class="modal modal-large">
-        <div class="modal-header">
-          <h3>思维链模板详情</h3>
-          <button @click="showCotPreviewModal = false" class="close-btn">
-            <X :size="20" />
-          </button>
-        </div>
-        <div class="modal-body">
-          <div v-if="selectedCotType" class="cot-detail">
-            <h4 class="cot-detail-title">{{ COT_TEMPLATES.find(t => t.type === selectedCotType)?.name }}</h4>
-            <p class="cot-detail-desc">{{ COT_TEMPLATES.find(t => t.type === selectedCotType)?.description }}</p>
-            <div class="cot-detail-section">
-              <h5>提示词模板</h5>
-              <pre class="cot-full-template">{{ getCotFullTemplate(selectedCotType) }}</pre>
-            </div>
-            <div class="cot-detail-section">
-              <h5>适用场景</h5>
-              <ul class="cot-scenarios">
-                <li v-for="scenario in getCotScenarios(selectedCotType)" :key="scenario">{{ scenario }}</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button @click="showCotPreviewModal = false" class="btn-cancel">关闭</button>
-        </div>
-      </div>
-    </div>
+      <template #footer>
+        <AppButton variant="secondary" size="sm" @click="showCotPreviewModal = false">关闭</AppButton>
+      </template>
+    </AppModal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useNotificationStore } from '@/stores/notification'
-import { AppButton, AppSelect, PageHeader, SegmentedControl } from '@/components/ui'
+import { AppButton, AppModal, AppSelect, PageHeader, SegmentedControl } from '@/components/ui'
 import { promptLabApi } from '@/api/promptLab'
 import {
   COT_TEMPLATES, SCENARIOS
@@ -538,7 +508,7 @@ import type {
 } from '@/types/promptLab'
 import {
   BookOpen, GitCompare, Brain, Workflow,
-  Plus, Edit3, Trash2, Star, X, Play, Pause, BarChart3,
+  Plus, Edit3, Trash2, Star, Play, Pause, BarChart3,
   Lightbulb, CheckCircle, Zap, Eye
 } from 'lucide-vue-next'
 
@@ -1570,78 +1540,10 @@ async function toggleChainStatus(chain: PromptChain) {
 }
 
 /* ---- 弹窗 ---- */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: var(--overlay);
-  backdrop-filter: blur(2px);
-}
-
-.modal {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  max-width: 520px;
-  max-height: 86vh;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-lg);
-  background: var(--panel);
-  overflow: hidden;
-}
-
-.modal-large {
-  max-width: 720px;
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--line);
-}
-
-.modal-header h3 {
-  font-family: var(--font-display);
-  font-size: var(--fs-title-3);
-  font-weight: 600;
-}
-
-.close-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--r-sm);
-  color: var(--t3);
-}
-
-.close-btn:hover {
-  color: var(--text);
-  background: var(--panel-2);
-}
-
-.modal-body {
+.lab-modal-form {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 18px;
-  overflow-y: auto;
-}
-
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 18px;
-  border-top: 1px solid var(--line);
 }
 
 .form-group {
@@ -1699,38 +1601,6 @@ async function toggleChainStatus(chain: PromptChain) {
   font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--t2);
-}
-
-.btn-cancel,
-.btn-confirm {
-  height: 30px;
-  padding: 0 14px;
-  border-radius: var(--r-sm);
-  font-size: var(--fs-micro);
-}
-
-.btn-cancel {
-  border: 1px solid var(--line-strong);
-  color: var(--t2);
-}
-
-.btn-cancel:hover {
-  color: var(--text);
-}
-
-.btn-confirm {
-  background: var(--gold);
-  color: var(--gold-ink);
-  font-weight: 500;
-}
-
-.btn-confirm:hover:not(:disabled) {
-  background: var(--gold-deep);
-}
-
-.btn-confirm:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .preset-list {
@@ -2014,14 +1884,6 @@ async function toggleChainStatus(chain: PromptChain) {
   .presets-grid,
   .stats-grid {
     grid-template-columns: 1fr;
-  }
-
-  .modal {
-    max-height: 92vh;
-  }
-
-  .modal-body {
-    padding: 14px;
   }
 }
 </style>
