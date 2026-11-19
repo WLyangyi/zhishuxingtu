@@ -78,7 +78,7 @@ KNOWLEDGE_TOOLS = [t for t in ALL_TOOLS if t.name != "create_note"]
 # Phase 4:offload 后的原文靠 read_tool_artifact 取回,故三个工具面都要带上它,
 # 否则子 Agent 拿到 artifact_id 却无权读取,压缩就退化成单向截断。
 WEB_RESEARCH_TOOLS = [web_search, search_notes, read_tool_artifact]
-NOTE_WRITE_TOOLS = [create_note, search_notes, read_tool_artifact]
+NOTE_WRITE_TOOLS = [create_note, search_notes, get_note, read_tool_artifact]
 
 AGENT_CONFIGS: Dict[str, Dict[str, Any]] = {
     "knowledge": {"tools": KNOWLEDGE_TOOLS, "system_prompt": KNOWLEDGE_AGENT_PROMPT},
@@ -260,7 +260,15 @@ def agent_step(state: AgentState, *, store: BaseStore = None) -> Dict[str, Any]:
     provider = get_deepseek_provider()
     # M7 A′:按 current_agent 查表绑定工具子集与 system prompt(spike 阶段与现状一致)
     agent_cfg = _agent_config(state.get("current_agent"))
-    llm = provider.bind_tools(agent_cfg["tools"])
+    # note_write 未调过 create_note 时,用 tool_choice=required 从协议层强制模型必须调工具,
+    # 避免 deepseek-flash 在 auto 模式下无视提示词、直接把要保存的内容复述成文字。
+    # 调过 create_note(审批完成/被拒)后改回 auto,让模型能文字说明结果,避免强制循环。
+    tool_log = state.get("tool_calls_log") or []
+    create_done = any(lg.get("tool") == "create_note" for lg in tool_log)
+    if state.get("current_agent") == "note_write" and not create_done:
+        llm = provider.bind_tools(agent_cfg["tools"], tool_choice="required")
+    else:
+        llm = provider.bind_tools(agent_cfg["tools"])
     system_prompt = agent_cfg["system_prompt"]
     # 意图提示只在首轮注入一次:持续注入会把 agent 反复推回同一条路由(如 web_search 不可用时死循环)。
     if (state.get("iteration") or 0) == 0:
@@ -284,6 +292,23 @@ def agent_step(state: AgentState, *, store: BaseStore = None) -> Dict[str, Any]:
     retained_history, removed_history = _retained_window(history, keep_count)
     msgs: List[Any] = [SystemMessage(content=system_prompt), *retained_history]
     resp = invoke_with_retry(llm, msgs, label="agent_step")
+
+    # note_write 强制工具兜底:实测 deepseek-flash 无视 prompt 里"必须调用 create_note/
+    # 禁止复述"的预防性指令,直接把要保存的内容吐成文字。结构兜底:若当前是写入 Agent、
+    # 模型却没产出任何 tool_calls,把其文字输出塞回 + 注入强制反馈再调一次,逼它走
+    # search_notes 查重 → create_note 写入工具链;第二次仍无工具调用才放行(防死循环,
+    # 由 output 节点兜底)。与 execute_tool 的"未查重拒绝写入"结构兜底同源。
+    if state.get("current_agent") == "note_write" and not resp.tool_calls:
+        forced = (
+            "你刚才直接用文字回答了,这不符合写入助手的职责。用户要求把内容保存/写入知识库,"
+            "你必须通过工具完成:第一步调用 search_notes 用标题关键词查重;查重无高度重复后,"
+            "必须调用 create_note 创建笔记(会请求用户审批)。【禁止】继续用文字复述要保存的内容。"
+            "现在请立即调用工具,不要再输出文字答案。"
+        )
+        msgs_retry = [*msgs, AIMessage(content=resp.content or ""), HumanMessage(content=forced)]
+        resp_retry = invoke_with_retry(llm, msgs_retry, label="agent_step_forced")
+        if resp_retry.tool_calls:
+            resp = resp_retry
 
     iteration = (state.get("iteration") or 0) + 1
     usage = getattr(resp, "usage_metadata", None) or {}
@@ -685,11 +710,12 @@ def rewrite_question(state: AgentState) -> Dict[str, Any]:
 
 
 def output(state: AgentState) -> Dict[str, Any]:
-    answer = state.get("answer")
-    if not answer:
-        answer = _best_answer(
-            state.get("messages") or [], state.get("turn_start_index") or 0
-        )
+    # 与 generate 同源:只从本轮消息取答案。旧实现优先用 state["answer"],但该字段
+    # 会跨轮残留(checkpoint 不清零)——note_write 因 token 上限被强制 output 时,
+    # 会误把上一轮总结当本轮答案吐出(实测"保存为笔记"复述总结、笔记没落库)。
+    answer = _best_answer(
+        state.get("messages") or [], state.get("turn_start_index") or 0
+    )
     if not answer:
         answer = _fallback_from_documents(state.get("documents") or [])
     if not answer:
@@ -706,9 +732,11 @@ def should_continue(state: AgentState) -> str:
     last = state["messages"][-1]
     if getattr(last, "tool_calls", None):
         return "execute_tool"
-    # M7.3:note_write 专职无三查(人工审批即质量关),ReAct 结束直接输出
+    # M7.3:note_write 专职无三查(人工审批即质量关)。但写入需多轮工具链(查重→写入):
+    # execute_tool 后(最后一条为 ToolMessage)回 agent_step 让模型基于结果继续调 create_note,
+    # 否则查重完直接 output,永远走不到 create_note 审批;模型未调工具时才直接 output。
     if state.get("current_agent") == "note_write":
-        return "output"
+        return "agent_step" if isinstance(last, ToolMessage) else "output"
     # M7.3:web_research 跳过文档评级——必须在这里分流绕过节点,
     # route_grade_documents 是节点之后的条件边,到那里"跳过"为时已晚(节点已烧一次 LLM 调用)
     if state.get("current_agent") == "web_search":
@@ -753,6 +781,27 @@ def intent_classify(state: AgentState) -> Dict[str, Any]:
             "task_brief": "",
             "thoughts": _append_thought(
                 state, {"type": "intent", "content": f"意图识别: {forced} | 消融强制(跳过分类器)"}
+            ),
+        }
+    # 写入诉求关键词兜底:对话中明确要求保存/合并/整理/创建笔记时,直接强制 note_write,
+    # 不依赖 LLM 判断——避免被"不确定默认 knowledge"或"提到笔记内容一律 knowledge"误判,
+    # 路由到 knowledge_agent 触发"请单独发起写入"的职责边界推托。
+    WRITE_KEYWORDS = (
+        "保存为笔记", "保存成笔记", "存为笔记", "记为笔记", "记录为笔记",
+        "创建笔记", "新建笔记", "写入笔记", "保存到知识库", "记录到知识库",
+        "保存这篇", "保存这份", "保存这个总结", "存成笔记", "记下来", "记到知识库",
+        "合并", "合并成", "合并为", "合并笔记",
+        "整理成笔记", "整理为笔记", "整理成一篇", "汇总成笔记", "汇总为笔记",
+        "整合成笔记", "整合为笔记",
+    )
+    if any(k in question for k in WRITE_KEYWORDS):
+        return {
+            "intent": "note_write",
+            "current_agent": "note_write",
+            "turn_start_index": max(0, len(state.get("messages") or []) - 1),
+            "task_brief": "用户要求写入/合并/整理笔记:先 search_notes 查重,必要时 get_note 读原笔记,无重复后必须调用 create_note 写入(会请求审批),禁止复述内容。",
+            "thoughts": _append_thought(
+                state, {"type": "intent", "content": f"意图识别: note_write | 命中写入关键词兜底"}
             ),
         }
     intent = "knowledge"

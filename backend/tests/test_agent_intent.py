@@ -238,7 +238,8 @@ def test_agent_configs_specialists_m73():
     n_tools = {t.name for t in AGENT_CONFIGS["note_write"]["tools"]}
     # Phase 4:三个工具面都带 read_tool_artifact,否则 offload 后的原文无人能取回
     assert w_tools == {"web_search", "search_notes", "read_tool_artifact"}
-    assert n_tools == {"create_note", "search_notes", "read_tool_artifact"}
+    # cbbccc5:note_write 加 get_note 支持合并/整理场景读取原笔记全文
+    assert n_tools == {"create_note", "search_notes", "get_note", "read_tool_artifact"}
     # web_research:信源引用要求
     assert "来源" in AGENT_CONFIGS["web_search"]["system_prompt"]
     # note_write:查重流程 + 审批提示

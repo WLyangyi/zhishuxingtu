@@ -79,8 +79,19 @@ class DeepSeekProvider(BaseLLMProvider):
     def available(self) -> bool:
         return bool(settings.DEEPSEEK_API_KEY)
 
-    def bind_tools(self, tools: List[Any]) -> ChatOpenAI:
-        return self._llm.bind_tools(tools)
+    def bind_tools(
+        self, tools: List[Any], tool_choice: Optional[str] = None
+    ) -> ChatOpenAI:
+        """绑定工具集。
+
+        tool_choice 透传给 ChatOpenAI.bind_tools:note_write 在 create_note 前需要
+        "required" 从协议层强制模型产出 tool_call(deepseek-flash 在 auto 下会无视
+        "必须调用工具"的提示词、把要保存的内容直接复述成文字)。不传时维持 auto,
+        与历史调用点兼容。
+        """
+        if tool_choice is None:
+            return self._llm.bind_tools(tools)
+        return self._llm.bind_tools(tools, tool_choice=tool_choice)
 
     def with_structured_output(self, model: Any, **kwargs: Any) -> Any:
         kwargs.setdefault("method", STRUCTURED_METHOD)

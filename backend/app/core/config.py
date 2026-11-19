@@ -83,7 +83,10 @@ class Settings(BaseSettings):
 
     # M4: Agent 短期 checkpoint / 长期 store / 上下文控制
     AGENT_MAX_ITERATIONS: int = 8
-    AGENT_TOKEN_BUDGET: int = 10000
+    # 单轮 ReAct token 上限。实测 note_write 多轮工具链(查重→写入+强制重试)单轮可达 ~21000,
+    # 原 10000 会在模型已生成 create_note tool_call 后误杀写入,用户保存诉求被静默丢弃。
+    # 仍远低于会话级 AGENT_SESSION_TOKEN_BUDGET(200000),保留有界自主。
+    AGENT_TOKEN_BUDGET: int = 30000
     AGENT_MAX_HISTORY_MESSAGES: int = 24
     AGENT_CHECKPOINT_DB: str = os.path.join("data", "langgraph_checkpoints.db")
     # M7: A′ 多 Agent 图开关(false=单 Agent 图回退位,双图共存支持一键回滚与 eval 同进程对比)
