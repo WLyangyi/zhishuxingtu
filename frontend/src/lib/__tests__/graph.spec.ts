@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filterGraph, findNode, graphStats, nodeDegrees, radialPositions } from '../graph'
+import { easeOutQuart, filterGraph, findNode, graphStats, nodeDegrees, radialPositions } from '../graph'
 import type { GraphEdge, GraphNode } from '@/types/graph'
 
 const nodes: GraphNode[] = [
@@ -48,6 +48,17 @@ describe('图谱布局与过滤', () => {
     expect(findNode(nodes, 'rag')?.id).toBe('t1')
     expect(findNode(nodes, '反思')?.id).toBe('n1')
     expect(findNode(nodes, '不存在')).toBeUndefined()
+  })
+
+  it('easeOutQuart 端点正确、单调递增、比 cubic 更快逼近终点（P2-1）', () => {
+    expect(easeOutQuart(0)).toBe(0)
+    expect(easeOutQuart(1)).toBe(1)
+    // 单调
+    expect(easeOutQuart(0.5)).toBeGreaterThan(easeOutQuart(0.25))
+    expect(easeOutQuart(0.75)).toBeGreaterThan(easeOutQuart(0.5))
+    // quart 在 t=0.5 时为 1-0.5^4=0.9375，快于 cubic 的 0.875
+    expect(easeOutQuart(0.5)).toBeCloseTo(0.9375, 4)
+    expect(easeOutQuart(0.5)).toBeGreaterThan(1 - Math.pow(1 - 0.5, 3))
   })
 
   it('统计与度数按类型汇总', () => {

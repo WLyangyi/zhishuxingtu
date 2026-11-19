@@ -139,3 +139,65 @@ export function buildWikiHighlightSegments(content: string): WikiSegment[] {
 export function readMinutes(chars: number): number {
   return Math.max(1, Math.ceil(chars / 250))
 }
+
+/** 正文中所有 [[...]] 块占据的 [start, end) 区间。 */
+function wikiRanges(content: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = []
+  for (const match of content.matchAll(WIKI_PATTERN)) {
+    const start = match.index ?? 0
+    ranges.push([start, start + match[0].length])
+  }
+  return ranges
+}
+
+function inWikiRange(index: number, ranges: Array<[number, number]>): boolean {
+  return ranges.some(([start, end]) => index >= start && index < end)
+}
+
+/**
+ * 未链接提及：正文中以纯文本出现、但未写成 [[标题]] 的笔记（P2-4）。
+ * - 忽略 [[...]] 块内的文字（那是已建链的锚文本）
+ * - 大小写不敏感、标题首尾空白规范化
+ * - 排除 excludeId 指向的当前笔记；按正文首次出现顺序返回
+ */
+export function findUnlinkedMentions(
+  content: string,
+  notes: Note[],
+  excludeId: string | null
+): Note[] {
+  const ranges = wikiRanges(content)
+  const plain = [...content].map((ch, i) => (inWikiRange(i, ranges) ? '' : ch)).join('')
+  const lower = plain.toLowerCase()
+  const hits: Array<{ note: Note; at: number }> = []
+
+  for (const note of notes) {
+    if (note.id === excludeId) continue
+    const title = note.title.trim()
+    if (!title) continue
+    const at = lower.indexOf(title.toLowerCase())
+    if (at >= 0) hits.push({ note, at })
+  }
+
+  hits.sort((a, b) => a.at - b.at)
+  return hits.map((item) => item.note)
+}
+
+/** 把正文中首个位于纯文本区（非 [[...]] 内）的标题替换为 [[标题]]（P2-4）。 */
+export function linkMention(content: string, title: string): string {
+  const clean = title.trim()
+  if (!clean) return content
+  const ranges = wikiRanges(content)
+  const lower = content.toLowerCase()
+  const key = clean.toLowerCase()
+  let from = 0
+
+  while (from <= content.length - key.length) {
+    const at = lower.indexOf(key, from)
+    if (at < 0) return content
+    if (!inWikiRange(at, ranges)) {
+      return `${content.slice(0, at)}[[${clean}]]${content.slice(at + clean.length)}`
+    }
+    from = at + key.length
+  }
+  return content
+}

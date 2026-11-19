@@ -154,6 +154,24 @@
           </button>
           <p v-if="!backlinks.length" class="rail__empty">还没有其他笔记引用它。</p>
         </section>
+
+        <section v-if="unlinkedMentions.length" class="rail__block">
+          <header class="rail__head">
+            <span class="readout">未链接提及 · UNLINKED</span>
+            <span class="num">{{ unlinkedMentions.length }}</span>
+          </header>
+          <button
+            v-for="mention in unlinkedMentions"
+            :key="mention.id"
+            type="button"
+            class="rail__row rail__mention-link"
+            :title="`把「${mention.title}」转为双链`"
+            @click="linkMentionFromRail(mention.title)"
+          >
+            <span class="rail__label">{{ mention.title }}</span>
+            <Link2 :size="12" :stroke-width="1.8" />
+          </button>
+        </section>
       </aside>
     </div>
 
@@ -195,7 +213,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
-import { FileText, SlidersHorizontal } from 'lucide-vue-next'
+import { FileText, Link2, SlidersHorizontal } from 'lucide-vue-next'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppModal from '@/components/ui/AppModal.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
@@ -211,6 +229,8 @@ import { flattenFolders, folderPath } from '@/lib/library'
 import {
   buildWikiHighlightSegments,
   detectWikiQuery,
+  findUnlinkedMentions,
+  linkMention,
   parseWikiLinks,
   readMinutes,
   renderWikiMarkup,
@@ -246,6 +266,7 @@ const selectedTagIds = ref<string[]>([])
 const createdAt = ref('')
 const backlinks = ref<Backlink[]>([])
 const allNotes = ref<Note[]>([])
+const serverMentions = ref<Backlink[]>([])
 
 const loading = ref(true)
 const notFound = ref(false)
@@ -291,6 +312,21 @@ const outgoing = computed(() =>
     note: notesByTitle.value.get(titleText) ?? null
   }))
 )
+
+// 未链接提及（P2-4）：本地实时计算 + 服务端预计算快照，按 id 去重（编辑期本地即时、>500 篇时服务端兜底）
+const unlinkedMentions = computed<Array<{ id: string; title: string }>>(() => {
+  const local = findUnlinkedMentions(content.value || '', allNotes.value, noteId.value)
+  const byId = new Map<string, { id: string; title: string }>(
+    local.map((note) => [note.id, { id: note.id, title: note.title }])
+  )
+  for (const mention of serverMentions.value) {
+    if (mention.id !== noteId.value && !byId.has(mention.id)) {
+      const title = mention.title.trim()
+      if (title) byId.set(mention.id, { id: mention.id, title })
+    }
+  }
+  return [...byId.values()]
+})
 
 const folderOptions = computed(() => [
   { label: '未归档', value: 'all' },
@@ -554,6 +590,17 @@ function closeSuggestion() {
   suggestion.index = 0
 }
 
+/** 一键把首个纯文本提及替换成 [[ ]]，触发自动保存（P2-4）。 */
+function linkMentionFromRail(title: string) {
+  const next = linkMention(content.value, title)
+  // 服务端快照里同标题的提及也要移除，否则区块不会消失
+  serverMentions.value = serverMentions.value.filter((item) => item.title.trim() !== title.trim())
+  if (next === content.value) return
+  content.value = next
+  setMode('edit')
+  nextTick(resizeInput)
+}
+
 function onCaretMove() {
   updateSuggestions()
 }
@@ -608,6 +655,7 @@ async function loadNote() {
       selectedTagIds.value = []
       createdAt.value = ''
       backlinks.value = []
+      serverMentions.value = []
       mode.value = 'edit'
       saveState.value = 'unsaved'
       lastSaved.value = ''
@@ -628,8 +676,12 @@ async function loadNote() {
       minute: '2-digit'
     })
 
-    const links = await notesApi.getBacklinks(noteId.value)
+    const [links, mentions] = await Promise.all([
+      notesApi.getBacklinks(noteId.value),
+      notesApi.getUnlinkedMentions(noteId.value).catch(() => [] as Backlink[])
+    ])
     backlinks.value = links.data
+    serverMentions.value = mentions
 
     reportNoteView(noteId.value)
   } catch {

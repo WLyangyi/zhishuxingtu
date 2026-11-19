@@ -204,6 +204,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { useCategoryStore } from '@/stores/category'
 import { AppButton, AppModal, PageHeader, SegmentedControl } from '@/components/ui'
 import { useNotificationStore } from '@/stores/notification'
@@ -216,6 +217,7 @@ import {
 
 const categoryStore = useCategoryStore()
 const notification = useNotificationStore()
+const route = useRoute()
 
 const templates = ref<SkillTemplate[]>([])
 const skills = ref<Skill[]>([])
@@ -264,6 +266,12 @@ onMounted(async () => {
     loadSkills(),
     categoryStore.fetchCategories()
   ])
+  // P2-5: 命令面板「执行 Skill: X」通过 ?execute= 直达并打开执行弹窗
+  const executeId = route.query.execute as string | undefined
+  if (executeId) {
+    const target = skills.value.find((skill) => skill.id === executeId)
+    if (target) executeSkill(target)
+  }
 })
 
 async function loadTemplates() {

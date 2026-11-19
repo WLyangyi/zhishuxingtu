@@ -33,6 +33,12 @@ export const notesApi = {
     return response.data
   },
 
+  /** 服务端预计算的未链接提及（P2-4 补充）。 */
+  getUnlinkedMentions: async (id: string): Promise<Backlink[]> => {
+    const response = await api.get(`/notes/${id}/unlinked-mentions`)
+    return response.data.data
+  },
+
   recordView: async (id: string): Promise<void> => {
     await api.post(`/notes/${id}/view`)
   }

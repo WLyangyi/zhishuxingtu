@@ -15,9 +15,20 @@
         新对话
       </AppButton>
 
+      <div class="sessions__search">
+        <Search :size="12" />
+        <input
+          v-model="sessionQuery"
+          type="search"
+          placeholder="搜索会话标题…"
+          aria-label="搜索会话"
+          @input="onSessionSearch"
+        />
+      </div>
+
       <div class="sessions__list">
         <button
-          v-for="chat in chatList"
+          v-for="chat in visibleChats"
           :key="chat.id"
           type="button"
           :class="['session', chat.id === currentChatId && 'session--active']"
@@ -33,7 +44,9 @@
           </span>
         </button>
 
-        <p v-if="!chatList.length" class="sessions__empty">还没有历史对话。</p>
+        <p v-if="!visibleChats.length" class="sessions__empty">
+          {{ sessionQuery ? '没有匹配的会话。' : '还没有历史对话。' }}
+        </p>
       </div>
     </aside>
 
@@ -219,7 +232,20 @@
       </section>
 
       <section class="inspector__section inspector__section--trace">
-        <span class="readout">TOOL TRACE · 工具轨迹</span>
+        <header class="inspector__section-head">
+          <span class="readout">TOOL TRACE · 工具轨迹</span>
+          <button
+            type="button"
+            class="inspector__export"
+            data-test="export-trace"
+            :disabled="!combinedTimeline.length"
+            title="导出工具轨迹为 JSON"
+            @click="exportTrace"
+          >
+            <Download :size="12" />
+            导出 JSON
+          </button>
+        </header>
         <div class="inspector__trace-scroll">
           <ToolTrace :events="combinedTimeline" empty-text="本轮运行后，工具调用与三查过程会出现在这里。" />
         </div>
@@ -264,10 +290,12 @@ import {
   Activity,
   Check,
   ChevronDown,
+  Download,
   Gauge,
   MessagesSquare,
   PanelRight,
   Plus,
+  Search,
   Send,
   Sparkles,
   Square,
@@ -286,6 +314,7 @@ import AppButton from '@/components/ui/AppButton.vue'
 import { useAuthStore } from '@/stores/auth'
 import { SSEClient, type SSEMessage } from '@/utils/sse'
 import { relativeTime } from '@/lib/time'
+import { buildTraceExport, filterSessions } from '@/lib/agentExport'
 
 const authStore = useAuthStore()
 
@@ -295,6 +324,8 @@ interface ChatMessage extends AgentMessage {
 
 const messages = ref<ChatMessage[]>([])
 const chatList = ref<AgentSession[]>([])
+const sessionQuery = ref('')
+const visibleChats = computed(() => filterSessions(chatList.value, sessionQuery.value))
 const currentChatId = ref('')
 const inputMessage = ref('')
 const loading = ref(false)
@@ -402,6 +433,28 @@ async function loadSessions() {
   } else if (!currentChatId.value) {
     await switchChat(chatList.value[0].id)
   }
+}
+
+/** 会话搜索（P2-6）：按标题向后端请求过滤，空结果不触发新建会话。 */
+async function onSessionSearch() {
+  const keyword = sessionQuery.value.trim()
+  const result = await agentApi.listSessions(keyword || undefined)
+  chatList.value = result
+}
+
+/** 工具轨迹一键导出 JSON（P2-6）。 */
+function exportTrace() {
+  if (!combinedTimeline.value.length) return
+  const session = chatList.value.find((item) => item.id === currentChatId.value) ?? null
+  const payload = buildTraceExport(session, combinedTimeline.value)
+  const filename = `agent-trace-${session?.id || 'session'}-${Date.now()}.json`
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
 }
 
 async function createNewChat() {
@@ -755,6 +808,31 @@ onUnmounted(() => {
 
 .sessions__close {
   display: none;
+  color: var(--t3);
+}
+
+.sessions__search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 2px 0;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--t3);
+}
+
+.sessions__search:focus-within {
+  border-color: var(--gold);
+}
+
+.sessions__search input {
+  width: 100%;
+  font-size: 11px;
+  color: var(--t1);
+}
+
+.sessions__search input::placeholder {
   color: var(--t3);
 }
 
@@ -1271,6 +1349,33 @@ onUnmounted(() => {
   flex: 1;
   min-height: 160px;
   border-bottom: 0;
+}
+
+.inspector__section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.inspector__export {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: 10px;
+  color: var(--t2);
+}
+
+.inspector__export:hover:not(:disabled) {
+  color: var(--gold);
+  border-color: var(--gold);
+}
+
+.inspector__export:disabled {
+  opacity: 0.4;
 }
 
 .usage-grid {

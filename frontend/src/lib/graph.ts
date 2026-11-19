@@ -11,6 +11,12 @@ const RING_RATIO: Record<string, number> = {
   tag: 0.95
 }
 
+/** 布局变形缓动（P2-1）：easeOutQuart，设计文档 §4.2 规定的 1000ms 飞行曲线。 */
+export function easeOutQuart(t: number): number {
+  const x = Math.min(1, Math.max(0, t))
+  return 1 - Math.pow(1 - x, 4)
+}
+
 /** 径向布局：文件夹在内环，笔记居中，标签在外环。 */
 export function radialPositions(
   nodes: GraphNode[],

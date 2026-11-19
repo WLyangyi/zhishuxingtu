@@ -139,7 +139,7 @@ import EmptyState from '@/components/ui/EmptyState.vue'
 import Kbd from '@/components/ui/Kbd.vue'
 import SegmentedControl from '@/components/ui/SegmentedControl.vue'
 import Spinner from '@/components/ui/Spinner.vue'
-import { filterGraph, findNode, graphStats, nodeDegrees, radialPositions } from '@/lib/graph'
+import { easeOutQuart, filterGraph, findNode, graphStats, nodeDegrees, radialPositions } from '@/lib/graph'
 import { useGraphStore } from '@/stores/graph'
 import { useThemeStore } from '@/stores/theme'
 import type { GraphData, GraphEdge, GraphNode } from '@/types/graph'
@@ -617,6 +617,7 @@ function applyRadial(immediate: boolean) {
 
   const targets = radialPositions(simNodes, layoutState.width, layoutState.height)
   const starts = new Map(simNodes.map((node) => [node.id, { x: node.x, y: node.y }]))
+  // 设计文档 §4.2「布局变形」规定 easeOutQuart 1000ms 飞行（非 450ms）；immediate 用于重建时瞬时定位
   const duration = immediate ? 0 : 1000
   const startAt = performance.now()
 
@@ -624,7 +625,7 @@ function applyRadial(immediate: boolean) {
 
   const step = (now: number) => {
     const progress = duration === 0 ? 1 : Math.min(1, (now - startAt) / duration)
-    const eased = 1 - Math.pow(1 - progress, 3)
+    const eased = easeOutQuart(progress)
 
     simNodes.forEach((node) => {
       const from = starts.get(node.id)

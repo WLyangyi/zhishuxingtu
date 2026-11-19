@@ -144,4 +144,19 @@ describe('GraphView 视图', () => {
     expect(wrapper.find('.layout-stub').text()).toBe('radial')
     wrapper.unmount()
   })
+
+  it('切换到径向时启动补间动画（P2-1：调度 rAF 做 1000ms 飞行）', async () => {
+    const rafSpy = vi.spyOn(window, 'requestAnimationFrame')
+    const { wrapper } = await mountGraph()
+    await flushPromises()
+    const baseline = rafSpy.mock.calls.length
+
+    await wrapper.find('.layout-stub').trigger('click')
+    await nextTick()
+
+    // applyRadial(false) 必须调度 rAF 逐帧插值，而不是瞬间赋值坐标
+    expect(rafSpy.mock.calls.length).toBeGreaterThan(baseline)
+    wrapper.unmount()
+    rafSpy.mockRestore()
+  })
 })

@@ -64,6 +64,27 @@ describe('CommandPalette', () => {
     wrapper.unmount()
   })
 
+  it('拼音全拼与首字母也能过滤中文命令（P2-5 补充）', async () => {
+    const cnActions = [
+      { id: 'a1', label: '新建笔记', hint: '在文件夹中新建' },
+      { id: 'a2', label: '关系图谱', hint: '/graph' }
+    ]
+    const wrapper = mount(CommandPalette, {
+      props: { open: true, pages: [], notes: [], actions: cnActions },
+      global: { stubs: { teleport: true } }
+    })
+    await nextTick()
+
+    await wrapper.find('.palette__input').setValue('xinjian')
+    expect(wrapper.text()).toContain('新建笔记')
+    expect(wrapper.text()).not.toContain('关系图谱')
+
+    await wrapper.find('.palette__input').setValue('gxtp')
+    expect(wrapper.text()).toContain('关系图谱')
+    expect(wrapper.text()).not.toContain('新建笔记')
+    wrapper.unmount()
+  })
+
   it('空查询只展示最近 5 篇笔记', async () => {
     const wrapper = mount(CommandPalette, {
       props: { open: true, notes, actions },

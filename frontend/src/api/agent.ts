@@ -71,8 +71,9 @@ export interface ObservabilitySummary {
 }
 
 export const agentApi = {
-  listSessions: async (): Promise<AgentSession[]> => {
-    const response = await api.get('/agent/sessions')
+  listSessions: async (q?: string): Promise<AgentSession[]> => {
+    const params = q ? { q } : undefined
+    const response = await api.get('/agent/sessions', params ? { params } : undefined)
     return response.data.data
   },
 

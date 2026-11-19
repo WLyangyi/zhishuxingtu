@@ -15,6 +15,7 @@ vi.mock('@/api/notes', () => ({
     list: vi.fn(),
     get: vi.fn(),
     getBacklinks: vi.fn(),
+    getUnlinkedMentions: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
@@ -86,11 +87,86 @@ beforeEach(() => {
   vi.mocked(notesApi.list).mockReturnValue(ok({ items: [], total: 0, page: 1, page_size: 100 }) as never)
   vi.mocked(notesApi.get).mockReturnValue(ok(existing) as never)
   vi.mocked(notesApi.getBacklinks).mockReturnValue(ok({ items: [], total: 0 }) as never)
+  vi.mocked(notesApi.getUnlinkedMentions).mockReturnValue(Promise.resolve([]) as never)
   // reportNoteView 内部对返回值链式 .catch，mock 必须返回 Promise
   vi.mocked(notesApi.recordView).mockReturnValue(Promise.resolve({ code: 0, data: null }) as never)
   vi.mocked(foldersApi.list).mockReturnValue(ok([]) as never)
   vi.mocked(categoriesApi.getCategories).mockReturnValue(ok([]) as never)
   vi.mocked(tagsApi.list).mockReturnValue(ok([]) as never)
+})
+
+describe('NoteEditor 未链接提及（P2-4）', () => {
+  const otherNote: Note = {
+    id: 'n2',
+    title: 'Agent 记忆',
+    content: '',
+    folder_id: null,
+    linked_note_ids: [],
+    tags: [],
+    created_at: '2026-01-01T00:00:00',
+    updated_at: '2026-01-02T00:00:00'
+  }
+
+  it('rail 列出正文中的未链接提及，一键建链后转为出链', async () => {
+    vi.mocked(notesApi.list).mockReturnValue(
+      ok({ items: [existing, otherNote], total: 2, page: 1, page_size: 100 }) as never
+    )
+    vi.mocked(notesApi.get).mockReturnValue(
+      ok({ ...existing, content: '今天提到了 Agent 记忆 但还没建链' }) as never
+    )
+
+    const wrapper = await mountEditor()
+
+    const mentionSection = wrapper.findAll('.rail__block').find((block) =>
+      block.text().includes('未链接提及')
+    )
+    expect(mentionSection).toBeDefined()
+    expect(mentionSection!.text()).toContain('Agent 记忆')
+
+    // 一键建链：把纯文本提及替换为 [[...]]，出链计数 +1
+    const linkRow = mentionSection!.find('.rail__mention-link')
+    expect(linkRow.exists()).toBe(true)
+    await linkRow.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('1 LINKS')
+    // 建链后未链接提及区块整体消失（v-if 长度为 0）
+    const mentionAfter = wrapper
+      .findAll('.rail__block')
+      .find((block) => block.text().includes('未链接提及'))
+    expect(mentionAfter).toBeUndefined()
+
+    wrapper.unmount()
+    document.body.innerHTML = ''
+  })
+
+  it('服务端预计算的提及并入 rail，且与本地结果按 id 去重', async () => {
+    // 本地 allNotes 不含该笔记（模拟 >500 篇分页上限），只有服务端接口能给出
+    const serverOnly = { id: 'n9', title: '仅服务端可见的笔记' }
+    vi.mocked(notesApi.list).mockReturnValue(
+      ok({ items: [existing, otherNote], total: 2, page: 1, page_size: 100 }) as never
+    )
+    vi.mocked(notesApi.get).mockReturnValue(
+      ok({ ...existing, content: '提到 Agent 记忆 与 仅服务端可见的笔记' }) as never
+    )
+    vi.mocked(notesApi.getUnlinkedMentions).mockReturnValue(
+      Promise.resolve([otherNote, serverOnly].map((n) => ({ id: n.id, title: n.title, created_at: '' }))) as never
+    )
+
+    const wrapper = await mountEditor()
+
+    expect(notesApi.getUnlinkedMentions).toHaveBeenCalledWith('n1')
+    const mentionSection = wrapper.findAll('.rail__block').find((block) =>
+      block.text().includes('未链接提及')
+    )
+    // 两条都在，且 otherNote 只出现一次（去重）
+    expect(mentionSection!.text()).toContain('Agent 记忆')
+    expect(mentionSection!.text()).toContain('仅服务端可见的笔记')
+    expect(mentionSection!.findAll('.rail__mention-link')).toHaveLength(2)
+
+    wrapper.unmount()
+    document.body.innerHTML = ''
+  })
 })
 
 describe('NoteEditor 编辑态 [[ ]] 内联高亮（P6-②）', () => {

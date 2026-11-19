@@ -192,3 +192,60 @@ describe('AIAssistant 视图', () => {
     wrapper.unmount()
   })
 })
+
+describe('AIAssistant 会话增强（P2-6）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    sseState.connects.length = 0
+    vi.mocked(agentApi.listSessions).mockImplementation(((q?: string) => {
+      const all = [
+        { id: 's1', title: '周报生成讨论', created_at: '2026-01-01T00:00:00', updated_at: '2026-01-02T00:00:00' },
+        { id: 's2', title: 'RAG 检索调优', created_at: '2026-01-01T00:00:00', updated_at: '2026-01-02T00:00:00' }
+      ]
+      const keyword = (q || '').trim().toLowerCase()
+      return Promise.resolve(keyword ? all.filter((s) => s.title.toLowerCase().includes(keyword)) : all)
+    }) as never)
+    vi.mocked(agentApi.getMessages).mockReturnValue(Promise.resolve({
+      messages: [], pending_approval: null
+    }) as never)
+    vi.mocked(agentApi.getTimeline).mockReturnValue(Promise.resolve([
+      { id: 'e1', type: 'tool', tool_name: 'search', args: { q: 'x' } }
+    ]) as never)
+    vi.mocked(agentApi.getPreferences).mockReturnValue(Promise.resolve({}) as never)
+  })
+
+  it('会话列表搜索框按标题过滤并带 q 请求后端', async () => {
+    const wrapper = await mountAssistant()
+    const search = wrapper.find('.sessions__search input')
+    expect(search.exists()).toBe(true)
+
+    await search.setValue('rag')
+    await flushPromises()
+
+    expect(agentApi.listSessions).toHaveBeenCalledWith('rag')
+    expect(wrapper.text()).toContain('RAG 检索调优')
+    expect(wrapper.text()).not.toContain('周报生成讨论')
+    wrapper.unmount()
+  })
+
+  it('Inspector 导出按钮生成 JSON Blob 下载', async () => {
+    const createObjectURL = vi.fn().mockReturnValue('blob:mock')
+    const revokeObjectURL = vi.fn()
+    Object.defineProperty(URL, 'createObjectURL', { value: createObjectURL, configurable: true })
+    Object.defineProperty(URL, 'revokeObjectURL', { value: revokeObjectURL, configurable: true })
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    const wrapper = await mountAssistant()
+    const exportBtn = wrapper.find('button[data-test="export-trace"]')
+    expect(exportBtn.exists()).toBe(true)
+    await exportBtn.trigger('click')
+
+    expect(createObjectURL).toHaveBeenCalled()
+    const blob = createObjectURL.mock.calls[0][0] as Blob
+    expect(blob).toBeInstanceOf(Blob)
+    expect(clickSpy).toHaveBeenCalled()
+
+    wrapper.unmount()
+    clickSpy.mockRestore()
+  })
+})

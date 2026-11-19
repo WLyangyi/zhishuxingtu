@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   buildWikiHighlightSegments,
   detectWikiQuery,
+  findUnlinkedMentions,
+  linkMention,
   parseWikiLinks,
   readMinutes,
   renderWikiMarkup,
@@ -63,6 +65,38 @@ describe('编辑器纯逻辑', () => {
     expect(wordCount('你好 世界\n第二行')).toBe(7)
     expect(readMinutes(1284)).toBe(6)
     expect(readMinutes(0)).toBe(1)
+  })
+})
+
+describe('未链接提及（P2-4）', () => {
+  it('行为1 · 识别正文中以纯文本出现、但未写成 [[ ]] 的笔记，排除自身', () => {
+    const content = '这里提到了 Agent 记忆 和 RAG 混合检索要点，都没建链'
+    const result = findUnlinkedMentions(content, notes, 'n1')
+    expect(result.map((item) => item.id)).toEqual(['n3', 'n2'])
+  })
+
+  it('行为2 · 已写成 [[标题]] 的不算未链接提及', () => {
+    const content = '这里 [[Agent 记忆]] 已建链，但 RAG 混合检索要点 没建链'
+    const result = findUnlinkedMentions(content, notes, null)
+    expect(result.map((item) => item.id)).toEqual(['n2'])
+  })
+
+  it('行为3 · 标题首尾空白规范化匹配，大小写不敏感', () => {
+    const content = '谈到了 rag 混合检索要点 的大小写'
+    const result = findUnlinkedMentions(content, notes, null)
+    expect(result.map((item) => item.id)).toEqual(['n2'])
+  })
+
+  it('行为4 · 正文无匹配或只有自身提及则返回空', () => {
+    expect(findUnlinkedMentions('没有任何提及', notes, null)).toEqual([])
+    expect(findUnlinkedMentions('Agent 三查反思', notes, 'n1')).toEqual([])
+  })
+
+  it('行为5 · 一键建链只替换首个纯文本标题，不影响已有链接', () => {
+    const content = '先看 [[Agent 记忆]]，再看 Agent 记忆 一次'
+    expect(linkMention(content, 'Agent 记忆')).toBe(
+      '先看 [[Agent 记忆]]，再看 [[Agent 记忆]] 一次'
+    )
   })
 })
 

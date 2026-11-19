@@ -66,6 +66,7 @@
 import { computed, nextTick, ref, watch, type Component } from 'vue'
 import { useRouter } from 'vue-router'
 import { Search } from 'lucide-vue-next'
+import { matchesCommand } from '@/lib/pinyin'
 import Kbd from './Kbd.vue'
 import EmptyState from './EmptyState.vue'
 
@@ -126,9 +127,7 @@ const inputRef = ref<HTMLInputElement | null>(null)
 const listRef = ref<HTMLElement | null>(null)
 
 function matches(item: CommandItem, keyword: string) {
-  if (!keyword) return true
-  const haystack = `${item.label} ${item.hint ?? ''}`.toLowerCase()
-  return haystack.includes(keyword)
+  return matchesCommand(item.label, item.hint, keyword)
 }
 
 const visibleGroups = computed<CommandGroup[]>(() => {

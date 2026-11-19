@@ -1,5 +1,48 @@
 import { reactive } from 'vue'
 
+/** 命令面板中一条可被选择/执行的命令描述（与 UI 层 CommandItem 结构兼容）。 */
+export interface ResourceCommand {
+  id: string
+  label: string
+  hint: string
+  to: string
+}
+
+export interface CommandResources {
+  folders: Array<{ id: string; name: string }>
+  skills: Array<{ id: string; name: string }>
+  prompts: Array<{ id: string; name: string }>
+}
+
+/**
+ * 由文件夹/Skill/Prompt 三类资源生成动态命令（P2-5）。
+ * - 文件夹 → 新建笔记到该文件夹（NoteEditor 读取 ?folder= 预填）
+ * - Skill → 跳 /skills 带 ?execute=（SkillsView 读取后打开执行弹窗）
+ * - Prompt → 跳 /prompts 带 ?open=（PromptsView 读取后打开编辑弹窗）
+ */
+export function buildResourceCommands(resources: CommandResources): ResourceCommand[] {
+  const folderCommands = resources.folders.map((folder) => ({
+    id: `new-note-${folder.id}`,
+    label: `新建笔记到「${folder.name}」`,
+    hint: '在文件夹中新建',
+    to: `/notes/new?folder=${encodeURIComponent(folder.id)}`
+  }))
+  const skillCommands = resources.skills.map((skill) => ({
+    id: `exec-skill-${skill.id}`,
+    label: `执行 Skill: ${skill.name}`,
+    hint: '运行技能',
+    to: `/skills?execute=${encodeURIComponent(skill.id)}`
+  }))
+  const promptCommands = resources.prompts.map((prompt) => ({
+    id: `open-prompt-${prompt.id}`,
+    label: `打开提示词: ${prompt.name}`,
+    hint: '编辑提示词',
+    to: `/prompts?open=${encodeURIComponent(prompt.id)}`
+  }))
+
+  return [...folderCommands, ...skillCommands, ...promptCommands]
+}
+
 const state = reactive({ open: false })
 
 export function useCommandPalette() {

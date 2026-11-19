@@ -288,3 +288,43 @@ async def get_backlinks(
         ))
     
     return Response(data=backlinks)
+
+
+@router.get("/{note_id}/unlinked-mentions", response_model=Response[list])
+async def get_unlinked_mentions(
+    note_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """P2-4:后端预计算未链接提及——正文中以纯文本出现、但未写成 [[ ]] 的同用户笔记。
+
+    排除 [[...]] 锚文本、当前笔记自身与其它用户的笔记；按正文首次出现顺序返回。
+    前端可在编辑期继续用本地纯函数做实时提示，此接口提供服务端权威结果（供 MCP 等消费）。
+    """
+    note = db.query(Note).filter(
+        Note.id == note_id, Note.user_id == current_user.id
+    ).first()
+    if not note:
+        raise HTTPException(status_code=404, detail="笔记不存在")
+
+    content = note.content or ""
+    plain = LINK_PATTERN.sub("", content)
+    lower = plain.lower()
+
+    candidates = (
+        db.query(Note)
+        .filter(Note.user_id == current_user.id, Note.id != note_id)
+        .all()
+    )
+
+    hits = []
+    for candidate in candidates:
+        title = (candidate.title or "").strip()
+        if not title:
+            continue
+        at = lower.find(title.lower())
+        if at >= 0:
+            hits.append((at, {"id": candidate.id, "title": candidate.title}))
+    hits.sort(key=lambda item: item[0])
+
+    return Response(data=[item for _, item in hits])

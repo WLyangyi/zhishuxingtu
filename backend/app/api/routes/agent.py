@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -381,16 +382,17 @@ async def resume_agent(
 
 @router.get("/sessions")
 async def list_agent_sessions(
+    q: Optional[str] = Query(None, description="按会话标题关键词过滤（大小写不敏感）"),
+    limit: int = Query(50, ge=1, le=200, description="返回条数上限"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    sessions = (
-        db.query(AgentSession)
-        .filter(AgentSession.user_id == current_user.id)
-        .order_by(AgentSession.updated_at.desc())
-        .limit(50)
-        .all()
-    )
+    query = db.query(AgentSession).filter(AgentSession.user_id == current_user.id)
+    keyword = (q or "").strip()
+    if keyword:
+        # func.lower 兼容 SQLite 与 Postgres，避免大小写敏感导致漏匹配
+        query = query.filter(func.lower(AgentSession.title).contains(keyword.lower()))
+    sessions = query.order_by(AgentSession.updated_at.desc()).limit(limit).all()
     return {
         "success": True,
         "code": 200,

@@ -203,6 +203,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { useNotificationStore } from '@/stores/notification'
 import { AppButton, AppModal, PageHeader, SegmentedControl } from '@/components/ui'
 import { promptsApi } from '@/api/prompts'
@@ -214,6 +215,7 @@ import {
 } from 'lucide-vue-next'
 
 const notification = useNotificationStore()
+const route = useRoute()
 
 const templates = ref<PromptTemplate[]>([])
 const prompts = ref<Prompt[]>([])
@@ -261,6 +263,12 @@ const categoryItems = computed(() => [
 
 onMounted(async () => {
   await loadData()
+  // P2-5: 命令面板「打开提示词: X」通过 ?open= 直达并打开编辑弹窗
+  const openId = route.query.open as string | undefined
+  if (openId) {
+    const target = prompts.value.find((prompt) => prompt.id === openId)
+    if (target) editPrompt(target)
+  }
 })
 
 async function loadData() {
