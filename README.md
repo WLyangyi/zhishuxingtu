@@ -6,7 +6,7 @@
 [![Vue 3.4+](https://img.shields.io/badge/Vue-3.4%2B-brightgreen)](https://vuejs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109%2B-blue)](https://fastapi.tiangolo.com/)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-green)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-141%20passed-brightgreen)](backend/tests/)
+[![Tests](https://img.shields.io/badge/tests-166%20passed-brightgreen)](backend/tests/)
 
 ## ✨ 核心亮点：多 Agent Agentic RAG
 
@@ -96,7 +96,7 @@ flowchart TD
 | AI 编排 | LangGraph 0.2.x（编排器 + 4 专职子 Agent / ReAct / 三查 / HITL / checkpoint / 双图回退开关）· LangChain |
 | 模型 | DeepSeek-V4-flash（Agent 推理，显式关思考）· qwen3.7-text-embedding（向量化）· GLM-5.3-Flash（独立评估裁判，JSON mode + 坏输出容错） |
 | 数据 | FAISS（向量索引 + 混合检索）· SQLite · Redis |
-| 生态 | FastMCP 3.x（MCP Server）· Tavily（联网搜索）· Langfuse（可观测）· pytest（后端 158 用例）· Vitest（前端 167 用例） |
+| 生态 | FastMCP 3.x（MCP Server）· Tavily（联网搜索）· Langfuse（可观测）· pytest（后端 166 用例）· Vitest（前端 206 用例） |
 
 ## 🚀 快速开始
 
@@ -206,6 +206,7 @@ npm run lint:hex && npx vue-tsc --noEmit && npm run test:run && npm run build
 # 认证 / 笔记 / 文件夹 / 标签
 POST /api/auth/login            GET/POST/PUT/DELETE /api/notes
 GET  /api/notes/:id/backlinks   # 反向链接
+GET  /api/notes/:id/unlinked-mentions  # 未链接提及（正文纯文本提到但未建链的笔记）
 
 # 检索
 GET  /api/search                # 全文搜索
@@ -214,7 +215,7 @@ POST /api/search/ai             # RAG 问答（基线链路）
 
 # Agentic RAG
 POST /api/agent/chat/stream     # Agent 问答（SSE 流式：thought/action/observation/check/final_answer）
-GET  /api/agent/sessions        # 会话管理
+GET  /api/agent/sessions        # 会话管理（?q= 标题关键词过滤、?limit= 条数上限）
 POST /api/agent/resume          # HITL 审批恢复
 GET  /api/agent/traces          # 可观测 trace
 GET  /api/agent/observability/summary

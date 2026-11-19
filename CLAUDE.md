@@ -128,7 +128,7 @@ npm run test:run
 ## API 路由前缀
 
 所有 API 路由均以 `/api` 为前缀，主要端点：
-- `/api/notes` - 笔记 CRUD
+- `/api/notes` - 笔记 CRUD（含 `GET /notes/{id}/backlinks` 反链、`GET /notes/{id}/unlinked-mentions` 未链接提及）
 - `/api/folders` - 文件夹管理
 - `/api/tags` - 标签管理
 - `/api/search` - 搜索 + AI 问答
@@ -136,7 +136,7 @@ npm run test:run
 - `/api/skills` - Skill 执行引擎
 - `/api/prompts` - Prompt 管理
 - `/api/agent/chat/stream` - Agent ReAct 问答（SSE 流式）
-- `/api/agent/sessions` - Agent 会话管理
+- `/api/agent/sessions` - Agent 会话管理（`?q=` 标题关键词过滤、`?limit=` 条数上限）
 
 ## 深入文档
 
