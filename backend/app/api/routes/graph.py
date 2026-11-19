@@ -1,8 +1,11 @@
-import json
-from fastapi import APIRouter, Depends
+import hashlib
+
+from fastapi import APIRouter, Depends, Request, Response as FastAPIResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from app.db.session import get_db
 from app.models.note import Note
+from app.models.note_link import NoteLink
 from app.models.folder import Folder
 from app.models.tag import Tag
 from app.models.user import User
@@ -13,11 +16,31 @@ router = APIRouter(prefix="/graph", tags=["知识图谱"])
 
 MAX_GRAPH_NODES = 500
 
+
+def _graph_etag(db: Session, user_id: str) -> str:
+    """用户维度图谱快照指纹：notes/folders 按用户，tags 是全局表。"""
+    latest = []
+    for model, scoped in ((Note, True), (Folder, True), (Tag, False)):
+        query = db.query(func.max(model.updated_at))
+        if scoped:
+            query = query.filter(model.user_id == user_id)
+        latest.append(str(query.scalar() or ""))
+    raw = "|".join([user_id, *latest])
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 @router.get("/global", response_model=Response[GraphResponse])
 async def get_global_graph(
+    request: Request,
+    response: FastAPIResponse,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    etag = _graph_etag(db, current_user.id)
+    response.headers["ETag"] = etag
+    if request.headers.get("if-none-match") == etag:
+        return FastAPIResponse(status_code=304, headers={"ETag": etag})
+
     nodes = []
     edges = []
     
@@ -67,19 +90,19 @@ async def get_global_graph(
                 type="has_tag"
             ))
         
-        if note.linked_note_ids:
-            try:
-                linked_ids = json.loads(note.linked_note_ids)
-            except (json.JSONDecodeError, TypeError):
-                linked_ids = []
-            for linked_id in linked_ids:
-                if linked_id in note_id_set:
-                    edges.append(GraphEdge(
-                        source=note.id,
-                        target=linked_id,
-                        type="links_to"
-                    ))
-    
+    # P1-1:出链走关联表一次批量查询，不再对每篇笔记 json.loads。
+    if note_id_set:
+        link_rows = db.query(NoteLink.source_id, NoteLink.target_id).filter(
+            NoteLink.source_id.in_(note_id_set)
+        ).all()
+        for source_id, target_id in link_rows:
+            if target_id in note_id_set:
+                edges.append(GraphEdge(
+                    source=source_id,
+                    target=target_id,
+                    type="links_to"
+                ))
+
     return Response(data=GraphResponse(nodes=nodes, edges=edges))
 
 @router.get("/local/{note_id}", response_model=Response[GraphResponse])
@@ -105,15 +128,10 @@ async def get_local_graph(
     ))
     visited.add(current_note.id)
     
-    linked_note_ids_set = set()
-    if current_note.linked_note_ids:
-        try:
-            linked_ids = json.loads(current_note.linked_note_ids)
-        except (json.JSONDecodeError, TypeError):
-            linked_ids = []
-        for linked_id in linked_ids:
-            linked_note_ids_set.add(linked_id)
-    
+    linked_note_ids_set = {
+        row[0] for row in db.query(NoteLink.target_id).filter(NoteLink.source_id == note_id).all()
+    }
+
     if linked_note_ids_set:
         linked_notes = db.query(Note).filter(
             Note.id.in_(linked_note_ids_set),
@@ -135,10 +153,12 @@ async def get_local_graph(
                 ))
                 visited.add(linked_note.id)
     
-    backlink_notes = db.query(Note).filter(
-        Note.user_id == current_user.id,
-        Note.linked_note_ids.contains(f'"{note_id}"')
-    ).all()
+    backlink_notes = (
+        db.query(Note)
+        .join(NoteLink, NoteLink.source_id == Note.id)
+        .filter(NoteLink.target_id == note_id, Note.user_id == current_user.id)
+        .all()
+    )
     
     for note in backlink_notes:
         if note.id not in visited:

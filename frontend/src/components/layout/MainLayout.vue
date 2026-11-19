@@ -12,11 +12,13 @@
         </div>
 
         <div class="shell__view">
-          <RouterView v-slot="{ Component, route: current }">
-            <Transition :name="transitionName" mode="out-in">
-              <component :is="Component" :key="current.path" />
-            </Transition>
-          </RouterView>
+          <ErrorBoundary>
+            <RouterView v-slot="{ Component, route: current }">
+              <Transition :name="transitionName" mode="out-in">
+                <component :is="Component" :key="current.path" />
+              </Transition>
+            </RouterView>
+          </ErrorBoundary>
         </div>
       </main>
     </div>
@@ -43,6 +45,7 @@ import TopBar from './TopBar.vue'
 import MobileNav from './MobileNav.vue'
 import CommandHost from './CommandHost.vue'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
+import ErrorBoundary from '@/components/ui/ErrorBoundary.vue'
 import StarField from '@/components/domain/StarField.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useFoldersStore } from '@/stores/folders'

@@ -36,13 +36,31 @@ if (!Element.prototype.hasPointerCapture) {
   Element.prototype.releasePointerCapture = vi.fn()
 }
 
-// jsdom 的 canvas 2D 只有会抛错的占位实现，这里无条件替换为最小桩
-HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
-  setTransform: vi.fn(),
-  clearRect: vi.fn(),
-  beginPath: vi.fn(),
-  arc: vi.fn(),
-  fill: vi.fn(),
-  globalAlpha: 1,
-  fillStyle: ''
-})) as unknown as typeof HTMLCanvasElement.prototype.getContext
+// jsdom 的 canvas 2D 只有会抛错的占位实现；图谱用 d3 直接调大量绘图 API，
+// 这里用 Proxy 提供「任意方法都是空操作、常用属性有默认值」的通用桩。
+const canvasContextStub = new Proxy<Record<string, unknown>>(
+  {
+    globalAlpha: 1,
+    fillStyle: '',
+    strokeStyle: '',
+    lineWidth: 1,
+    font: '10px sans-serif',
+    canvas: { width: 800, height: 600, clientWidth: 800, clientHeight: 600 }
+  },
+  {
+    get(target, prop) {
+      if (prop in target) return target[prop as string]
+      if (prop === 'measureText') return () => ({ width: 0 })
+      if (prop === 'getImageData') return () => ({ data: new Uint8ClampedArray(4) })
+      if (prop === 'createLinearGradient' || prop === 'createRadialGradient') {
+        return () => ({ addColorStop: () => {} })
+      }
+      return () => {}
+    },
+    set(target, prop, value) {
+      target[prop as string] = value
+      return true
+    }
+  }
+)
+HTMLCanvasElement.prototype.getContext = vi.fn(() => canvasContextStub) as unknown as typeof HTMLCanvasElement.prototype.getContext

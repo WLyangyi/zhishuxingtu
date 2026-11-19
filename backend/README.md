@@ -42,7 +42,7 @@
 | Vue 3.4+ | 渐进式 JavaScript 框架 |
 | TypeScript 5.x | 类型安全的 JavaScript |
 | Pinia | Vue 状态管理 |
-| Naive UI | Vue 3 组件库 |
+| Reka UI | Vue 3 无样式组件原语 |
 | Tailwind CSS | 原子化 CSS |
 | Shiki | 代码高亮 |
 

@@ -20,11 +20,14 @@ source venv/bin/activate  # Linux/Mac
 # 安装依赖
 pip install -r requirements.txt
 
-# 启动开发服务器
-python -m uvicorn app.main:app --reload --port 8000
+# 启动开发服务器（本机 Windows 必须用 start_dev.py，裸 uvicorn 会卡死在 WMI 查询）
+.venv\Scripts\python.exe -u start_dev.py
 
-# 运行测试
-pytest backend/tests/
+# 运行测试（本机需进程内注入 platform workaround，见 docs/启动文档.md §4.2）
+.venv\Scripts\python.exe -m pytest tests/ -q -p no:xdist
+
+# 双链 JSON → note_links 回填（幂等；改双链存储后重跑）
+.venv\Scripts\python.exe scripts/migrate_note_links.py
 ```
 
 ### 前端 (Node.js 18+)
@@ -40,6 +43,11 @@ npm run dev
 
 # 构建生产版本
 npm run build
+
+# CI 门禁四件套（frontend-gate.yml 同款）
+npm run lint:hex
+npx vue-tsc --noEmit
+npm run test:run
 ```
 
 ## 技术栈
@@ -82,6 +90,11 @@ npm run build
 - **评估体系**: `backend/eval/` + `services/llm/judge_metrics.py` - 50 条 eval set（含 `expected_intent` 标注）+ 14 条意图边界用例 + `QWEN_JUDGE_MODEL` 独立裁判（P22 坏输出容错）+ 延迟/token/路由准确率口径（`run_eval.py` 新旧对比，报告在 `eval/reports/`）
 - **Prompt 系统**: PromptLab + Skill Chain + Few-Shot 学习
 
+## 前端红线与约定
+- 叶子组件的渲染错误会冻结整棵组件树：独立区域用 `ErrorBoundary` 包裹；Teleport/portal 内容不在组件树内，这类错误靠 `main.ts` 全局 `errorHandler` 兜底。
+- 新增具名路由会被 `tests/smoke.routes.spec.ts` 自动覆盖；测试 mock 走 `@/api` 边界且**必须返回 Promise**（否则 `.catch` 链 TypeError 会被吞成 notFound）。
+- 视觉值只走 CSS 令牌（`npm run lint:hex` 为门禁）；测试用 `npm run test:run`，不要去掉 `--no-file-parallelism`（本机并行 worker 会 SIGTERM）。
+
 ## 数据模型
 
 核心实体关系：
@@ -89,7 +102,7 @@ npm run build
 - Folder → Notes (一对多，支持 4 层嵌套)
 - Category → Folders (一对多，三大分类：个人/工作/素材)
 - Note ↔ Tag (多对多)
-- Note ↔ Note (双向链接，通过 `linked_note_ids` 字段)
+- Note ↔ Note (双向链接：`note_links` 关联表是出链/反链/图谱的查询入口；`notes.linked_note_ids` JSON 仅回滚保险，写路径同步维护)
 - agent_sessions / agent_tool_calls - Agent 会话与工具调用审计（M1；`agent_route` 命中路由 M7.4）
 - eval_sets / eval_runs - 评测题库与成绩单（M2）
 - user_preferences - 用户长期偏好，跨会话记忆（M4）
@@ -103,8 +116,9 @@ npm run build
 - `FAISS_INDEX_PATH` - 向量索引路径
 - `DEEPSEEK_API_KEY` / `DEEPSEEK_MODEL=deepseek-v4-flash` / `DEEPSEEK_THINKING=disabled` - Agent 推理（M1，P2 必须关思考）
 - `QWEN_EMBEDDING_MODEL=qwen3.7-text-embedding` - Embedding（M0）
-- `QWEN_JUDGE_MODEL=qwen3.7-plus-2026-05-26` - 评估裁判（qwen3.7-max/plus 免费额度连环耗尽 403、qwen3.7-flash 拼写漂移不可用→P22 容错已加；勿切回耗尽的模型）
+- `JUDGE_PROVIDER=glm` / `GLM_JUDGE_MODEL=glm-5.3-flash` - 默认评估裁判；qwen 回退用 `JUDGE_PROVIDER=qwen` + `QWEN_JUDGE_MODEL=qwen3.7-max-2026-06-08`（跨裁判分数不可直接比较）
 - `AGENT_MULTI_AGENT=false` - M7 A′ 多 Agent 图开关（true=编排器路由 4 子 Agent 的平铺图，false=单 Agent 图回退位）
+- `AGENT_TOKEN_BUDGET=30000` - 单轮 ReAct token 硬上限（勿调回 10000：note_write 多轮工具链约 21000，过低会在已生成 create_note 后误杀写入；仍须低于会话级 `AGENT_SESSION_TOKEN_BUDGET`）
 - `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL` - 可观测（M2，fail-silent；trace 上报遗留，需干净 `.venv-clean`）
 - `MCP_API_KEY` - MCP Server `/mcp` 认证（M3，为空则 fail-closed 拒绝所有请求）
 - `MCP_ENABLE_WRITE` / `MCP_WRITE_USER_ID` / `MCP_DRY_RUN` - MCP 写工具三重闸门（默认全关：ENABLE_WRITE=true 且 WRITE_USER_ID 非空才暴露 `create_note`；DRY_RUN=true 只回预览不落库。本机当前为真写）

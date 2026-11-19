@@ -211,7 +211,7 @@ import { skillsApi } from '@/api/skills'
 import type { Skill, SkillTemplate } from '@/types/skill'
 import {
   Zap, Plus, Package, Sparkles, Play, Pause,
-  Edit3, Trash2, BarChart3, Calendar
+  Edit3, Trash2, BarChart3, Calendar, Rocket
 } from 'lucide-vue-next'
 
 const categoryStore = useCategoryStore()

@@ -6,7 +6,7 @@
 [![Vue 3.4+](https://img.shields.io/badge/Vue-3.4%2B-brightgreen)](https://vuejs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109%2B-blue)](https://fastapi.tiangolo.com/)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-green)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-112%20passed-brightgreen)](backend/tests/)
+[![Tests](https://img.shields.io/badge/tests-141%20passed-brightgreen)](backend/tests/)
 
 ## ✨ 核心亮点：多 Agent Agentic RAG
 
@@ -91,12 +91,12 @@ flowchart TD
 
 | 层 | 技术 |
 |----|------|
-| 前端 | Vue 3.4 · TypeScript · Pinia · Naive UI · Tailwind CSS · D3 |
+| 前端 | Vue 3.4 · TypeScript · Pinia · Reka UI · Tailwind CSS · D3（精密星图 v2 设计） · Vitest（全路由挂载冒烟） |
 | 后端 | Python 3.11 · FastAPI · SQLAlchemy · SSE |
 | AI 编排 | LangGraph 0.2.x（编排器 + 4 专职子 Agent / ReAct / 三查 / HITL / checkpoint / 双图回退开关）· LangChain |
 | 模型 | DeepSeek-V4-flash（Agent 推理，显式关思考）· qwen3.7-text-embedding（向量化）· GLM-5.3-Flash（独立评估裁判，JSON mode + 坏输出容错） |
 | 数据 | FAISS（向量索引 + 混合检索）· SQLite · Redis |
-| 生态 | FastMCP 3.x（MCP Server）· Tavily（联网搜索）· Langfuse（可观测）· pytest（后端 112 用例） |
+| 生态 | FastMCP 3.x（MCP Server）· Tavily（联网搜索）· Langfuse（可观测）· pytest（后端 158 用例）· Vitest（前端 167 用例） |
 
 ## 🚀 快速开始
 
@@ -109,9 +109,9 @@ flowchart TD
 git clone <your-repo-url>
 cd 知枢星图/backend
 
-python -m venv venv
-venv\Scripts\activate        # Windows
-pip install -r requirements.txt
+# 用 uv 建虚拟环境（推荐，无需管理员权限；Windows 本机路径见 docs/启动文档.md）
+uv venv --python <你的 Python 3.11+ 解释器> --system-site-packages .venv
+uv pip install --python .venv\Scripts\python.exe -r requirements.txt
 
 cp .env.example .env         # 编辑 .env 填入你的 API Key
 ```
@@ -132,8 +132,10 @@ JUDGE_PROVIDER=glm
 GLM_API_KEY=your-zhipu-api-key
 GLM_JUDGE_MODEL=glm-5.3-flash
 
-# 多 Agent 编排（true=编排器路由 4 专职子 Agent，false=单 Agent 图回退位）
+# 多 Agent 编排（配置默认 false=单 Agent 图回退位；本机 start_dev.py 默认 true）
 AGENT_MULTI_AGENT=true
+# 单轮 ReAct token 硬上限（默认 30000；勿调回 10000，会误杀 note_write 的 create_note）
+AGENT_TOKEN_BUDGET=30000
 
 # 联网搜索（Tavily 免费注册 https://tavily.com；为空则工具优雅降级）
 TAVILY_API_KEY=tvly-xxx
@@ -154,16 +156,19 @@ LANGFUSE_SECRET_KEY=
 
 ### 2. 启动
 ```bash
-# 后端
-python -m uvicorn app.main:app --reload --port 8000
+# 后端（用 uv 建的 .venv；本机 Windows 必须用 start_dev.py，裸 uvicorn 会卡在 WMI 查询）
+cd backend
+.venv\Scripts\python.exe -u start_dev.py
 
 # 前端（另开终端）
-cd ../frontend
+cd frontend
 npm install
 npm run dev
 ```
 
 打开 `http://localhost:5173`，在「AI 助手」发起问答即可看到完整的推理时间线。
+
+> 本机（Windows）注意：`start_dev.py` 内置 platform mock（规避 openai SDK 构造头触发的 WMI 卡死）与多 Agent 开关；只有在确认环境无此问题时才用裸 `uvicorn`。完整排障见 `docs/启动文档.md`。
 
 ### 3. Docker 容器化启动（可选）
 
@@ -189,6 +194,10 @@ python eval/run_eval.py                       # 50 条评测集新旧对比（re
 python eval/eval_gate.py                      # 回归门禁：校验最新基线摘要是否达标（CI 同款，exit 0/1）
 python eval/ablation_runner.py                # 7 组消融（默认 --skip-judge，只比 recall/路由/延迟/token）
 python eval/run_behavior_eval.py              # Agent 行为评测 10 条（拒答/越权/注入/澄清/多轮/熔断）
+
+# 前端门禁（CI 同款：色值令牌 → 类型 → 单测+全路由冒烟 → 构建）
+cd frontend && npm ci
+npm run lint:hex && npx vue-tsc --noEmit && npm run test:run && npm run build
 ```
 
 ## 🔌 API 接口

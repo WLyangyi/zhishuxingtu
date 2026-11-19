@@ -76,6 +76,12 @@ def create_note(title: str, content: str, folder_id: Optional[str] = None) -> st
         db.commit()
         db.refresh(note)
 
+        # 与普通笔记创建保持一致：JSON 留作回滚保险，关联表供反链/图谱索引查询。
+        from app.queries.note_links import add_outgoing_links
+
+        add_outgoing_links(db, note.id, linked_ids)
+        db.commit()
+
         # 与普通笔记创建保持一致；embedding 不可用时不影响写入主流程。
         try:
             from app.services.embedding_service import embedding_service

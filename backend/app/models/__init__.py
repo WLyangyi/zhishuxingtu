@@ -1,6 +1,7 @@
 from app.models.user import User
 from app.models.folder import Folder
 from app.models.note import Note, note_tags
+from app.models.note_link import NoteLink
 from app.models.note_view import NoteView
 from app.models.tag import Tag, content_tags
 from app.models.category import Category, ContentType, Content

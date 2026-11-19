@@ -6,11 +6,17 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from app.db.session import get_db
 from app.models.note import Note
+from app.models.note_link import NoteLink
 from app.models.tag import Tag
 from app.models.user import User
 from app.schemas import Response, NoteCreate, NoteUpdate, NoteResponse, NoteListResponse, BacklinkResponse
 from app.api.deps import get_current_user
 from app.queries.home import record_note_view
+from app.queries.note_links import (
+    add_outgoing_links,
+    outgoing_links_by_source,
+    replace_outgoing_links,
+)
 from app.services import get_vector_store
 from app.services.vector_store_adapter import get_vector_store_adapter
 from app.services.embedding_service import embedding_service
@@ -64,6 +70,7 @@ async def list_notes(
     total = query.count()
     notes = query.order_by(Note.updated_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     
+    links_by_source = outgoing_links_by_source(db, [note.id for note in notes])
     items = []
     for note in notes:
         note_dict = {
@@ -71,7 +78,7 @@ async def list_notes(
             "title": note.title,
             "content": note.content,
             "folder_id": note.folder_id,
-            "linked_note_ids": json.loads(note.linked_note_ids) if note.linked_note_ids else [],
+            "linked_note_ids": links_by_source.get(note.id, []),
             "tags": [],
             "created_at": note.created_at,
             "updated_at": note.updated_at
@@ -120,7 +127,11 @@ async def create_note(
     db.add(note)
     db.commit()
     db.refresh(note)
-    
+
+    # P1-1: JSON 字段保留作回滚保险，关联表是反链/图谱的索引查询入口。
+    add_outgoing_links(db, note.id, linked_ids)
+    db.commit()
+
     vector_store = get_vector_store_adapter()
     if vector_store and embedding_service.available and note.content:
         try:
@@ -158,7 +169,7 @@ async def get_note(
         "title": note.title,
         "content": note.content,
         "folder_id": note.folder_id,
-        "linked_note_ids": json.loads(note.linked_note_ids) if note.linked_note_ids else [],
+        "linked_note_ids": outgoing_links_by_source(db, [note.id]).get(note.id, []),
         "tags": note_tags,
         "created_at": note.created_at,
         "updated_at": note.updated_at
@@ -192,7 +203,9 @@ async def update_note(
         note.title = note_data.title
     if note_data.content is not None:
         note.content = note_data.content
-        note.linked_note_ids = json.dumps(resolve_links(db, note_data.content))
+        linked_ids = resolve_links(db, note_data.content)
+        note.linked_note_ids = json.dumps(linked_ids)
+        replace_outgoing_links(db, note.id, linked_ids)
     
     if hasattr(note_data, 'folder_id') and note_data.folder_id is not None:
         note.folder_id = note_data.folder_id if note_data.folder_id else None
@@ -219,7 +232,7 @@ async def update_note(
         "title": note.title,
         "content": note.content,
         "folder_id": note.folder_id,
-        "linked_note_ids": json.loads(note.linked_note_ids) if note.linked_note_ids else [],
+        "linked_note_ids": outgoing_links_by_source(db, [note.id]).get(note.id, []),
         "tags": note_tags,
         "created_at": note.created_at,
         "updated_at": note.updated_at
@@ -245,6 +258,10 @@ async def delete_note(
         except Exception as e:
             print(f"Failed to remove vector for note {note_id}: {e}")
     
+    # 删除来源笔记要清出边，删除目标笔记要清反链，避免关联表留下悬空 id
+    db.query(NoteLink).filter(
+        (NoteLink.source_id == note_id) | (NoteLink.target_id == note_id)
+    ).delete(synchronize_session=False)
     db.delete(note)
     db.commit()
     return Response(message="笔记删除成功")
@@ -255,10 +272,12 @@ async def get_backlinks(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    backlink_notes = db.query(Note).filter(
-        Note.user_id == current_user.id,
-        Note.linked_note_ids.contains(f'"{note_id}"')
-    ).all()
+    backlink_notes = (
+        db.query(Note)
+        .join(NoteLink, NoteLink.source_id == Note.id)
+        .filter(NoteLink.target_id == note_id, Note.user_id == current_user.id)
+        .all()
+    )
     
     backlinks = []
     for note in backlink_notes:

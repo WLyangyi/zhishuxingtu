@@ -1,0 +1,39 @@
+name: frontend-gate
+
+# 前端回归门禁：色值令牌、类型、单测、构建四道全量检查。
+# test:run 已内置 --no-file-parallelism，CI 与本地使用同一条命令。
+on:
+  push:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-gate.yml"
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-gate.yml"
+  workflow_dispatch:
+
+jobs:
+  frontend-gate:
+    name: 前端门禁
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: 安装依赖
+        run: npm ci
+      - name: 令牌色值门禁
+        run: npm run lint:hex
+      - name: 类型检查
+        run: npx vue-tsc --noEmit
+      - name: 单测与全路由冒烟
+        run: npm run test:run
+      - name: 生产构建
+        run: npm run build

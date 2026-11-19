@@ -235,6 +235,9 @@ function onKeydown(event: KeyboardEvent) {
 watch(() => route.query.q, syncQuery)
 
 watch(query, (value) => {
+  // 点击结果跳到 /notes/:id 时，route.query.q 消失会触发 syncQuery 清空关键词；
+  // 若不判断当前路由，这里会把刚跳走的页面 replace 回 /search。
+  if (route.path !== '/search') return
   if (value.trim()) {
     router.replace({ path: '/search', query: { q: value.trim() } })
   } else {

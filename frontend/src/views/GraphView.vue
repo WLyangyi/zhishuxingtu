@@ -139,10 +139,10 @@ import EmptyState from '@/components/ui/EmptyState.vue'
 import Kbd from '@/components/ui/Kbd.vue'
 import SegmentedControl from '@/components/ui/SegmentedControl.vue'
 import Spinner from '@/components/ui/Spinner.vue'
-import { graphApi } from '@/api/graph'
 import { filterGraph, findNode, graphStats, nodeDegrees, radialPositions } from '@/lib/graph'
+import { useGraphStore } from '@/stores/graph'
 import { useThemeStore } from '@/stores/theme'
-import type { GraphEdge, GraphNode } from '@/types/graph'
+import type { GraphData, GraphEdge, GraphNode } from '@/types/graph'
 
 interface SimNode extends GraphNode, d3.SimulationNodeDatum {
   x: number
@@ -173,6 +173,8 @@ const activeTypes = ref(new Set<string>(['note', 'tag', 'folder']))
 const layout = ref<'force' | 'radial'>('force')
 const zoomPercent = ref(100)
 const query = ref('')
+const graphStore = useGraphStore()
+let appliedData: GraphData | null = null
 
 const tooltip = reactive({ show: false, x: 0, y: 0, label: '', type: 'note' })
 
@@ -222,19 +224,21 @@ const selected = computed(
   () => allNodes.value.find((node) => node.id === selectedId.value) ?? null
 )
 
+// 边数 × 节点数的 find 换成一次建索引；连接多时完整列出，由 rail 内部滚动承载。
+const nodeIndex = computed(() => new Map(allNodes.value.map((node) => [node.id, node])))
 const connections = computed(() => {
   const id = selectedId.value
   if (!id) return []
   const items: Array<{ id: string; label: string; type: string; edgeType: string }> = []
+  const index = nodeIndex.value
   for (const edge of visibleEdges.value) {
     const source = edge.source
     const target = edge.target
     if (source !== id && target !== id) continue
     const otherId = source === id ? target : source
-    const node = allNodes.value.find((item) => item.id === otherId)
+    const node = index.get(otherId)
     if (!node) continue
     items.push({ id: node.id, label: node.label, type: node.type, edgeType: edge.type })
-    if (items.length >= 8) break
   }
   return items
 })
@@ -485,22 +489,39 @@ function rebuild(keepPositions = true) {
   draw()
 }
 
+function applyGraphData(next: GraphData | null) {
+  appliedData = next
+  allNodes.value = next?.nodes ?? []
+  allEdges.value = next?.edges ?? []
+}
+
 async function load() {
   loading.value = true
   error.value = ''
   try {
-    const response = await graphApi.getGlobal()
-    allNodes.value = response.data?.nodes ?? []
-    allEdges.value = response.data?.edges ?? []
+    const cached = await graphStore.load()
+    applyGraphData(cached)
     await nextTick()
     resizeCanvas()
     if (allNodes.value.length) rebuild(false)
+    if (graphStore.error) error.value = graphStore.error
   } catch {
     error.value = '星图加载失败，请检查网络或稍后重试。'
   } finally {
     loading.value = false
   }
 }
+
+// 后台静默刷新拿到新数据时才重算布局；304 不替换 data 引用，watch 不会触发。
+watch(
+  () => graphStore.data,
+  (next) => {
+    if (!next || next === appliedData) return
+    applyGraphData(next)
+    resizeCanvas()
+    rebuild(false)
+  }
+)
 
 function pick(event: MouseEvent | TouchEvent | WheelEvent): SimNode | null {
   const element = canvas.value
@@ -982,8 +1003,11 @@ watch(
 
 .graph__panel-body {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
   padding-top: 10px;
   border-top: 1px solid var(--line);
 }
