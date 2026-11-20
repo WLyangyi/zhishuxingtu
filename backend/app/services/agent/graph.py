@@ -205,4 +205,9 @@ def build_input(question: str, session_id: str, user_id: str, history: Optional[
         "thoughts": [],
         "tool_calls_log": [],
         "searched_queries": [],
+        # 任务1.6:本轮临时字段每轮重置(双保险)——即使某轮 intent_classify 没写,
+        # 上一轮的值也不残留。core_intent/intent_version 不在此重置,从 checkpoint 保留锚点。
+        "last_intent_change": None,
+        "low_confidence_hint": "",
+        "pending_preference": None,
     }

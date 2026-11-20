@@ -30,3 +30,13 @@ class AgentState(TypedDict, total=False):
     turn_start_id: str
     # 任务0.2:本轮开始时的 checkpoint_id,断流后用它作 config 重放
     turn_start_checkpoint_id: str
+    # 任务1.1:意图锚点常驻字段(唯一真相,跨轮保留)
+    core_intent: dict
+    intent_version: int
+    # 任务1.1:本轮临时字段,build_input 每轮重置(双保险,防跨轮残留)
+    # last_intent_change:本轮变更类型与来源,回写用
+    last_intent_change: dict
+    # low_confidence_hint:低置信拟变更提示,output 节点拼接到 answer 末尾
+    low_confidence_hint: str
+    # pending_preference:跨任务偏好 {key, value, scope},流中 upsert_preference
+    pending_preference: dict

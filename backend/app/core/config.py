@@ -94,6 +94,8 @@ class Settings(BaseSettings):
     # Phase 3 消融开关(默认保持生产行为;仅 eval/ablation_runner.py 用环境变量覆盖)
     USE_THREE_CHECK: bool = True   # false=跳过 grade_documents / hallucination_check / answer_quality 三查
     FORCE_INTENT: str = ""         # 非空=意图路由短路为指定意图(如 knowledge),用于消融"去意图路由"
+    # core_intent 意图锚点开关:off=回滚旧 QueryIntent 不注入 / shadow=只算不写不注入 / on=写 state+注入
+    CORE_INTENT_ENABLED: str = "on"  # 取值 off/shadow/on
 
     # Phase 4 可靠性:单次工具调用硬超时(秒)。工具内部各自有 HTTP 超时,这里防的是
     # embedding / DB / 未来接入的第三方工具卡死,把整条 SSE 链路的单轮拖到不可控。

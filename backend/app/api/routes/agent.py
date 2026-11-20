@@ -19,6 +19,13 @@ from app.db.session import get_db
 from app.models.agent_session import AgentSession, AgentToolCall
 from app.models.user import User
 from app.services.agent.graph import build_input, delete_thread, get_graph
+from app.services.agent.config import CORE_INTENT_ENABLED
+from app.services.agent.nodes import (
+    _apply_resume_merge,
+    _extract_resume_changes,
+    _now_iso,
+    _sync_anchor_message,
+)
 from app.services.agent.memory import (
     delete_preference,
     get_memory_store,
@@ -199,6 +206,70 @@ def _persist_tool_logs(db: Session, session_id: str, logs: List[dict]) -> None:
         db.commit()
 
 
+# 任务1.6:core_intent 终态回写(版本比较 + 历史去重)
+def _persist_core_intent(db: Session, session: AgentSession, values: Dict[str, Any]) -> None:
+    """流正常完成时,把 checkpoint 里的 core_intent 回写到 session 镜像。
+    - 版本比较:checkpoint intent_version >= session 才写(防旧值覆盖新值)。
+    - 历史去重:intent_versions 末条 version == 当前则跳过(防重复)。
+    checkpoint 是唯一真相源,session 列只是查询镜像。"""
+    core_intent = values.get("core_intent")
+    intent_version = int(values.get("intent_version") or 0)
+    last_change = values.get("last_intent_change")
+
+    session_version = int(session.intent_version or 0)
+    if intent_version < session_version:
+        return  # session 镜像更新,不用旧 checkpoint 覆盖
+
+    versions: List[dict] = []
+    if session.intent_versions:
+        try:
+            versions = json.loads(session.intent_versions)
+        except (TypeError, json.JSONDecodeError):
+            versions = []
+
+    # 有本轮变更且末条 version != 当前 → 追加历史快照(去重)
+    if last_change and (not versions or versions[-1].get("version") != intent_version):
+        versions.append(
+            {
+                "version": intent_version,
+                "goal": (core_intent or {}).get("goal", ""),
+                "constraints": (core_intent or {}).get("constraints", {}),
+                "acceptance_criteria": (core_intent or {}).get("acceptance_criteria", []),
+                "change_type": last_change.get("change_type"),
+                "source": last_change.get("source"),
+                "confidence": last_change.get("confidence"),
+                "unmapped_keys": last_change.get("unmapped_keys") or [],
+                "ts": last_change.get("ts"),
+            }
+        )
+
+    session.core_intent = json.dumps(core_intent, ensure_ascii=False) if core_intent else None
+    session.intent_version = intent_version
+    session.intent_versions = json.dumps(versions, ensure_ascii=False) if versions else None
+
+
+# 任务1.7:/sessions /messages 的 core_intent 返回(仅 on 模式,off/shadow 返回 null)
+def _core_intent_summary(session: AgentSession) -> Optional[dict]:
+    """会话列表摘要:goal 前 80 字 + version(不取 intent_versions 整列)。"""
+    if not session.core_intent:
+        return None
+    try:
+        data = json.loads(session.core_intent)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    return {"goal": (data.get("goal") or "")[:80], "version": int(session.intent_version or 0)}
+
+
+def _core_intent_full(session: AgentSession) -> Optional[dict]:
+    """会话详情完整 core_intent(锚点消息过滤后单独返回)。"""
+    if not session.core_intent:
+        return None
+    try:
+        return json.loads(session.core_intent)
+    except (TypeError, json.JSONDecodeError):
+        return None
+
+
 def _extract_interrupts(step: Dict[str, Any]) -> List[dict]:
     raw_interrupts = step.get("__interrupt__") or []
     payloads: List[dict] = []
@@ -271,6 +342,7 @@ def _stream_graph(
     emitted_offset: int = 0,
     config: Optional[dict] = None,
     in_flight_thread_id: Optional[str] = None,
+    resume_merge: Optional[dict] = None,
 ) -> Iterator[str]:
     emitted = emitted_offset
     tool_logs: List[dict] = []
@@ -278,6 +350,7 @@ def _stream_graph(
     interrupted = False
     emitted_fallback = False
     turn_tokens = 0
+    stream_ok = False
 
     stream_config = config if config is not None else build_stream_config(session.id, user_id=user_id)
     try:
@@ -293,6 +366,19 @@ def _stream_graph(
             for node_name, value in step.items():
                 if not isinstance(value, dict):
                     continue
+                # 任务1.6:pending_preference 流中写入——检测到立即 upsert_preference,
+                # 不等终态。断流/中断也不丢全局偏好。失败不影响主流程。
+                pending_pref = value.get("pending_preference")
+                if pending_pref:
+                    try:
+                        upsert_preference(
+                            db,
+                            user_id,
+                            str(pending_pref.get("key") or ""),
+                            str(pending_pref.get("value") or ""),
+                        )
+                    except Exception:  # noqa: BLE001 偏好写入失败不阻断主流程
+                        pass
                 thoughts = value.get("thoughts") or []
                 for thought in thoughts[emitted:]:
                     emitted += 1
@@ -310,6 +396,7 @@ def _stream_graph(
                 # token_used 是本轮累计值(每轮 build_input 清零),取 max 兼容中断恢复
                 if isinstance(value.get("token_used"), int):
                     turn_tokens = max(turn_tokens, value["token_used"])
+        stream_ok = True  # 流正常完成(未抛异常)
     except Exception as exc:  # noqa: BLE001
         yield _sse({"type": "error", "message": f"Agent 执行出错：{exc}"})
         if fallback_question:
@@ -324,15 +411,42 @@ def _stream_graph(
         if in_flight_thread_id:
             _release_in_flight(in_flight_thread_id)
 
+    # 任务1.8:/resume 锚点合并——在 resume 流正常完成后 update_state(as_node) 合并锚点。
+    # 必须在 resume 之后(update_state 会清空 pending interrupt,先做会破坏 resume 恢复)。
+    # 图此时已在 END,update_state 不破坏任何东西;后续轮次从 checkpoint 读到合并后的锚点。
+    if stream_ok and resume_merge:
+        try:
+            merge_values = {
+                "core_intent": resume_merge["core_intent"],
+                "intent_version": resume_merge["intent_version"],
+                "last_intent_change": resume_merge["last_intent_change"],
+            }
+            if resume_merge.get("messages"):
+                merge_values["messages"] = resume_merge["messages"]
+            get_graph().update_state(
+                build_stream_config(session.id, user_id=user_id), merge_values, as_node="intent_classify"
+            )
+        except Exception:  # noqa: BLE001 锚点合并失败不阻断主流程
+            pass
+
     # M7.4:从图终态回写命中 agent 路由到会话(本地审计的 agent 维度,供路由准确率分析)
     # 重放场景 stream_config 带 checkpoint_id,回写须用默认 config 取 stream 后最新状态
+    snapshot_values: Dict[str, Any] = {}
     try:
         _snapshot = get_graph().get_state(build_stream_config(session.id, user_id=user_id))
-        session.agent_route = ((_snapshot.values or {}).get("current_agent") or "")[:32]
+        snapshot_values = _snapshot.values or {}
+        session.agent_route = (snapshot_values.get("current_agent") or "")[:32]
     except Exception:  # noqa: BLE001 审计回写失败不影响主流程
         session.agent_route = session.agent_route or ""
 
     _persist_tool_logs(db, session.id, tool_logs)
+    # 任务1.6:core_intent 终态回写(仅流正常完成时)。pending_preference 已流中 upsert,不等终态。
+    # resume 合并后的锚点已在 checkpoint,这里随终态一并回写 session 镜像。
+    if stream_ok:
+        try:
+            _persist_core_intent(db, session, snapshot_values)
+        except Exception:  # noqa: BLE001 锚点回写失败不影响主流程
+            pass
     # Phase 4:跨轮累计用量,供每会话预算硬停与前端成本展示
     turn_cost = _turn_cost_cny(turn_tokens)
     session.total_tokens = int(session.total_tokens or 0) + turn_tokens
@@ -380,6 +494,15 @@ async def agent_chat_stream(
     if not _acquire_in_flight(session.id):
         raise HTTPException(status_code=409, detail="该会话正在处理中，请稍后重试")
     snapshot = get_graph().get_state(config)
+    # 任务1.6:thread 无 checkpoint(messages 为空,如清空后重建)时,session 镜像视为过期,先重置
+    if not snapshot.values.get("messages") and (
+        session.core_intent or session.intent_versions
+    ):
+        session.core_intent = None
+        session.intent_version = 0
+        session.intent_versions = None
+        db.add(session)
+        db.commit()
     stream_config, mode = _resolve_stream_config(snapshot, session.id)
     if mode == "blocked":
         # 真实 interrupt(待审批)才拒绝新输入：langgraph 会静默丢弃挂起
@@ -431,6 +554,38 @@ async def resume_agent(
         raise HTTPException(status_code=409, detail="该会话没有待审批操作")
     question = str(snapshot.values.get("question") or "")
     emitted_offset = len(snapshot.values.get("thoughts") or [])
+    # 任务1.8:/resume 合并——从审批理由抽取约束/偏好,计算合并锚点。
+    # resume 当成一次 append:bump version、写 last_intent_change、source=resume、同 id 重建锚点消息。
+    # 关键:update_state(as_node) 会清空 pending interrupt,不能在 resume 前做;
+    # 合并锚点的 update_state 放到 _stream_graph 终态回写(resume 流完成之后)执行,避免破坏中断恢复。
+    resume_merge = None
+    if CORE_INTENT_ENABLED == "on":
+        changes = _extract_resume_changes(request.reason)
+        current_ci = snapshot.values.get("core_intent") or {}
+        current_version = int(snapshot.values.get("intent_version") or 0)
+        change = _apply_resume_merge(
+            current_ci, current_version, changes["constraints"], changes["preference"]
+        )
+        # preference(scope=global) → 直接 upsert 长期偏好
+        pref = changes["preference"]
+        if pref and pref.get("scope") == "global":
+            try:
+                upsert_preference(db, current_user.id, pref["key"], pref["value"])
+            except Exception:  # noqa: BLE001 偏好写入失败不阻断 resume
+                pass
+        if change:
+            new_anchor, new_version, applied_ct, source = change
+            pseudo_state = {
+                "session_id": session.id,
+                "messages": snapshot.values.get("messages") or [],
+            }
+            anchor_msgs = _sync_anchor_message(pseudo_state, new_anchor)
+            resume_merge = {
+                "core_intent": new_anchor,
+                "intent_version": new_version,
+                "last_intent_change": {"change_type": applied_ct, "source": source, "ts": _now_iso()},
+                "messages": anchor_msgs,
+            }
     command = Command(resume={"approved": request.approved, "reason": request.reason})
     return StreamingResponse(
         _stream_graph(
@@ -441,6 +596,7 @@ async def resume_agent(
             fallback_question=question,
             emitted_offset=emitted_offset,
             in_flight_thread_id=session.id,
+            resume_merge=resume_merge,
         ),
         media_type="text/event-stream",
         headers=SSE_HEADERS,
@@ -460,6 +616,7 @@ async def list_agent_sessions(
         # func.lower 兼容 SQLite 与 Postgres，避免大小写敏感导致漏匹配
         query = query.filter(func.lower(AgentSession.title).contains(keyword.lower()))
     sessions = query.order_by(AgentSession.updated_at.desc()).limit(limit).all()
+    on_mode = CORE_INTENT_ENABLED == "on"
     return {
         "success": True,
         "code": 200,
@@ -469,6 +626,7 @@ async def list_agent_sessions(
                 "title": session.title,
                 "total_tokens": int(session.total_tokens or 0),
                 "total_cost_cny": round(float(session.total_cost_cny or 0.0), 6),
+                "core_intent": _core_intent_summary(session) if on_mode else None,
                 "created_at": session.created_at.isoformat() if session.created_at else None,
                 "updated_at": session.updated_at.isoformat() if session.updated_at else None,
             }
@@ -496,7 +654,7 @@ async def get_session_messages(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _get_owned_session(db, current_user.id, session_id)
+    session = _get_owned_session(db, current_user.id, session_id)
     snapshot = get_graph().get_state({"configurable": {"thread_id": session_id}})
     messages = []
     for message in snapshot.values.get("messages") or []:
@@ -506,10 +664,15 @@ async def get_session_messages(
         elif isinstance(message, AIMessage) and content:
             messages.append({"role": "assistant", "content": content})
     pending_approval = _pending_approval_payload(snapshot, session_id)
+    on_mode = CORE_INTENT_ENABLED == "on"
     return {
         "success": True,
         "code": 200,
-        "data": {"messages": messages, "pending_approval": pending_approval},
+        "data": {
+            "messages": messages,
+            "pending_approval": pending_approval,
+            "core_intent": _core_intent_full(session) if on_mode else None,
+        },
     }
 
 

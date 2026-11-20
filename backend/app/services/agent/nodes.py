@@ -1,9 +1,14 @@
 import contextvars
 import json
+import logging
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 from langchain_core.messages import (
     AIMessage,
@@ -17,6 +22,7 @@ from langgraph.types import interrupt
 
 from app.services.agent.config import (
     ARTIFACT_THRESHOLD_CHARS,
+    CORE_INTENT_ENABLED,
     MAX_HISTORY_MESSAGES,
     MAX_ITERATIONS,
     MAX_SEARCHES_PER_TURN,
@@ -32,11 +38,13 @@ from app.services.agent.prompts import (
     GRADE_DOCUMENTS_PROMPT,
     GRADE_HALLUCINATIONS_PROMPT,
     INTENT_CLASSIFY_PROMPT,
+    INTENT_CLASSIFY_PROMPT_OFF,
     INTENT_HINTS,
     KNOWLEDGE_AGENT_PROMPT,
     NOTE_WRITE_AGENT_PROMPT,
     REACT_SYSTEM_PROMPT,
     WEB_RESEARCH_AGENT_PROMPT,
+    CoreIntentProposal,
     GradeAnswer,
     GradeDocuments,
     GradeHallucinations,
@@ -245,14 +253,20 @@ def _offload_for_message(
 def _retained_window(history: List[Any], keep_count: int) -> tuple[List[Any], List[Any]]:
     """按条数裁剪历史，返回 (保留区, 移除区)。
 
+    锚点 SystemMessage 先摘出、裁剪剩余、再放回保留区开头——不参与裁剪、不进移除区
+    (否则对锚点发 RemoveMessage 会从 checkpoint 删掉锚点)。
     若裁剪点落在 AIMessage(tool_calls) 与其 ToolMessage 配对中间，保留区会以
     孤立 ToolMessage 开头，OpenAI 兼容 API 会以 400 拒绝。此处将起点向前扩展
     到配对的 AIMessage，保证 tool_calls 与 ToolMessage 成对保留。
     """
-    start = max(0, len(history) - keep_count)
-    while start > 0 and isinstance(history[start], ToolMessage):
+    anchor = [m for m in history if _is_anchor_message(m)]
+    rest = [m for m in history if not _is_anchor_message(m)]
+    start = max(0, len(rest) - keep_count)
+    while start > 0 and isinstance(rest[start], ToolMessage):
         start -= 1
-    return history[start:], history[:start]
+    retained_rest = rest[start:]
+    removed = rest[:start]
+    return [*anchor, *retained_rest], removed
 
 
 # ---------- 节点 ----------
@@ -734,6 +748,11 @@ def output(state: AgentState) -> Dict[str, Any]:
         answer = _fallback_from_documents(state.get("documents") or [])
     if not answer:
         answer = "已达到最大迭代次数,未能生成满意答案。"
+    # 任务1.9:低置信拟变更提示拼接到 answer 末尾。提示是 state 字段,不进 messages,
+    # 模型下一轮看不到,用户必须重新完整表达才能应用(与一期"不应用、需重述"一致)。
+    hint = state.get("low_confidence_hint") or ""
+    if hint and answer:
+        answer = f"{answer}\n\n{hint}"
     return {"answer": answer}
 
 
@@ -781,14 +800,326 @@ def route_answer_quality(state: AgentState) -> str:
     return "output" if state.get("answer_ok") != "no" else "rewrite_question"
 
 
+# ---------- core_intent 意图锚点裁决(任务 1.3/1.4) ----------
+# 低置信门槛:低于此值挡掉所有锚点变更(init/append/revise 都挡)
+_LOW_CONFIDENCE_THRESHOLD = 0.6
+# 多信号关键词:命中明确变更措辞时给置信加分(合法变更无关键词仍可触发,不依赖关键词)
+_CHANGE_KEYWORDS = ("改为", "改成", "换成", "调整为", "以后都", "以后用", "请用", "请改成", "想要更")
+# 约束键受控词表:canonical key 归一。style 独立,不与 tone 合并。
+_CANONICAL_KEY_MAP = {
+    "tone": "tone", "语气": "tone", "口吻": "tone",
+    "format": "format", "格式": "format",
+    "length": "length", "篇幅": "length", "长度": "length",
+    "audience": "audience", "受众": "audience",
+    "style": "style", "风格": "style",
+    "language": "language", "语言": "language",
+}
+_CONTROLLED_VOCAB = set(_CANONICAL_KEY_MAP.values())
+
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _normalize_constraint_key(key: str) -> str:
+    """约束键归一:语气/口吻→tone,风格→style(独立)。未知键原样保留。"""
+    raw = (key or "").strip()
+    return _CANONICAL_KEY_MAP.get(raw, raw)
+
+
+def _unmapped_constraint_keys(constraints: List[Any]) -> List[str]:
+    """未知约束键留痕(不入受控词表的键),供快照标注。"""
+    unmapped = []
+    for c in constraints or []:
+        key = _normalize_constraint_key(getattr(c, "key", "") or "")
+        if key and key not in _CONTROLLED_VOCAB and key not in unmapped:
+            unmapped.append(key)
+    return unmapped
+
+
+def _merge_constraints(base: Dict[str, str], constraints: List[Any]) -> Dict[str, str]:
+    """把 proposal 的约束变更合并进 base(dict[key,value],不带 op)。
+    set=设置/修改,delete=删除。键先归一(语气→tone)。返回新 dict,不改 base。"""
+    out = dict(base or {})
+    for c in constraints or []:
+        key = _normalize_constraint_key(getattr(c, "key", "") or "")
+        if not key:
+            continue
+        op = getattr(c, "op", "set")
+        if op == "delete":
+            out.pop(key, None)
+        else:
+            out[key] = getattr(c, "value", "") or ""
+    return out
+
+
+def _adjust_confidence(base: float, question: str, change_type: str) -> float:
+    """多信号置信综合:基线置信 + 关键词加分(不依赖 logprobs)。none 不调整。"""
+    if change_type == "none":
+        return float(base or 0.5)
+    conf = float(base or 0.5)
+    if any(k in (question or "") for k in _CHANGE_KEYWORDS):
+        conf = min(1.0, conf + 0.15)
+    return conf
+
+
+def _build_low_confidence_hint(goal: str, constraints: List[Any], change_type: str) -> str:
+    """低置信拟变更提示:描述拟变更内容,提示用户重新完整表达以确认。"""
+    parts = []
+    if goal:
+        parts.append(f"拟将目标设为「{goal}」")
+    for c in constraints or []:
+        key = _normalize_constraint_key(getattr(c, "key", "") or "")
+        if getattr(c, "op", "set") == "delete":
+            parts.append(f"拟删除约束「{key}」")
+        else:
+            parts.append(f"拟将约束「{key}」设为「{getattr(c, 'value', '') or ''}」")
+    if not parts:
+        parts.append("拟变更任务锚点")
+    return "（置信度较低，" + "、".join(parts) + "，请重新完整表达以确认）"
+
+
+def _has_anchor(current: Optional[dict]) -> bool:
+    """锚点存在性:有 goal 或至少一条约束才算有锚点。"""
+    if not current:
+        return False
+    return bool(current.get("goal")) or bool(current.get("constraints"))
+
+
+def _apply_anchor_change(
+    current: Optional[dict],
+    version: int,
+    *,
+    change_type: str,
+    goal: str,
+    constraints: List[Any],
+    acceptance: List[str],
+    reset_constraints: bool,
+    source: str,
+) -> Optional[tuple]:
+    """状态迁移表裁决。返回 (new_anchor, new_version, applied_ct, source) 或 None(不变更)。
+
+    迁移表:
+      无锚点 + none → 不做;无锚点 + init/append/revise → 降级 init,version=1
+      有锚点 + none → 不做;有锚点 + init → 忽略
+      有锚点 + append → 合并约束,goal/acceptance 不变,version+1
+      有锚点 + revise → 更新 goal/acceptance + 显式槽位覆盖,未提及约束保留(除非 reset),version+1
+    """
+    ct = change_type or "none"
+    if not _has_anchor(current):
+        if ct == "none":
+            return None
+        new_constraints = _merge_constraints({}, constraints)
+        new_anchor = {
+            "goal": goal or "",
+            "constraints": new_constraints,
+            "acceptance_criteria": acceptance or [],
+        }
+        return new_anchor, 1, "init", source
+
+    if ct == "none":
+        return None
+    if ct == "init":
+        return None  # 有锚点时 init 忽略
+    if ct == "append":
+        new_constraints = _merge_constraints(dict(current.get("constraints") or {}), constraints)
+        new_anchor = {
+            "goal": current.get("goal", ""),
+            "constraints": new_constraints,
+            "acceptance_criteria": current.get("acceptance_criteria") or [],
+        }
+        return new_anchor, version + 1, "append", source
+    if ct == "revise":
+        base_constraints = {} if reset_constraints else dict(current.get("constraints") or {})
+        new_constraints = _merge_constraints(base_constraints, constraints)
+        new_anchor = {
+            "goal": goal if goal else current.get("goal", ""),
+            "constraints": new_constraints,
+            "acceptance_criteria": acceptance if acceptance else (current.get("acceptance_criteria") or []),
+        }
+        return new_anchor, version + 1, "revise", source
+    return None
+
+
+def _anchor_updates(change: tuple, confidence: Optional[float] = None, unmapped_keys: Optional[List[str]] = None) -> Dict[str, Any]:
+    """把裁决结果转成 intent_classify 的 state 更新字段。
+    confidence/unmapped_keys 进历史条目,供 intent_versions 快照审计。"""
+    new_anchor, new_version, applied_ct, source = change
+    entry: Dict[str, Any] = {"change_type": applied_ct, "source": source, "ts": _now_iso()}
+    if confidence is not None:
+        entry["confidence"] = confidence
+    if unmapped_keys is not None:
+        entry["unmapped_keys"] = unmapped_keys
+    return {
+        "core_intent": new_anchor,
+        "intent_version": new_version,
+        "last_intent_change": entry,
+    }
+
+
+# ---------- 锚点 SystemMessage(任务 1.5) ----------
+ANCHOR_ID_PREFIX = "anchor:"
+
+
+def anchor_message_id(session_id: str) -> str:
+    """锚点消息稳定 id:anchor:{session_id}。每轮同 id 重建,不累积。"""
+    return f"{ANCHOR_ID_PREFIX}{session_id}"
+
+
+def _is_anchor_message(msg: Any) -> bool:
+    """判断一条消息是否为锚点 SystemMessage(按稳定 id 前缀)。"""
+    mid = getattr(msg, "id", "") or ""
+    return isinstance(msg, SystemMessage) and mid.startswith(ANCHOR_ID_PREFIX)
+
+
+def render_anchor(core_intent: Optional[dict], session_id: str) -> Optional[SystemMessage]:
+    """把 state.core_intent 渲染成锚点 SystemMessage(稳定 id)。
+    无锚点返回 None(不注入)。锚点是 core_intent 的渲染投影,唯一真相在 state。"""
+    if not _has_anchor(core_intent):
+        return None
+    lines = ["## 任务锚点(core_intent,多轮对话防跑偏)"]
+    goal = (core_intent or {}).get("goal") or ""
+    if goal:
+        lines.append(f"- 目标:{goal}")
+    constraints = (core_intent or {}).get("constraints") or {}
+    if constraints:
+        lines.append("- 约束:")
+        for k, v in constraints.items():
+            lines.append(f"  - {k}:{v}")
+    acceptance = (core_intent or {}).get("acceptance_criteria") or []
+    if acceptance:
+        lines.append("- 验收标准:")
+        for a in acceptance:
+            lines.append(f"  - {a}")
+    lines.append("以上为本轮任务锚点,后续回答请优先遵循,不要偏离目标与约束。")
+    return SystemMessage(content="\n".join(lines), id=anchor_message_id(session_id))
+
+
+def _sync_anchor_message(state: AgentState, core_intent: Optional[dict]) -> List[Any]:
+    """同步锚点消息:缺失/被裁/内容不一致 → 同 id 重建(RemoveMessage + add 新)。
+    无锚点时清理残留锚点消息。返回 messages 更新列表(空列表=无需变更)。
+    所有改 core_intent 的路径都经此保证锚点消息与 state 一致。"""
+    session_id = state.get("session_id") or ""
+    if not session_id:
+        return []
+    anchor_id = anchor_message_id(session_id)
+    messages = state.get("messages") or []
+    existing = next((m for m in messages if getattr(m, "id", "") == anchor_id), None)
+
+    if not _has_anchor(core_intent):
+        # 无锚点:清理任何残留锚点消息
+        if existing is not None:
+            return [RemoveMessage(id=anchor_id)]
+        return []
+
+    expected = render_anchor(core_intent, session_id)
+    if existing is None:
+        return [expected]  # 缺失 → 插入
+    if getattr(existing, "content", None) != expected.content:
+        # 内容不一致/被裁后重建 → 同 id RemoveMessage + add 新(保持原位)
+        return [RemoveMessage(id=anchor_id), expected]
+    return []  # 一致 → 无需变更
+
+
+def _cleanup_anchor_messages(state: AgentState) -> List[Any]:
+    """off/shadow 模式清理残留锚点消息(不注入)。返回 RemoveMessage 列表。"""
+    messages = state.get("messages") or []
+    return [
+        RemoveMessage(id=getattr(m, "id", ""))
+        for m in messages
+        if _is_anchor_message(m) and getattr(m, "id", "")
+    ]
+
+
+# ---------- /resume 合并(任务 1.8) ----------
+def _infer_pref_key(value: str) -> str:
+    """从偏好值推断偏好键:language/tone/custom。"""
+    v = value or ""
+    low = v.lower()
+    if "english" in low or "chinese" in low or "英文" in v or "中文" in v or "语" in v:
+        return "language"
+    if "formal" in low or "casual" in low or "语气" in v or "tone" in low:
+        return "tone"
+    return "custom"
+
+
+def _extract_resume_changes(reason: str) -> Dict[str, Any]:
+    """从审批理由抽取 {constraints, preference}。规则优先。
+    - 约束:"把X改成Y" → [{key: X, value: Y, op: set}]
+    - 偏好(global):"以后都用英文"/"之后用中文"/"都用英文" → {key, value, scope: global}
+    """
+    constraints: List[Any] = []
+    preference = None
+    text = (reason or "").strip()
+    if not text:
+        return {"constraints": constraints, "preference": preference}
+    # 偏好(global):以后都/之后都/都用/都要
+    for marker in ("以后都", "之后都", "以后用", "之后用", "都用", "都要"):
+        idx = text.find(marker)
+        if idx >= 0:
+            tail = text[idx + len(marker):]
+            val = re.sub(r"^[\s用要的]+", "", tail).strip(" ,，。.!！:：")
+            if val:
+                preference = {"key": _infer_pref_key(val), "value": val, "scope": "global"}
+            break
+    # 约束:"把X改成Y" / "改成Y"
+    m = re.search(r"把\s*([一-龥A-Za-z]+)?\s*(?:改成|改为|换成|调整为)\s*(.+)", text)
+    if not m:
+        m = re.search(r"(?:改成|改为|换成|调整为)\s*(.+)", text)
+        key = "format"
+        value = m.group(1) if m else ""
+        if value:
+            constraints.append(SimpleNamespace(key=_normalize_constraint_key(key), value=value.strip(" ,，。.!！:："), op="set"))
+    else:
+        key = m.group(1) or "format"
+        value = m.group(2).strip(" ,，。.!！:：")
+        if value:
+            constraints.append(SimpleNamespace(key=_normalize_constraint_key(key), value=value, op="set"))
+    return {"constraints": constraints, "preference": preference}
+
+
+def _apply_resume_merge(
+    current: Optional[dict],
+    version: int,
+    constraints: List[Any],
+    preference: Optional[dict],
+) -> Optional[tuple]:
+    """resume 当成一次 append:合并约束/偏好(scope=task),bump version,source=resume。
+    preference(scope=global)不并入锚点(由路由层 upsert 处理)。无约束变更返回 None。"""
+    merge_constraints = list(constraints or [])
+    if preference and preference.get("scope") == "task":
+        merge_constraints.append(
+            SimpleNamespace(key=preference["key"], value=preference["value"], op="set")
+        )
+    if not merge_constraints:
+        return None
+    change_type = "append" if _has_anchor(current) else "init"
+    return _apply_anchor_change(
+        current,
+        version,
+        change_type=change_type,
+        goal="",  # resume 不改目标
+        constraints=merge_constraints,
+        acceptance=[],
+        reset_constraints=False,
+        source="resume",
+    )
+
+
 # ---------- 意图识别 ----------
 def intent_classify(state: AgentState) -> Dict[str, Any]:
-    """意图识别节点。分类失败时 fail-safe 默认 knowledge，不让主流程被阻塞。"""
+    """意图识别节点。分类失败时 fail-safe 默认 knowledge，不让主流程被阻塞。
+    同时按状态迁移表裁决 core_intent 锚点变更(任务 1.3)。
+    三模式(任务 1.7):off=回滚旧 QueryIntent 不注入 / shadow=只算不写不注入 / on=写 state+注入。"""
     question = state.get("question") or ""
+    mode = CORE_INTENT_ENABLED
     forced = (settings.FORCE_INTENT or "").strip().lower()
     if forced in ("knowledge", "direct_answer", "web_search", "note_write"):
-        # Phase 3 消融:强制意图,跳过分类器 LLM 调用(用于量化意图路由的 token/延迟贡献)
-        return {
+        # Phase 3 消融:强制意图,跳过分类器 LLM 调用(用于量化意图路由的 token/延迟贡献)。
+        # 消融路径的版本/审计完整(仅 on 模式):有锚点→append、无锚点→init,都写历史,source=force-intent。
+        out = {
             "intent": forced,
             "current_agent": forced,
             "turn_start_id": _turn_start_id(state),
@@ -797,9 +1128,31 @@ def intent_classify(state: AgentState) -> Dict[str, Any]:
                 state, {"type": "intent", "content": f"意图识别: {forced} | 消融强制(跳过分类器)"}
             ),
         }
+        if mode == "on":
+            current = state.get("core_intent") or {}
+            version = int(state.get("intent_version") or 0)
+            change = _apply_anchor_change(
+                current,
+                version,
+                change_type="append" if _has_anchor(current) else "init",
+                goal="",
+                constraints=[],
+                acceptance=[],
+                reset_constraints=False,
+                source="force-intent",
+            )
+            if change:
+                out.update(_anchor_updates(change))
+            anchor_msgs = _sync_anchor_message(state, change[0] if change else current)
+        else:
+            anchor_msgs = _cleanup_anchor_messages(state)
+        if anchor_msgs:
+            out["messages"] = anchor_msgs
+        return out
     # 写入诉求关键词兜底:对话中明确要求保存/合并/整理/创建笔记时,直接强制 note_write,
     # 不依赖 LLM 判断——避免被"不确定默认 knowledge"或"提到笔记内容一律 knowledge"误判,
     # 路由到 knowledge_agent 触发"请单独发起写入"的职责边界推托。
+    # WRITE_KEYWORDS 兜底保留原锚点(on 模式,不经 LLM 不裁决锚点变更;off/shadow 清理锚点)。
     WRITE_KEYWORDS = (
         "保存为笔记", "保存成笔记", "存为笔记", "记为笔记", "记录为笔记",
         "创建笔记", "新建笔记", "写入笔记", "保存到知识库", "记录到知识库",
@@ -809,7 +1162,7 @@ def intent_classify(state: AgentState) -> Dict[str, Any]:
         "整合成笔记", "整合为笔记",
     )
     if any(k in question for k in WRITE_KEYWORDS):
-        return {
+        out = {
             "intent": "note_write",
             "current_agent": "note_write",
             "turn_start_id": _turn_start_id(state),
@@ -818,20 +1171,46 @@ def intent_classify(state: AgentState) -> Dict[str, Any]:
                 state, {"type": "intent", "content": f"意图识别: note_write | 命中写入关键词兜底"}
             ),
         }
+        if mode == "on":
+            # 保留原锚点,但做一致性同步(缺失/不一致时重建)
+            anchor_msgs = _sync_anchor_message(state, state.get("core_intent") or {})
+        else:
+            anchor_msgs = _cleanup_anchor_messages(state)
+        if anchor_msgs:
+            out["messages"] = anchor_msgs
+        return out
     intent = "knowledge"
     reason = "fail-safe 默认走知识库检索"
     task_brief = ""  # M7.1:编排器任务简报,分类失败时留空(为空不注入)
+    anchor_change = None
+    low_confidence_hint = ""
+    pending_preference = None
+    confidence = 0.5
+    raw_constraints: List[Any] = []
     try:
         provider = get_deepseek_provider()
-        structured = provider.with_structured_output(QueryIntent)
-        resp = invoke_with_retry(
-            structured,
-            [
-                SystemMessage(content=INTENT_CLASSIFY_PROMPT),
-                HumanMessage(content=question),
-            ],
-            label="intent_classify",
-        )
+        if mode == "off":
+            # off:回滚旧 QueryIntent schema + 纯路由 prompt,不计算锚点
+            structured = provider.with_structured_output(QueryIntent)
+            resp = invoke_with_retry(
+                structured,
+                [
+                    SystemMessage(content=INTENT_CLASSIFY_PROMPT_OFF),
+                    HumanMessage(content=question),
+                ],
+                label="intent_classify",
+            )
+        else:
+            # on/shadow:CoreIntentProposal,计算锚点
+            structured = provider.with_structured_output(CoreIntentProposal)
+            resp = invoke_with_retry(
+                structured,
+                [
+                    SystemMessage(content=INTENT_CLASSIFY_PROMPT),
+                    HumanMessage(content=question),
+                ],
+                label="intent_classify",
+            )
         candidate = (getattr(resp, "intent", "") or "").strip().lower()
         if candidate in ("knowledge", "direct_answer", "web_search", "note_write"):
             intent = candidate
@@ -839,9 +1218,64 @@ def intent_classify(state: AgentState) -> Dict[str, Any]:
         else:
             reason = f"模型返回非法意图 {candidate!r},默认 knowledge"
         task_brief = (getattr(resp, "task_brief", "") or "").strip()[:200]
+
+        if mode != "off":
+            # 偏好处理与去重(任务 1.4):scope=global→pending_preference;scope=task 并入 constraints,
+            # 与 constraints 同 key 时 constraints 优先,preference(scope=task)忽略。
+            preference = getattr(resp, "preference", None)
+            raw_constraints = list(getattr(resp, "constraints", None) or [])
+            if preference:
+                if preference.scope == "global":
+                    pending_preference = {
+                        "key": preference.key,
+                        "value": preference.value,
+                        "scope": "global",
+                    }
+                else:
+                    constraint_keys = {
+                        _normalize_constraint_key(getattr(c, "key", "") or "") for c in raw_constraints
+                    }
+                    if preference.key not in constraint_keys:
+                        raw_constraints.append(
+                            SimpleNamespace(key=preference.key, value=preference.value, op="set")
+                        )
+                    # 同 key:constraints 优先,preference(scope=task)忽略
+
+            # 多信号置信 + 低置信门槛(任务 1.4):低于门槛挡掉所有变更,写拟变更提示。
+            change_type = getattr(resp, "change_type", "none") or "none"
+            confidence = _adjust_confidence(
+                float(getattr(resp, "confidence", 0.5) or 0.5), question, change_type
+            )
+            goal = getattr(resp, "goal", "") or ""
+            acceptance = getattr(resp, "acceptance_criteria", None) or []
+            reset_constraints = getattr(resp, "reset_constraints", False)
+            if change_type in ("init", "append", "revise") and confidence < _LOW_CONFIDENCE_THRESHOLD:
+                low_confidence_hint = _build_low_confidence_hint(goal, raw_constraints, change_type)
+                change_type = "none"  # 挡住,不应用
+
+            # 锚点裁决:仅分类成功时应用;分类失败(fail-safe)不动锚点,防错误污染。
+            current = state.get("core_intent") or {}
+            version = int(state.get("intent_version") or 0)
+            anchor_change = _apply_anchor_change(
+                current,
+                version,
+                change_type=change_type,
+                goal=goal,
+                constraints=raw_constraints,
+                acceptance=acceptance,
+                reset_constraints=reset_constraints,
+                source="llm",
+            )
+            if mode == "shadow":
+                # shadow:只算不写不注入,指标存日志(不写 state、不注入锚点)
+                anchor_change = None
+                logger.info(
+                    "core_intent shadow: change_type=%s confidence=%.2f goal=%s constraints=%s",
+                    change_type, confidence, goal, raw_constraints,
+                )
     except Exception as exc:  # noqa: BLE001 分类只是路由提示,失败不阻断
         reason = f"分类失败,默认 knowledge: {exc}"
-    return {
+    out = {
         "intent": intent,
         # M7 A′:记录命中的子 Agent + 本轮起点(修复 _best_answer 跨轮污染:
         # 消息通道最后一条是本轮新问题,本轮答案只能从它之后产生)
@@ -851,6 +1285,29 @@ def intent_classify(state: AgentState) -> Dict[str, Any]:
         "task_brief": task_brief,
         "thoughts": _append_thought(state, {"type": "intent", "content": f"意图识别: {intent} | {reason}"}),
     }
+    if mode == "on" and anchor_change:
+        out.update(
+            _anchor_updates(
+                anchor_change,
+                confidence=confidence,
+                unmapped_keys=_unmapped_constraint_keys(raw_constraints),
+            )
+        )
+    # 锚点消息同步:on 注入/重建;off/shadow 清理(不注入)
+    if mode == "on":
+        effective = anchor_change[0] if anchor_change else (state.get("core_intent") or {})
+        anchor_msgs = _sync_anchor_message(state, effective)
+    else:
+        anchor_msgs = _cleanup_anchor_messages(state)
+    if anchor_msgs:
+        out["messages"] = anchor_msgs
+    # 低置信提示与偏好仅 on 模式落地(off 不计算,shadow 不写 state)
+    if mode == "on":
+        if low_confidence_hint:
+            out["low_confidence_hint"] = low_confidence_hint
+        if pending_preference:
+            out["pending_preference"] = pending_preference
+    return out
 
 
 def direct_answer(state: AgentState, *, store: BaseStore = None) -> Dict[str, Any]:

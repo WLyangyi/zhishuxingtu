@@ -16,3 +16,6 @@ CHECKPOINT_DB = getattr(
 )
 # M7 A′ 多 Agent 图开关(false=单 Agent 图回退位)
 MULTI_AGENT = bool(getattr(settings, "AGENT_MULTI_AGENT", False))
+# core_intent 意图锚点开关:off/shadow/on(规范化小写,非法值回退 on)
+_CORE_INTENT_RAW = str(getattr(settings, "CORE_INTENT_ENABLED", "on")).strip().lower()
+CORE_INTENT_ENABLED = _CORE_INTENT_RAW if _CORE_INTENT_RAW in ("off", "shadow", "on") else "on"

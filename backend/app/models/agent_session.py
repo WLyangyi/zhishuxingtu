@@ -16,6 +16,13 @@ class AgentSession(Base, TimestampMixin):
     # Phase 4:跨轮累计用量(turn 结束由 _stream_graph 累加)。用于每会话预算硬停与成本展示。
     total_tokens = Column(Integer, default=0)
     total_cost_cny = Column(Float, default=0.0)
+    # core_intent 意图锚点:{goal, constraints: dict[key,value], acceptance_criteria[]} 的 JSON。
+    # checkpoint 是唯一真相源,本列是查询镜像(路由层回写,版本比较防旧值覆盖新值)。
+    core_intent = Column(Text)
+    # 每次意图变更 +1,默认 0/null(老会话无锚点)
+    intent_version = Column(Integer, default=0)
+    # 意图变更历史快照,JSON 数组,每条含 version/goal/constraints/change_type/source/confidence/unmapped_keys/ts
+    intent_versions = Column(Text)
 
 
 class AgentToolCall(Base, TimestampMixin):

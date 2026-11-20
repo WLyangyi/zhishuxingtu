@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -116,6 +116,76 @@ class QueryIntent(BaseModel):
     )
 
 
+# ---------- core_intent 意图锚点(任务 1.2) ----------
+class ConstraintOp(BaseModel):
+    """约束变更指令。proposal 带 op(set/delete),落库的 stored 不带 op。"""
+
+    key: str = Field(description="约束键:tone/format/length/audience/style/language,或用户自定义")
+    value: str = Field(description="约束值;op=delete 时留空")
+    op: Literal["set", "delete"] = Field(description="set=设置/修改该约束,delete=删除该约束")
+
+
+class Preference(BaseModel):
+    """跨任务偏好。scope=task 时应并入 constraints,本字段只放 global。"""
+
+    key: str = Field(description="偏好键,如 language/tone")
+    value: str = Field(description="偏好值")
+    scope: Literal["task", "global"] = Field(
+        description="task=本任务约束(应放 constraints),global=跨任务长期偏好"
+    )
+
+
+class CoreIntentProposal(BaseModel):
+    """意图识别单次结构化输出:路由字段 + 锚点字段同一次产出。
+
+    路由字段(intent/reason/task_brief)供 route_intent 使用,必须保留;
+    锚点字段(goal/constraints/acceptance_criteria/change_type/...)供 core_intent 裁决。
+    """
+
+    # 路由字段(保留)
+    intent: Literal["knowledge", "direct_answer", "web_search", "note_write"] = Field(
+        description="问题意图分类"
+    )
+    reason: str = Field(description="分类理由,一句话")
+    task_brief: str = Field(
+        default="",
+        description="可选任务简报:对本次用户诉求的一句话具体描述,没有把握就留空",
+    )
+
+    # 锚点字段(新增)
+    goal: str = Field(
+        default="",
+        description="任务目标:对用户本轮诉求的一句话归一化。change_type=none 时留空",
+    )
+    constraints: List[ConstraintOp] = Field(
+        default_factory=list,
+        description="任务级约束变更列表[{key,value,op}]。只放本任务约束;跨任务偏好放 preference",
+    )
+    acceptance_criteria: List[str] = Field(
+        default_factory=list,
+        description="任务完成的验收标准列表,可为空",
+    )
+    change_type: Literal["init", "append", "revise", "none"] = Field(
+        default="none",
+        description=(
+            "锚点变更类型:init=首轮建锚 / append=补充或修改约束 / "
+            "revise=明确改变需求(改目标或验收标准) / none=本轮不改变锚点"
+        ),
+    )
+    reset_constraints: bool = Field(
+        default=False,
+        description="仅 revise 有效:用户明确说清空约束/重新来时置 true,先清空旧约束再应用",
+    )
+    preference: Optional[Preference] = Field(
+        default=None,
+        description="跨任务长期偏好(scope=global),如'以后都用英文';任务约束不要放这里",
+    )
+    confidence: float = Field(
+        default=0.5,
+        description="锚点变更置信度 0-1;低于阈值时本轮不应用任何变更",
+    )
+
+
 INTENT_CLASSIFY_PROMPT = """你是查询意图识别器。把用户问题归类到以下四类之一:
 - knowledge: 需要检索个人知识库笔记来回答(含个人资料、项目细节、笔记中的具体内容、多跳/对比分析)
 - direct_answer: 通用常识、概念解释、闲聊寒暄,不依赖个人知识库即可回答
@@ -133,6 +203,56 @@ INTENT_CLASSIFY_PROMPT = """你是查询意图识别器。把用户问题归类�
 - 仅当用户未提出写入诉求、只要求联网获取信息时,才归 web_search。
 
 task_brief(可选):当你对用户本次诉求有具体理解时,用一句话描述要完成什么(如"查询X的前置安装条件""获取Y的最新版本并整理");没有把握就留空,不要编造。
+
+## core_intent 任务锚点(与意图同一次输出)
+除意图外,同时判断本轮是否要更新任务锚点(目标 + 约束 + 验收标准)。锚点用于多轮防跑偏,对话历史是证据、锚点是结论。
+
+### 约束键(canonical key,必须归一)
+- tone:语气(正式/轻松/严谨等)。用户说"语气""口吻"都归 tone。
+- format:输出格式(列表/表格/分点/代码块等)。
+- length:篇幅(简短/详细/控制字数等)。
+- audience:面向对象(给小白/给专家等)。
+- style:风格,**独立于 tone**,保持原样,不与 tone 合并(如"文艺风""学术风")。
+- language:语言(中文/英文等)。
+- 用户自定义的其他约束键原样保留,不要强行归入上列。
+
+### change_type(四类变更,必选其一)
+- init:首轮(当前无锚点)明确建立目标/约束/验收标准。
+- append:在已有锚点基础上补充或修改个别约束,目标不变。
+- revise:用户明确改变需求(换目标、改验收标准、推翻重来)。revise 可同时改 goal/acceptance 与约束。
+- none:本轮不改变锚点。大部分用户消息(如"继续""谢谢""再展开讲讲")不改需求,归 none。**不要为了显得有用而硬选 append/revise,避免污染锚点。**
+
+### 约束与偏好的落点(不要放错)
+- **任务级约束**(语气、格式、篇幅、风格等本任务要求)只放 constraints。
+- **跨任务长期偏好**(如"以后都用英文""以后回答都简短")放 preference,且 scope 必须为 global。
+- preference 的 scope=task 应并入 constraints,不要在本字段用 scope=task。
+- constraints 用 op 表达变更:set=设置/修改,delete=删除该约束。
+- reset_constraints:仅当用户明确说"清空约束""重新来""不要之前的约束"时,在 revise 下置 true。
+
+### 验收标准与置信度
+- acceptance_criteria:描述"做到什么程度算完成",可多条,可为空;只在 init/revise 时有意义。
+- confidence:对本次锚点变更的把握,0-1。把握不大时给低分,系统会据此提示用户重新表达,不会直接应用。
+
+只输出结构化结果:路由字段 intent + reason + task_brief(可为空),锚点字段 goal + constraints + acceptance_criteria + change_type + reset_constraints + preference + confidence。"""
+
+# off 模式专用:纯路由 prompt(回滚旧 QueryIntent schema 时用,不含锚点指令)
+INTENT_CLASSIFY_PROMPT_OFF = """你是查询意图识别器。把用户问题归类到以下四类之一:
+- knowledge: 需要检索个人知识库笔记来回答(含个人资料、项目细节、笔记中的具体内容、多跳/对比分析)
+- direct_answer: 通用常识、概念解释、闲聊寒暄,不依赖个人知识库即可回答
+- web_search: 需要实时/当下/知识库之外的最新信息,如"今天天气""最新股价""现在有什么新闻";或用户明确要求联网/上网搜索
+- note_write: 用户明确要求把某段内容保存/写入/创建到知识库,或要求把已有内容合并/整理/汇总成一篇笔记写入知识库。必须含明确的写入落库动作;若用户只是要求总结/梳理/概括知识库内容作为回答、未提出写入诉求,归 knowledge,不归 note_write。写入优先于检索与联网
+
+判断规则:
+- 不确定时默认 knowledge(宁可多检索,不可漏答知识库内容)。
+- 提到具体笔记、个人经历、项目、简历等个性化内容,一律 knowledge。
+- 事件带明确历史日期时归 knowledge。
+- 只有用户明确要"当下/最新/实时"的信息,或明确要求联网/上网搜索,才选 web_search。
+- 询问某工具/软件的安装、配置、使用细节,一律归 knowledge。
+- 用户明确要求把内容保存/记录/创建/合并/整理成笔记写到知识库时,归 note_write(写入优先于检索与联网)。
+- 用户只是要求总结/梳理/概括知识库内容作为回答、未提出把结果写入知识库时,归 knowledge。
+- 仅当用户未提出写入诉求、只要求联网获取信息时,才归 web_search。
+
+task_brief(可选):当你对用户本次诉求有具体理解时,用一句话描述要完成什么;没有把握就留空,不要编造。
 
 只输出结构化结果 intent + reason + task_brief(可为空)。"""
 
