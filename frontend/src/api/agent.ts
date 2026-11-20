@@ -6,6 +6,8 @@ export interface AgentSession {
   /** Phase 4:跨轮累计用量，用于成本展示 */
   total_tokens?: number
   total_cost_cny?: number
+  /** 阶段1b:会话级锚点摘要,off/shadow 模式为 null */
+  core_intent?: CoreIntentSummary | null
   created_at?: string
   updated_at?: string
 }
@@ -13,6 +15,19 @@ export interface AgentSession {
 export interface AgentMessage {
   role: 'user' | 'assistant'
   content: string
+}
+
+/** 阶段1b:会话列表锚点摘要(仅 CORE_INTENT_ENABLED=on 时后端返回,off/shadow 为 null) */
+export interface CoreIntentSummary {
+  goal: string
+  version: number
+}
+
+/** 阶段1b:会话详情完整锚点(goal/constraints/acceptance_criteria) */
+export interface CoreIntent {
+  goal: string
+  constraints?: Record<string, string>
+  acceptance_criteria?: string[]
 }
 
 export interface PendingApproval {
@@ -29,6 +44,8 @@ export interface PendingApproval {
 export interface SessionMessages {
   messages: AgentMessage[]
   pending_approval: PendingApproval | null
+  /** 阶段1b:完整锚点(仅 on 模式返回;锚点 SystemMessage 已在后端过滤,不进 messages) */
+  core_intent?: CoreIntent | null
 }
 
 export interface TimelineEvent {

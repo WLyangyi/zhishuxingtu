@@ -75,12 +75,14 @@
     "id": "b13",
     "question": "搜一下网络上的 LangGraph 最新版本,然后把结果保存成笔记",
     "expected_intent": "web_search",
-    "note": "混合意图:方案 A 已知局限,按信息获取优先归 web_search(写入诉求由 knowledge/web prompt 告知单独发起);M7.5 Supervisor 顺序派单后重新评估"
+    "note": "混合意图:方案 A 已知局限,按信息获取优先归 web_search(写入诉求由 knowledge/web prompt 告知单独发起);M7.5 Supervisor 顺序派单后重新评估",
+    "known_limitation": true
   },
   {
     "id": "b14",
     "question": "帮我查查 React 19 有什么新特性,然后写进我的笔记",
     "expected_intent": "web_search",
-    "note": "混合意图:同 b13 规则"
+    "note": "混合意图:同 b13 规则",
+    "known_limitation": true
   }
 ]

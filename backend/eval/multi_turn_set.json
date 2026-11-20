@@ -49,5 +49,59 @@
         "expect_keywords": ["淘宝", "镜像"]
       }
     ]
+  },
+  {
+    "id": "d001",
+    "category": "anchor_deviation",
+    "note": "偏航用例：首轮定目标，第二轮追问定位，验证锚点不偏航到无关内容",
+    "turns": [
+      {
+        "question": "吴浩阳参与过哪两个主要项目？请重点梳理项目名称和各自定位",
+        "expected_answer": "RAG智能助手项目和在线学习平台项目",
+        "relevant_doc_ids": ["0e9ca631-359c-4722-8cd5-fe0cad6fe3d7"]
+      },
+      {
+        "question": "这两个项目的定位分别是什么？",
+        "expected_answer": "RAG智能助手和在线学习平台",
+        "relevant_doc_ids": ["0e9ca631-359c-4722-8cd5-fe0cad6fe3d7"],
+        "expect_keywords": ["RAG", "在线学习"]
+      }
+    ]
+  },
+  {
+    "id": "d002",
+    "category": "anchor_deviation",
+    "note": "偏航用例：第二轮追加聚焦约束，验证锚点收敛到子集而非发散",
+    "turns": [
+      {
+        "question": "5月10日科技动态中提到哪些硬件产品动态？",
+        "expected_answer": "Apple iPod touch停产、大疆DJI Mini 3 Pro、雷蛇毒蝰V2、天猫精灵小红盒Pro",
+        "relevant_doc_ids": ["307bdc71-5215-473a-b0b6-91a13cea4a76"]
+      },
+      {
+        "question": "只保留大疆发布的那款，其余不用提",
+        "expected_answer": "DJI Mini 3 Pro",
+        "relevant_doc_ids": ["307bdc71-5215-473a-b0b6-91a13cea4a76"],
+        "expect_keywords": ["大疆", "Mini"]
+      }
+    ]
+  },
+  {
+    "id": "d003",
+    "category": "anchor_deviation",
+    "note": "偏航用例：第二轮追问前置条件作用，验证锚点内容不偏航",
+    "turns": [
+      {
+        "question": "安装克劳德code之前需要先安装什么？请说明前置条件",
+        "expected_answer": "Node.js 和 Git",
+        "relevant_doc_ids": ["ab11270b-d216-4f3a-bfb8-65c26cc319f9"]
+      },
+      {
+        "question": "这些前置条件分别起什么作用？",
+        "expected_answer": "Node.js 提供运行环境，Git 用于版本管理",
+        "relevant_doc_ids": ["ab11270b-d216-4f3a-bfb8-65c26cc319f9"],
+        "expect_keywords": ["Node", "Git"]
+      }
+    ]
   }
 ]

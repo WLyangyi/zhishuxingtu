@@ -174,7 +174,7 @@ def main() -> int:
     init_hybrid_search()
 
     with open(CASE_PATH, encoding="utf-8") as f:
-        cases = json.load(f)
+        cases = [c for c in json.load(f) if c.get("category") == "multi_turn"]
 
     from app.db.session import SessionLocal
     from app.models.user import User

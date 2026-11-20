@@ -249,3 +249,108 @@ describe('AIAssistant 会话增强（P2-6）', () => {
     clickSpy.mockRestore()
   })
 })
+
+describe('AIAssistant 锚点卡片（阶段1b）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    sseState.connects.length = 0
+  })
+
+  function mockOnMode(overrides: Partial<{ core_intent: unknown }> = {}) {
+    vi.mocked(agentApi.listSessions).mockReturnValue(Promise.resolve([
+      {
+        id: 's1',
+        title: '周报生成',
+        created_at: '2026-01-01T00:00:00',
+        updated_at: '2026-01-02T00:00:00',
+        core_intent: overrides.core_intent !== undefined ? overrides.core_intent : { goal: '生成本周工作周报', version: 2 }
+      }
+    ]) as never)
+    vi.mocked(agentApi.getMessages).mockReturnValue(Promise.resolve({
+      messages: [],
+      pending_approval: null,
+      core_intent: null
+    }) as never)
+    vi.mocked(agentApi.getTimeline).mockReturnValue(Promise.resolve([]) as never)
+    vi.mocked(agentApi.getPreferences).mockReturnValue(Promise.resolve({}) as never)
+  }
+
+  it('会话列表展示目标摘要卡片', async () => {
+    mockOnMode()
+    const wrapper = await mountAssistant()
+    expect(wrapper.text()).toContain('生成本周工作周报')
+    wrapper.unmount()
+  })
+
+  it('switchChat 展示锚点条（goal + version）', async () => {
+    mockOnMode()
+    vi.mocked(agentApi.getMessages).mockReturnValue(Promise.resolve({
+      messages: [],
+      pending_approval: null,
+      core_intent: { goal: '生成本周工作周报', constraints: { language: '中文' }, acceptance_criteria: ['覆盖本周要点'] }
+    }) as never)
+
+    const wrapper = await mountAssistant()
+    const bar = wrapper.find('[data-test="anchor-bar"]')
+    expect(bar.exists()).toBe(true)
+    expect(bar.text()).toContain('生成本周工作周报')
+    expect(bar.text()).toContain('v2')
+    wrapper.unmount()
+  })
+
+  it('off/shadow 模式（core_intent 为 null）时锚点条隐藏', async () => {
+    mockOnMode({ core_intent: null })
+    vi.mocked(agentApi.getMessages).mockReturnValue(Promise.resolve({
+      messages: [], pending_approval: null, core_intent: null
+    }) as never)
+
+    const wrapper = await mountAssistant()
+    expect(wrapper.find('[data-test="anchor-bar"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('锚点 SystemMessage 不进聊天流，消息正常渲染', async () => {
+    mockOnMode({ core_intent: null })
+    vi.mocked(agentApi.getMessages).mockReturnValue(Promise.resolve({
+      messages: [
+        { role: 'user', content: '你好' },
+        { role: 'assistant', content: '你好呀，有什么可以帮你？' }
+      ],
+      pending_approval: null,
+      core_intent: null
+    }) as never)
+
+    const wrapper = await mountAssistant()
+    expect(wrapper.find('[data-test="anchor-bar"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('你好呀，有什么可以帮你？')
+    wrapper.unmount()
+  })
+
+  it('流结束后版本变化时锚点条显示「已更新」', async () => {
+    mockOnMode()
+    vi.mocked(agentApi.getMessages).mockReturnValue(Promise.resolve({
+      messages: [], pending_approval: null,
+      core_intent: { goal: '生成本周工作周报' }
+    }) as never)
+
+    const wrapper = await mountAssistant()
+    // 初始 version=2,无更新提示
+    expect(wrapper.find('[data-test="anchor-bar"]').text()).not.toContain('已更新')
+
+    // 模拟流结束后 listSessions 返回 version=3
+    vi.mocked(agentApi.listSessions).mockReturnValue(Promise.resolve([
+      { id: 's1', title: '周报生成', core_intent: { goal: '生成本周工作周报', version: 3 } }
+    ]) as never)
+    await wrapper.find('textarea.composer__input').setValue('继续')
+    await wrapper.find('button[aria-label="发送"]').trigger('click')
+    await flushPromises()
+    const options = sseState.connects[0].options
+    options.onMessage({ type: 'final_answer', answer: '好的' })
+    options.onComplete()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="anchor-bar"]').text()).toContain('已更新')
+    expect(wrapper.find('[data-test="anchor-bar"]').text()).toContain('v3')
+    wrapper.unmount()
+  })
+})

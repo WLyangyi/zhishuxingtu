@@ -138,7 +138,9 @@ def run_agent(question: str, user_id: str):
     tool_calls = 0
     seen: set = set()
     started = time.perf_counter()
-    for step in graph.stream(input_data, config=build_stream_config(thread_id)):
+    cfg = build_stream_config(thread_id)
+    cfg["recursion_limit"] = 40
+    for step in graph.stream(input_data, config=cfg):
         for _, v in step.items():
             if v.get("answer"):
                 final_answer = v["answer"]

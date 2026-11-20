@@ -37,6 +37,7 @@
           <span class="session__bar" aria-hidden="true" />
           <span class="session__main">
             <span class="session__title">{{ chat.title || '新会话' }}</span>
+            <span v-if="chat.core_intent" class="session__goal">{{ chat.core_intent.goal }}</span>
             <span class="session__meta">{{ relativeTime(chat.updated_at || chat.created_at || '') || '刚刚' }}</span>
           </span>
           <span class="session__delete" @click.stop="deleteChat(chat.id)">
@@ -99,6 +100,14 @@
       </div>
 
       <div ref="chatContainer" class="conversation">
+        <div v-if="anchorInfo" class="anchor-bar" data-test="anchor-bar">
+          <Target :size="12" :stroke-width="2" class="anchor-bar__icon" />
+          <span class="anchor-bar__label">任务锚点</span>
+          <span class="anchor-bar__goal">{{ anchorInfo.goal }}</span>
+          <span v-if="anchorUpdated" class="anchor-bar__updated">已更新</span>
+          <span class="anchor-bar__version">v{{ anchorVersion }}</span>
+        </div>
+
         <div v-if="!messages.length && !isStreaming && !pendingApproval" class="welcome">
           <Sparkles :size="26" :stroke-width="1.4" class="welcome__icon" />
           <h2 class="welcome__title">和你的知识库一起思考</h2>
@@ -299,6 +308,7 @@ import {
   Send,
   Sparkles,
   Square,
+  Target,
   Trash2,
   WifiOff,
   Wrench,
@@ -306,7 +316,14 @@ import {
 } from 'lucide-vue-next'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
-import { agentApi, type AgentMessage, type AgentSession, type PendingApproval, type TimelineEvent } from '@/api/agent'
+import {
+  agentApi,
+  type AgentMessage,
+  type AgentSession,
+  type CoreIntent,
+  type PendingApproval,
+  type TimelineEvent,
+} from '@/api/agent'
 import MessageBubble from '@/components/domain/MessageBubble.vue'
 import ApprovalCard from '@/components/domain/ApprovalCard.vue'
 import ToolTrace from '@/components/agent/ToolTrace.vue'
@@ -334,6 +351,10 @@ const streamingContent = ref('')
 const persistedTimeline = ref<TimelineEvent[]>([])
 const liveTimeline = ref<TimelineEvent[]>([])
 const pendingApproval = ref<PendingApproval | null>(null)
+/** 阶段1b:会话锚点(完整 core_intent),off/shadow 模式后端返回 null 即隐藏 */
+const anchorInfo = ref<CoreIntent | null>(null)
+const anchorVersion = ref(0)
+const anchorUpdated = ref(false)
 const chatContainer = ref<HTMLElement | null>(null)
 const inputRef = ref<HTMLTextAreaElement | null>(null)
 const sseClient = ref<SSEClient | null>(null)
@@ -483,6 +504,8 @@ async function switchChat(chatId: string) {
           costBudget: 0
         }
       : null
+  anchorVersion.value = meta?.core_intent?.version ?? 0
+  anchorUpdated.value = false
 
   streamingContent.value = ''
   loading.value = false
@@ -495,6 +518,8 @@ async function switchChat(chatId: string) {
   ])
   messages.value = chatData.messages
   pendingApproval.value = chatData.pending_approval
+  // 阶段1b:完整锚点来自 messages 接口;off/shadow 模式后端返回 null,锚点条自动隐藏
+  anchorInfo.value = chatData.core_intent ?? null
   persistedTimeline.value = timeline
   scrollToBottom()
 }
@@ -521,6 +546,9 @@ async function clearChat() {
   liveTimeline.value = []
   approvalRecords.value = []
   pendingApproval.value = null
+  anchorInfo.value = null
+  anchorVersion.value = 0
+  anchorUpdated.value = false
 }
 
 function apiBase() {
@@ -585,6 +613,13 @@ async function refreshAfterStream() {
   if (currentChatId.value) {
     persistedTimeline.value = await agentApi.getTimeline(currentChatId.value)
     chatList.value = await agentApi.listSessions()
+    // 阶段1b:流结束后会话镜像的 intent_version 可能已 bump,刷新版本并提示锚点已更新
+    const meta = chatList.value.find((item) => item.id === currentChatId.value)
+    const nextVersion = meta?.core_intent?.version ?? 0
+    if (nextVersion !== anchorVersion.value) {
+      anchorVersion.value = nextVersion
+      if (nextVersion > 0) anchorUpdated.value = true
+    }
   }
   scrollToBottom()
 }
@@ -902,6 +937,14 @@ onUnmounted(() => {
   color: var(--t3);
 }
 
+.session__goal {
+  font-size: 10px;
+  color: var(--t3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .session__delete {
   display: flex;
   align-items: center;
@@ -1061,6 +1104,56 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 22px;
+}
+
+.anchor-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--gold);
+  border-radius: var(--r-md);
+  background: var(--panel-2);
+}
+
+.anchor-bar__icon {
+  color: var(--gold);
+  flex: none;
+}
+
+.anchor-bar__label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.03em;
+  color: var(--t3);
+  flex: none;
+}
+
+.anchor-bar__goal {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--t2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.anchor-bar__updated {
+  font-size: 9px;
+  color: var(--success);
+  flex: none;
+}
+
+.anchor-bar__version {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--gold);
+  flex: none;
 }
 
 .conversation > :deep(.message) {
