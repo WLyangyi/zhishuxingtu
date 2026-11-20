@@ -899,10 +899,10 @@ def test_core_intent_summary_and_full_helpers(db):
     db.add(session)
     db.commit()
     db.refresh(session)
-    summary = _core_intent_summary(session)
+    summary = _core_intent_summary(db, session)
     assert summary["version"] == 2
     assert len(summary["goal"]) <= 80  # 截断
-    full = _core_intent_full(session)
+    full = _core_intent_full(db, session)
     assert full["constraints"] == {"tone": "正式"}
     assert full["goal"] == "整理周报" * 30  # 完整不截断
 

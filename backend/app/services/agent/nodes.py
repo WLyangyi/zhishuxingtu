@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from types import SimpleNamespace
@@ -963,9 +964,14 @@ def _anchor_updates(change: tuple, confidence: Optional[float] = None, unmapped_
 ANCHOR_ID_PREFIX = "anchor:"
 
 
-def anchor_message_id(session_id: str) -> str:
-    """锚点消息稳定 id:anchor:{session_id}。每轮同 id 重建,不累积。"""
-    return f"{ANCHOR_ID_PREFIX}{session_id}"
+def anchor_message_id(anchor_key: str) -> str:
+    """锚点消息稳定 id:anchor:{anchor_key}。anchor_key 为 task_id(二期)或 session_id(legacy)。"""
+    return f"{ANCHOR_ID_PREFIX}{anchor_key}"
+
+
+def state_anchor_key(state: AgentState) -> str:
+    """当前锚点归属键:有 current_task_id 用 task_id(二期下沉),无则 legacy 用 session_id。"""
+    return state.get("current_task_id") or state.get("session_id") or ""
 
 
 def _is_anchor_message(msg: Any) -> bool:
@@ -974,9 +980,9 @@ def _is_anchor_message(msg: Any) -> bool:
     return isinstance(msg, SystemMessage) and mid.startswith(ANCHOR_ID_PREFIX)
 
 
-def render_anchor(core_intent: Optional[dict], session_id: str) -> Optional[SystemMessage]:
+def render_anchor(core_intent: Optional[dict], anchor_key: str) -> Optional[SystemMessage]:
     """把 state.core_intent 渲染成锚点 SystemMessage(稳定 id)。
-    无锚点返回 None(不注入)。锚点是 core_intent 的渲染投影,唯一真相在 state。"""
+    无锚点返回 None(不注入)。anchor_key 为 task_id(二期)或 session_id(legacy)。"""
     if not _has_anchor(core_intent):
         return None
     lines = ["## 任务锚点(core_intent,多轮对话防跑偏)"]
@@ -994,33 +1000,39 @@ def render_anchor(core_intent: Optional[dict], session_id: str) -> Optional[Syst
         for a in acceptance:
             lines.append(f"  - {a}")
     lines.append("以上为本轮任务锚点,后续回答请优先遵循,不要偏离目标与约束。")
-    return SystemMessage(content="\n".join(lines), id=anchor_message_id(session_id))
+    return SystemMessage(content="\n".join(lines), id=anchor_message_id(anchor_key))
 
 
 def _sync_anchor_message(state: AgentState, core_intent: Optional[dict]) -> List[Any]:
-    """同步锚点消息:缺失/被裁/内容不一致 → 同 id 重建(RemoveMessage + add 新)。
+    """同步锚点消息:清理非当前锚点(旧 task 残留),缺失/被裁/内容不一致 → 同 id 重建。
     无锚点时清理残留锚点消息。返回 messages 更新列表(空列表=无需变更)。
-    所有改 core_intent 的路径都经此保证锚点消息与 state 一致。"""
-    session_id = state.get("session_id") or ""
-    if not session_id:
+    所有改 core_intent 的路径都经此保证锚点消息与 state 一致;切 task 时旧锚点被替换,无残留双锚。"""
+    anchor_key = state_anchor_key(state)
+    if not anchor_key:
         return []
-    anchor_id = anchor_message_id(session_id)
+    anchor_id = anchor_message_id(anchor_key)
     messages = state.get("messages") or []
+    updates: List[Any] = []
+    # 清理所有非当前锚点 id 的锚点消息(旧 task 残留,切 task 时替换)
+    for m in messages:
+        if _is_anchor_message(m) and getattr(m, "id", "") != anchor_id:
+            updates.append(RemoveMessage(id=getattr(m, "id", "")))
     existing = next((m for m in messages if getattr(m, "id", "") == anchor_id), None)
 
     if not _has_anchor(core_intent):
-        # 无锚点:清理任何残留锚点消息
+        # 无锚点:清理当前残留锚点消息
         if existing is not None:
-            return [RemoveMessage(id=anchor_id)]
-        return []
+            updates.append(RemoveMessage(id=anchor_id))
+        return updates
 
-    expected = render_anchor(core_intent, session_id)
+    expected = render_anchor(core_intent, anchor_key)
     if existing is None:
-        return [expected]  # 缺失 → 插入
-    if getattr(existing, "content", None) != expected.content:
+        updates.append(expected)  # 缺失 → 插入
+    elif getattr(existing, "content", None) != expected.content:
         # 内容不一致/被裁后重建 → 同 id RemoveMessage + add 新(保持原位)
-        return [RemoveMessage(id=anchor_id), expected]
-    return []  # 一致 → 无需变更
+        updates.append(RemoveMessage(id=anchor_id))
+        updates.append(expected)
+    return updates  # 一致 → updates 仅含清理项(可能为空)
 
 
 def _cleanup_anchor_messages(state: AgentState) -> List[Any]:
@@ -1108,6 +1120,116 @@ def _apply_resume_merge(
     )
 
 
+# ---------- clarify / new_task 闭环(任务 2.5) ----------
+_NEW_TASK_MARKERS = ("新任务", "换个任务", "换任务", "另一个任务", "换一个", "换个")
+_REVISE_MARKERS = ("改成", "修改", "不对", "应该是", "调整为", "换成")
+_CONFIRM_MARKERS = ("确认", "没问题", "可以", "好的", "是的")
+_CONFIRM_EXACT = {"对", "行", "好", "嗯"}
+
+
+def classify_clarification_response(question: str) -> str:
+    """用户对澄清问题的回复四分类:confirm/revise/new_task/continue。
+    规则优先(确定性,不依赖 LLM):new_task > revise > confirm > continue。"""
+    q = (question or "").strip()
+    if any(m in q for m in _NEW_TASK_MARKERS):
+        return "new_task"
+    if any(m in q for m in _REVISE_MARKERS):
+        return "revise"
+    if any(m in q for m in _CONFIRM_MARKERS) or q in _CONFIRM_EXACT:
+        return "confirm"
+    return "continue"
+
+
+def _extract_revise_constraints(question: str) -> List[Any]:
+    """从澄清回复抽取约束变更(规则优先)。'改成列表格式' → [{key:format, value:列表, op:set}]。"""
+    constraints: List[Any] = []
+    text = (question or "").strip()
+    m = re.search(r"(?:改成|改为|调整为|换成)\s*(.+)", text)
+    if not m:
+        return constraints
+    value = m.group(1).strip(" ,，。.!！:：")
+    if not value:
+        return constraints
+    if "格式" in value:
+        constraints.append(
+            SimpleNamespace(key="format", value=value.replace("格式", "").strip(), op="set")
+        )
+    else:
+        constraints.append(SimpleNamespace(key="format", value=value, op="set"))
+    return constraints
+
+
+def _switch_task(state: AgentState) -> Dict[str, Any]:
+    """new_task:建新 task、切 current_task_id、旧 task 完成(depends_on 失效)。
+    新任务进入 clarify 阶段,无锚点(清旧锚点,锚点消息随 _sync_anchor_message 移除)。"""
+    from app.db.session import SessionLocal
+    from app.models.agent_session import AgentTask
+
+    session_id = state.get("session_id") or ""
+    user_id = state.get("user_id") or ""
+    old_task_id = state.get("current_task_id") or ""
+
+    db = SessionLocal()
+    try:
+        if old_task_id:
+            old = db.query(AgentTask).filter_by(id=old_task_id).first()
+            if old and old.status == "active":
+                old.status = "completed"
+        new_id = str(uuid.uuid4())
+        db.add(
+            AgentTask(
+                id=new_id,
+                session_id=session_id,
+                user_id=user_id,
+                status="active",
+                phase="clarify",
+                depends_on=old_task_id or None,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+    return {
+        "current_task_id": new_id,
+        "phase": "clarify",
+        "status": "active",
+        "core_intent": {},  # 新任务无锚点,清旧
+        "intent_version": 0,
+    }
+
+
+def handle_clarification(state: AgentState, question: Optional[str] = None) -> Dict[str, Any]:
+    """待澄清激活时处理用户回复的四分类编排。无 pending_clarification 时空操作。
+    返回 state 更新字段:始终清除 pending_clarification;revise 更新锚点;new_task 切任务。"""
+    pending = state.get("pending_clarification")
+    if not pending:
+        return {}
+    q = question if question is not None else (state.get("question") or "")
+    ct = classify_clarification_response(q)
+    out: Dict[str, Any] = {"pending_clarification": None}
+    if ct == "new_task":
+        out.update(_switch_task(state))
+    elif ct == "revise":
+        current = state.get("core_intent") or {}
+        version = int(state.get("intent_version") or 0)
+        constraints = _extract_revise_constraints(q)
+        if constraints:
+            change = _apply_anchor_change(
+                current,
+                version,
+                change_type="revise",
+                goal="",
+                constraints=constraints,
+                acceptance=[],
+                reset_constraints=False,
+                source="clarify-revise",
+            )
+            if change:
+                out.update(_anchor_updates(change))
+    # confirm/continue:仅清除待澄清
+    return out
+
+
 # ---------- 意图识别 ----------
 def intent_classify(state: AgentState) -> Dict[str, Any]:
     """意图识别节点。分类失败时 fail-safe 默认 knowledge，不让主流程被阻塞。
@@ -1115,6 +1237,8 @@ def intent_classify(state: AgentState) -> Dict[str, Any]:
     三模式(任务 1.7):off=回滚旧 QueryIntent 不注入 / shadow=只算不写不注入 / on=写 state+注入。"""
     question = state.get("question") or ""
     mode = CORE_INTENT_ENABLED
+    # 二期2.5:待澄清激活时,先处理用户回复的四分类编排(仅 on 模式,与 core_intent 同生命周期)
+    clar_out = handle_clarification(state, question) if mode == "on" else {}
     forced = (settings.FORCE_INTENT or "").strip().lower()
     if forced in ("knowledge", "direct_answer", "web_search", "note_write"):
         # Phase 3 消融:强制意图,跳过分类器 LLM 调用(用于量化意图路由的 token/延迟贡献)。
@@ -1129,25 +1253,31 @@ def intent_classify(state: AgentState) -> Dict[str, Any]:
             ),
         }
         if mode == "on":
-            current = state.get("core_intent") or {}
-            version = int(state.get("intent_version") or 0)
-            change = _apply_anchor_change(
-                current,
-                version,
-                change_type="append" if _has_anchor(current) else "init",
-                goal="",
-                constraints=[],
-                acceptance=[],
-                reset_constraints=False,
-                source="force-intent",
-            )
-            if change:
-                out.update(_anchor_updates(change))
-            anchor_msgs = _sync_anchor_message(state, change[0] if change else current)
+            if clar_out and "core_intent" in clar_out:
+                # 二期2.5:澄清编排已定锚点,跳过消融裁决,用 clar_out 锚点同步
+                anchor_msgs = _sync_anchor_message(state, clar_out["core_intent"])
+            else:
+                current = state.get("core_intent") or {}
+                version = int(state.get("intent_version") or 0)
+                change = _apply_anchor_change(
+                    current,
+                    version,
+                    change_type="append" if _has_anchor(current) else "init",
+                    goal="",
+                    constraints=[],
+                    acceptance=[],
+                    reset_constraints=False,
+                    source="force-intent",
+                )
+                if change:
+                    out.update(_anchor_updates(change))
+                anchor_msgs = _sync_anchor_message(state, change[0] if change else current)
         else:
             anchor_msgs = _cleanup_anchor_messages(state)
         if anchor_msgs:
             out["messages"] = anchor_msgs
+        if clar_out:
+            out.update(clar_out)
         return out
     # 写入诉求关键词兜底:对话中明确要求保存/合并/整理/创建笔记时,直接强制 note_write,
     # 不依赖 LLM 判断——避免被"不确定默认 knowledge"或"提到笔记内容一律 knowledge"误判,
@@ -1172,12 +1302,17 @@ def intent_classify(state: AgentState) -> Dict[str, Any]:
             ),
         }
         if mode == "on":
-            # 保留原锚点,但做一致性同步(缺失/不一致时重建)
-            anchor_msgs = _sync_anchor_message(state, state.get("core_intent") or {})
+            if clar_out and "core_intent" in clar_out:
+                anchor_msgs = _sync_anchor_message(state, clar_out["core_intent"])
+            else:
+                # 保留原锚点,但做一致性同步(缺失/不一致时重建)
+                anchor_msgs = _sync_anchor_message(state, state.get("core_intent") or {})
         else:
             anchor_msgs = _cleanup_anchor_messages(state)
         if anchor_msgs:
             out["messages"] = anchor_msgs
+        if clar_out:
+            out.update(clar_out)
         return out
     intent = "knowledge"
     reason = "fail-safe 默认走知识库检索"
@@ -1275,6 +1410,9 @@ def intent_classify(state: AgentState) -> Dict[str, Any]:
                 )
     except Exception as exc:  # noqa: BLE001 分类只是路由提示,失败不阻断
         reason = f"分类失败,默认 knowledge: {exc}"
+    # 二期2.5:澄清编排已定锚点(revise/new_task)时,跳过 LLM 锚点裁决,避免版本冲突
+    if clar_out and "core_intent" in clar_out:
+        anchor_change = None
     out = {
         "intent": intent,
         # M7 A′:记录命中的子 Agent + 本轮起点(修复 _best_answer 跨轮污染:
@@ -1295,7 +1433,10 @@ def intent_classify(state: AgentState) -> Dict[str, Any]:
         )
     # 锚点消息同步:on 注入/重建;off/shadow 清理(不注入)
     if mode == "on":
-        effective = anchor_change[0] if anchor_change else (state.get("core_intent") or {})
+        if clar_out and "core_intent" in clar_out:
+            effective = clar_out["core_intent"]
+        else:
+            effective = anchor_change[0] if anchor_change else (state.get("core_intent") or {})
         anchor_msgs = _sync_anchor_message(state, effective)
     else:
         anchor_msgs = _cleanup_anchor_messages(state)
@@ -1307,6 +1448,8 @@ def intent_classify(state: AgentState) -> Dict[str, Any]:
             out["low_confidence_hint"] = low_confidence_hint
         if pending_preference:
             out["pending_preference"] = pending_preference
+    if clar_out:
+        out.update(clar_out)
     return out
 
 

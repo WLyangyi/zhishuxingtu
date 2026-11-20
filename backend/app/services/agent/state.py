@@ -33,6 +33,14 @@ class AgentState(TypedDict, total=False):
     # 任务1.1:意图锚点常驻字段(唯一真相,跨轮保留)
     core_intent: dict
     intent_version: int
+    # 二期2.2:当前激活的 task id(锚点下沉 task);无 task 时 legacy 用 session_id 作锚点键
+    current_task_id: str
+    # 二期2.4:任务状态结构化常驻字段(跨轮保留,build_input 不重置,从 checkpoint 取)
+    current_subtask: str
+    completed_steps: List[str]
+    context_snapshot: dict
+    phase: str
+    status: str
     # 任务1.1:本轮临时字段,build_input 每轮重置(双保险,防跨轮残留)
     # last_intent_change:本轮变更类型与来源,回写用
     last_intent_change: dict
@@ -40,3 +48,5 @@ class AgentState(TypedDict, total=False):
     low_confidence_hint: str
     # pending_preference:跨任务偏好 {key, value, scope},流中 upsert_preference
     pending_preference: dict
+    # 二期2.4:待澄清问题(本轮需要用户澄清时写入,output 节点据此提问;build_input 每轮重置)
+    pending_clarification: dict

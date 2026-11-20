@@ -34,7 +34,10 @@ vi.mock('@/api/agent', () => ({
     deleteSession: vi.fn(),
     clearSession: vi.fn(),
     putPreference: vi.fn(),
-    deletePreference: vi.fn()
+    deletePreference: vi.fn(),
+    listTasks: vi.fn(),
+    switchTask: vi.fn(),
+    restoreTask: vi.fn()
   }
 }))
 
@@ -351,6 +354,74 @@ describe('AIAssistant 锚点卡片（阶段1b）', () => {
 
     expect(wrapper.find('[data-test="anchor-bar"]').text()).toContain('已更新')
     expect(wrapper.find('[data-test="anchor-bar"]').text()).toContain('v3')
+    wrapper.unmount()
+  })
+})
+
+describe('AIAssistant 任务切换（阶段2.6）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    sseState.connects.length = 0
+    vi.mocked(agentApi.listSessions).mockReturnValue(Promise.resolve([
+      { id: 's1', title: '周报会话', created_at: '2026-01-01T00:00:00', updated_at: '2026-01-02T00:00:00' }
+    ]) as never)
+    vi.mocked(agentApi.getMessages).mockReturnValue(Promise.resolve({
+      messages: [], pending_approval: null, core_intent: null
+    }) as never)
+    vi.mocked(agentApi.getTimeline).mockReturnValue(Promise.resolve([]) as never)
+    vi.mocked(agentApi.getPreferences).mockReturnValue(Promise.resolve({}) as never)
+    vi.mocked(agentApi.switchTask).mockResolvedValue({} as never)
+    vi.mocked(agentApi.restoreTask).mockResolvedValue({} as never)
+  })
+
+  function mockTasks(tasks: unknown[]) {
+    vi.mocked(agentApi.listTasks).mockReturnValue(Promise.resolve(tasks) as never)
+  }
+
+  it('switchChat 加载任务列表并展示 task-bar', async () => {
+    mockTasks([
+      { id: 't1', session_id: 's1', title: '写周报', goal: '', constraints: {}, acceptance_criteria: [], phase: 'executing', status: 'active', depends_on: null, intent_version: 1, is_current: true, created_at: null }
+    ])
+    const wrapper = await mountAssistant()
+    const bar = wrapper.find('[data-test="task-bar"]')
+    expect(bar.exists()).toBe(true)
+    expect(agentApi.listTasks).toHaveBeenCalledWith('s1')
+    expect(bar.text()).toContain('写周报')
+    wrapper.unmount()
+  })
+
+  it('task-bar 展示当前任务与进度(phase/status)', async () => {
+    mockTasks([
+      { id: 't1', session_id: 's1', title: '写周报', goal: '', constraints: {}, acceptance_criteria: [], phase: 'executing', status: 'active', depends_on: null, intent_version: 1, is_current: true, created_at: null },
+      { id: 't2', session_id: 's1', title: '做调研', goal: '', constraints: {}, acceptance_criteria: [], phase: 'clarify', status: 'completed', depends_on: 't1', intent_version: 0, is_current: false, created_at: null }
+    ])
+    const wrapper = await mountAssistant()
+    const bar = wrapper.find('[data-test="task-bar"]')
+    expect(bar.text()).toContain('executing')
+    expect(bar.text()).toContain('当前')
+    expect(bar.text()).toContain('completed')
+    wrapper.unmount()
+  })
+
+  it('点击非当前任务触发 switchTask 并刷新', async () => {
+    mockTasks([
+      { id: 't1', session_id: 's1', title: '写周报', goal: '', constraints: {}, acceptance_criteria: [], phase: 'executing', status: 'active', depends_on: null, intent_version: 1, is_current: true, created_at: null },
+      { id: 't2', session_id: 's1', title: '做调研', goal: '', constraints: {}, acceptance_criteria: [], phase: 'clarify', status: 'completed', depends_on: 't1', intent_version: 0, is_current: false, created_at: null }
+    ])
+    const wrapper = await mountAssistant()
+    const chips = wrapper.findAll('.task-chip')
+    expect(chips[0].attributes('disabled')).toBeDefined()
+    await chips[1].trigger('click')
+    await flushPromises()
+    expect(agentApi.switchTask).toHaveBeenCalledWith('s1', 't2')
+    expect(agentApi.listTasks).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it('无任务时 task-bar 隐藏', async () => {
+    mockTasks([])
+    const wrapper = await mountAssistant()
+    expect(wrapper.find('[data-test="task-bar"]').exists()).toBe(false)
     wrapper.unmount()
   })
 })

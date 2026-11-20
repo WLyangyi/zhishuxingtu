@@ -108,6 +108,32 @@
           <span class="anchor-bar__version">v{{ anchorVersion }}</span>
         </div>
 
+        <div v-if="taskList.length" class="task-bar" data-test="task-bar">
+          <Layers :size="12" :stroke-width="2" class="task-bar__icon" />
+          <span class="task-bar__label">任务</span>
+          <div class="task-bar__chips">
+            <button
+              v-for="task in taskList"
+              :key="task.id"
+              type="button"
+              :class="['task-chip', task.is_current && 'task-chip--current']"
+              :disabled="task.is_current"
+              @click="switchTask(task.id)"
+            >
+              <span class="task-chip__title">{{ task.title || task.goal || '未命名任务' }}</span>
+              <span class="task-chip__phase">{{ task.phase }}</span>
+              <span v-if="task.is_current" class="task-chip__badge">当前</span>
+              <span v-else class="task-chip__status">{{ task.status }}</span>
+              <span
+                v-if="!task.is_current && task.status === 'completed'"
+                class="task-chip__restore"
+                role="button"
+                @click.stop="restoreTask(task.id)"
+              >恢复</span>
+            </button>
+          </div>
+        </div>
+
         <div v-if="!messages.length && !isStreaming && !pendingApproval" class="welcome">
           <Sparkles :size="26" :stroke-width="1.4" class="welcome__icon" />
           <h2 class="welcome__title">和你的知识库一起思考</h2>
@@ -301,6 +327,7 @@ import {
   ChevronDown,
   Download,
   Gauge,
+  Layers,
   MessagesSquare,
   PanelRight,
   Plus,
@@ -320,6 +347,7 @@ import {
   agentApi,
   type AgentMessage,
   type AgentSession,
+  type AgentTask,
   type CoreIntent,
   type PendingApproval,
   type TimelineEvent,
@@ -355,6 +383,8 @@ const pendingApproval = ref<PendingApproval | null>(null)
 const anchorInfo = ref<CoreIntent | null>(null)
 const anchorVersion = ref(0)
 const anchorUpdated = ref(false)
+/** 二期2.6:当前会话任务列表(task 分层,进度展示与切换) */
+const taskList = ref<AgentTask[]>([])
 const chatContainer = ref<HTMLElement | null>(null)
 const inputRef = ref<HTMLTextAreaElement | null>(null)
 const sseClient = ref<SSEClient | null>(null)
@@ -512,16 +542,48 @@ async function switchChat(chatId: string) {
   isStreaming.value = false
   liveTimeline.value = []
 
-  const [chatData, timeline] = await Promise.all([
+  const [chatData, timeline, tasks] = await Promise.all([
     agentApi.getMessages(chatId),
-    agentApi.getTimeline(chatId)
+    agentApi.getTimeline(chatId),
+    agentApi.listTasks(chatId)
   ])
   messages.value = chatData.messages
   pendingApproval.value = chatData.pending_approval
   // 阶段1b:完整锚点来自 messages 接口;off/shadow 模式后端返回 null,锚点条自动隐藏
   anchorInfo.value = chatData.core_intent ?? null
   persistedTimeline.value = timeline
+  // 二期2.6:加载任务列表(进度展示与切换)
+  taskList.value = tasks ?? []
   scrollToBottom()
+}
+
+/** 二期2.6:刷新当前会话任务列表。 */
+async function loadTasks() {
+  if (!currentChatId.value) return
+  taskList.value = (await agentApi.listTasks(currentChatId.value)) ?? []
+}
+
+/** 二期2.6:刷新锚点(任务切换后锚点随 task 变化,重新拉取完整 core_intent)。 */
+async function refreshAnchor() {
+  if (!currentChatId.value) return
+  const chatData = await agentApi.getMessages(currentChatId.value)
+  anchorInfo.value = chatData.core_intent ?? null
+}
+
+/** 二期2.6:切换当前任务(后端完成旧任务、激活目标任务并写入图状态)。 */
+async function switchTask(taskId: string) {
+  if (!currentChatId.value) return
+  await agentApi.switchTask(currentChatId.value, taskId)
+  await loadTasks()
+  await refreshAnchor()
+}
+
+/** 二期2.6:恢复已完成的非当前任务。 */
+async function restoreTask(taskId: string) {
+  if (!currentChatId.value) return
+  await agentApi.restoreTask(currentChatId.value, taskId)
+  await loadTasks()
+  await refreshAnchor()
 }
 
 async function deleteChat(chatId: string) {
@@ -1154,6 +1216,109 @@ onUnmounted(() => {
   font-size: 9px;
   color: var(--gold);
   flex: none;
+}
+
+.task-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  max-width: 720px;
+  margin: var(--sp-2) auto 0;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--steel);
+  border-radius: var(--r-md);
+  background: var(--panel-2);
+}
+
+.task-bar__icon {
+  color: var(--steel);
+  flex: none;
+}
+
+.task-bar__label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.03em;
+  color: var(--t3);
+  flex: none;
+}
+
+.task-bar__chips {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.task-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 3px var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  cursor: pointer;
+  flex: none;
+}
+
+.task-chip:hover:not(:disabled) {
+  border-color: var(--steel);
+}
+
+.task-chip:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.task-chip--current {
+  border-color: var(--steel);
+  background: var(--panel-2);
+}
+
+.task-chip__title {
+  font-size: 11px;
+  color: var(--t2);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-chip__phase {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--t3);
+  flex: none;
+}
+
+.task-chip__badge {
+  font-size: 9px;
+  color: var(--steel);
+  flex: none;
+}
+
+.task-chip__status {
+  font-size: 9px;
+  color: var(--t3);
+  flex: none;
+}
+
+.task-chip__restore {
+  font-size: 9px;
+  color: var(--steel);
+  cursor: pointer;
+  flex: none;
+  padding: 0 4px;
+  border-radius: var(--r-sm);
+}
+
+.task-chip__restore:hover {
+  background: var(--steel-soft);
 }
 
 .conversation > :deep(.message) {

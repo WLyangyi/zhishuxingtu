@@ -210,4 +210,7 @@ def build_input(question: str, session_id: str, user_id: str, history: Optional[
         "last_intent_change": None,
         "low_confidence_hint": "",
         "pending_preference": None,
+        # 二期2.4:待澄清问题每轮重置(临时字段);常驻字段 current_subtask/completed_steps/
+        # context_snapshot/phase/status 不在此重置,从 checkpoint 保留。
+        "pending_clarification": None,
     }

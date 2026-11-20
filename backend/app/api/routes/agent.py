@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.db.session import get_db
-from app.models.agent_session import AgentSession, AgentToolCall
+from app.models.agent_session import AgentSession, AgentTask, AgentToolCall
 from app.models.user import User
 from app.services.agent.graph import build_input, delete_thread, get_graph
 from app.services.agent.config import CORE_INTENT_ENABLED
@@ -52,6 +52,13 @@ class ResumeRequest(BaseModel):
     session_id: str
     approved: bool
     reason: str = ""
+
+
+class TaskCreateRequest(BaseModel):
+    title: str = Field(default="新任务", max_length=500)
+    goal: str = Field(default="")
+    constraints: dict = Field(default_factory=dict)
+    acceptance_criteria: List[str] = Field(default_factory=list)
 
 
 class PreferenceUpdate(BaseModel):
@@ -206,51 +213,99 @@ def _persist_tool_logs(db: Session, session_id: str, logs: List[dict]) -> None:
         db.commit()
 
 
-# 任务1.6:core_intent 终态回写(版本比较 + 历史去重)
+# 任务1.6/二期2.3:core_intent 终态回写(版本比较 + 历史去重,按 task 分区)
+def _intent_history_entry(core_intent, intent_version, last_change):
+    """历史快照条目(task/session 共用结构)。"""
+    return {
+        "version": intent_version,
+        "goal": (core_intent or {}).get("goal", ""),
+        "constraints": (core_intent or {}).get("constraints", {}) or {},
+        "acceptance_criteria": (core_intent or {}).get("acceptance_criteria", []) or [],
+        "change_type": last_change.get("change_type"),
+        "source": last_change.get("source"),
+        "confidence": last_change.get("confidence"),
+        "unmapped_keys": last_change.get("unmapped_keys") or [],
+        "ts": last_change.get("ts"),
+    }
+
+
 def _persist_core_intent(db: Session, session: AgentSession, values: Dict[str, Any]) -> None:
-    """流正常完成时,把 checkpoint 里的 core_intent 回写到 session 镜像。
-    - 版本比较:checkpoint intent_version >= session 才写(防旧值覆盖新值)。
-    - 历史去重:intent_versions 末条 version == 当前则跳过(防重复)。
-    checkpoint 是唯一真相源,session 列只是查询镜像。"""
+    """流正常完成时,把 checkpoint 里的 core_intent 回写。
+    - 有 current_task_id → 写 task 表(二期2.3 按 task 分区);
+    - 无 current_task_id → 写 session 镜像(一期 legacy 行为不变)。
+    版本比较 + 历史去重,防旧值覆盖新值、防重复追加。checkpoint 是唯一真相源。"""
     core_intent = values.get("core_intent")
     intent_version = int(values.get("intent_version") or 0)
     last_change = values.get("last_intent_change")
+    current_task_id = values.get("current_task_id")
 
+    if current_task_id:
+        task = db.query(AgentTask).filter_by(id=current_task_id).first()
+        if task is None:
+            return
+        if intent_version < int(task.intent_version or 0):
+            return  # task 镜像更新,不用旧 checkpoint 覆盖
+        versions: List[dict] = []
+        if task.intent_versions:
+            try:
+                versions = json.loads(task.intent_versions)
+            except (TypeError, json.JSONDecodeError):
+                versions = []
+        if last_change and (not versions or versions[-1].get("version") != intent_version):
+            versions.append(_intent_history_entry(core_intent, intent_version, last_change))
+        task.goal = (core_intent or {}).get("goal", "") or ""
+        task.constraints = json.dumps(
+            (core_intent or {}).get("constraints", {}) or {}, ensure_ascii=False
+        )
+        task.acceptance_criteria = json.dumps(
+            (core_intent or {}).get("acceptance_criteria", []) or [], ensure_ascii=False
+        )
+        task.intent_version = intent_version
+        task.intent_versions = json.dumps(versions, ensure_ascii=False) if versions else None
+        return
+
+    # legacy:写 session 镜像(一期行为不变)
     session_version = int(session.intent_version or 0)
     if intent_version < session_version:
-        return  # session 镜像更新,不用旧 checkpoint 覆盖
-
+        return
     versions: List[dict] = []
     if session.intent_versions:
         try:
             versions = json.loads(session.intent_versions)
         except (TypeError, json.JSONDecodeError):
             versions = []
-
-    # 有本轮变更且末条 version != 当前 → 追加历史快照(去重)
     if last_change and (not versions or versions[-1].get("version") != intent_version):
-        versions.append(
-            {
-                "version": intent_version,
-                "goal": (core_intent or {}).get("goal", ""),
-                "constraints": (core_intent or {}).get("constraints", {}),
-                "acceptance_criteria": (core_intent or {}).get("acceptance_criteria", []),
-                "change_type": last_change.get("change_type"),
-                "source": last_change.get("source"),
-                "confidence": last_change.get("confidence"),
-                "unmapped_keys": last_change.get("unmapped_keys") or [],
-                "ts": last_change.get("ts"),
-            }
-        )
-
+        versions.append(_intent_history_entry(core_intent, intent_version, last_change))
     session.core_intent = json.dumps(core_intent, ensure_ascii=False) if core_intent else None
     session.intent_version = intent_version
     session.intent_versions = json.dumps(versions, ensure_ascii=False) if versions else None
 
 
-# 任务1.7:/sessions /messages 的 core_intent 返回(仅 on 模式,off/shadow 返回 null)
-def _core_intent_summary(session: AgentSession) -> Optional[dict]:
-    """会话列表摘要:goal 前 80 字 + version(不取 intent_versions 整列)。"""
+# 任务1.7/二期2.3:/sessions /messages 的 core_intent 返回(仅 on 模式,off/shadow 返回 null)
+def _loads_json(raw, default):
+    """安全解析 JSON 文本,失败/空返回 default。"""
+    if not raw:
+        return default
+    try:
+        return json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return default
+
+
+def _active_task_with_anchor(db: Session, session_id: str) -> Optional[AgentTask]:
+    """会话当前有锚点的 active task(有 goal 或 constraints 才算有锚点)。"""
+    task = db.query(AgentTask).filter_by(session_id=session_id, status="active").first()
+    if task and (task.goal or task.constraints):
+        return task
+    return None
+
+
+def _core_intent_summary(db: Session, session: AgentSession) -> Optional[dict]:
+    """会话列表摘要:goal 前 80 字 + version(不取 intent_versions 整列)。
+    有 active task 从 task 表读,无则从 session 镜像读(legacy)。"""
+    task = _active_task_with_anchor(db, session.id)
+    if task:
+        return {"goal": (task.goal or "")[:80], "version": int(task.intent_version or 0)}
     if not session.core_intent:
         return None
     try:
@@ -260,8 +315,16 @@ def _core_intent_summary(session: AgentSession) -> Optional[dict]:
     return {"goal": (data.get("goal") or "")[:80], "version": int(session.intent_version or 0)}
 
 
-def _core_intent_full(session: AgentSession) -> Optional[dict]:
-    """会话详情完整 core_intent(锚点消息过滤后单独返回)。"""
+def _core_intent_full(db: Session, session: AgentSession) -> Optional[dict]:
+    """会话详情完整 core_intent(锚点消息过滤后单独返回)。
+    有 active task 从 task 表读,无则从 session 镜像读(legacy)。"""
+    task = _active_task_with_anchor(db, session.id)
+    if task:
+        return {
+            "goal": task.goal or "",
+            "constraints": _loads_json(task.constraints, {}),
+            "acceptance_criteria": _loads_json(task.acceptance_criteria, []),
+        }
     if not session.core_intent:
         return None
     try:
@@ -626,7 +689,7 @@ async def list_agent_sessions(
                 "title": session.title,
                 "total_tokens": int(session.total_tokens or 0),
                 "total_cost_cny": round(float(session.total_cost_cny or 0.0), 6),
-                "core_intent": _core_intent_summary(session) if on_mode else None,
+                "core_intent": _core_intent_summary(db, session) if on_mode else None,
                 "created_at": session.created_at.isoformat() if session.created_at else None,
                 "updated_at": session.updated_at.isoformat() if session.updated_at else None,
             }
@@ -646,6 +709,127 @@ async def create_agent_session(
     db.commit()
     db.refresh(session)
     return {"success": True, "code": 200, "data": {"id": session.id, "title": session.title}}
+
+
+# ---------- 二期2.6:task 创建/切换/恢复接口 ----------
+def _task_payload(task: AgentTask) -> dict:
+    return {
+        "id": task.id,
+        "session_id": task.session_id,
+        "title": task.title,
+        "goal": task.goal,
+        "constraints": _loads_json(task.constraints, {}),
+        "acceptance_criteria": _loads_json(task.acceptance_criteria, []),
+        "phase": task.phase,
+        "status": task.status,
+        "depends_on": task.depends_on,
+        "intent_version": int(task.intent_version or 0),
+        "is_current": task.status == "active",
+        "created_at": task.created_at.isoformat() if task.created_at else None,
+    }
+
+
+def _complete_active_task(db: Session, session_id: str, exclude_id: Optional[str] = None) -> None:
+    """完成会话当前 active 任务(部分唯一索引释放名额),排除指定任务。"""
+    tasks = db.query(AgentTask).filter_by(session_id=session_id, status="active").all()
+    for t in tasks:
+        if exclude_id and t.id == exclude_id:
+            continue
+        t.status = "completed"
+
+
+def _set_current_task_in_state(session_id: str, user_id: str, task_id: str) -> None:
+    """把 current_task_id 写入图状态(checkpoint)。无 checkpoint 时 fail-silent。"""
+    try:
+        get_graph().update_state(
+            build_stream_config(session_id, user_id=user_id),
+            {"current_task_id": task_id},
+            as_node="intent_classify",
+        )
+    except Exception:  # noqa: BLE001 图状态写入失败不阻断接口
+        pass
+
+
+@router.post("/sessions/{session_id}/tasks")
+async def create_agent_task(
+    session_id: str,
+    request: TaskCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    session = _get_owned_session(db, current_user.id, session_id)
+    _complete_active_task(db, session.id)
+    task = AgentTask(
+        session_id=session.id,
+        user_id=current_user.id,
+        title=(request.title or "新任务")[:500],
+        goal=request.goal,
+        constraints=json.dumps(request.constraints, ensure_ascii=False) if request.constraints else None,
+        acceptance_criteria=json.dumps(request.acceptance_criteria, ensure_ascii=False) if request.acceptance_criteria else None,
+        status="active",
+        phase="clarify",
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    _set_current_task_in_state(session.id, current_user.id, task.id)
+    return {"success": True, "code": 200, "data": _task_payload(task)}
+
+
+@router.get("/sessions/{session_id}/tasks")
+async def list_agent_tasks(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    session = _get_owned_session(db, current_user.id, session_id)
+    tasks = (
+        db.query(AgentTask)
+        .filter_by(session_id=session.id)
+        .order_by(AgentTask.created_at.desc())
+        .all()
+    )
+    return {"success": True, "code": 200, "data": [_task_payload(t) for t in tasks]}
+
+
+@router.post("/sessions/{session_id}/tasks/{task_id}/switch")
+async def switch_agent_task(
+    session_id: str,
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    session = _get_owned_session(db, current_user.id, session_id)
+    task = db.query(AgentTask).filter_by(id=task_id, session_id=session.id).first()
+    if task is None:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    _complete_active_task(db, session.id, exclude_id=task.id)
+    task.status = "active"
+    db.commit()
+    db.refresh(task)
+    _set_current_task_in_state(session.id, current_user.id, task.id)
+    return {"success": True, "code": 200, "data": _task_payload(task)}
+
+
+@router.post("/sessions/{session_id}/tasks/{task_id}/restore")
+async def restore_agent_task(
+    session_id: str,
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    session = _get_owned_session(db, current_user.id, session_id)
+    task = db.query(AgentTask).filter_by(id=task_id, session_id=session.id).first()
+    if task is None:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    if task.status == "active":
+        return {"success": True, "code": 200, "data": _task_payload(task)}
+    _complete_active_task(db, session.id, exclude_id=task.id)
+    task.status = "active"
+    db.commit()
+    db.refresh(task)
+    _set_current_task_in_state(session.id, current_user.id, task.id)
+    return {"success": True, "code": 200, "data": _task_payload(task)}
 
 
 @router.get("/sessions/{session_id}/messages")
@@ -671,7 +855,7 @@ async def get_session_messages(
         "data": {
             "messages": messages,
             "pending_approval": pending_approval,
-            "core_intent": _core_intent_full(session) if on_mode else None,
+            "core_intent": _core_intent_full(db, session) if on_mode else None,
         },
     }
 

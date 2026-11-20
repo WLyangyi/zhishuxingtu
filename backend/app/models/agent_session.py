@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Column, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 
 from app.db.base import Base, TimestampMixin, generate_uuid
 
@@ -78,3 +78,45 @@ class UserPreference(Base, TimestampMixin):
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     preference_key = Column(String(100), nullable=False)
     preference_value = Column(Text, nullable=False)
+
+
+class AgentTask(Base, TimestampMixin):
+    """二期 task 分层：一个会话可挂多个任务，同一时刻仅一个 active。
+
+    phase（执行阶段）与 status（生命周期）职责分离：
+    - phase: 任务内部轻量阶段 clarify/executing/review/done，完整状态机远期再设计；
+    - status: 生命周期 active/completed/cancelled/archived，部分唯一索引只约束 active。
+
+    core_intent 从 session 级下沉到 task 级（goal/constraints/acceptance_criteria，
+    2.2 落地切换逻辑）；intent_versions 按 task 分区（2.3 落历史）；depends_on 支持
+    new_task 闭环（2.5 落依赖失效）。一期 session 级 intent_versions 作为 legacy 不动。
+    """
+
+    __tablename__ = "agent_tasks"
+    __table_args__ = (
+        Index("idx_agent_tasks_session_created", "session_id", "created_at"),
+        # 部分唯一索引：同一会话同一时刻仅一个 active 任务；
+        # completed/cancelled/archived 不受限，active 转非 active 后释放名额。
+        Index(
+            "uq_agent_tasks_active_per_session",
+            "session_id",
+            unique=True,
+            sqlite_where=text("status='active'"),
+        ),
+    )
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    session_id = Column(String(36), index=True)
+    user_id = Column(String(36))
+    title = Column(String(500), default="")
+    # core_intent 下沉 task（2.2 切换逻辑用）：goal + 约束 dict + 验收标准
+    goal = Column(Text)
+    constraints = Column(Text)          # JSON dict[key, value]，不带 op
+    acceptance_criteria = Column(Text)  # JSON array
+    intent_version = Column(Integer, default=0)
+    intent_versions = Column(Text)      # JSON 数组，按 task 分区（2.3 用）
+    # phase / status 职责分离
+    phase = Column(String(32), default="clarify")   # clarify/executing/review/done
+    status = Column(String(32), default="active")    # active/completed/cancelled/archived
+    # new_task 闭环：子任务依赖父任务 id（2.5 用）
+    depends_on = Column(String(36))

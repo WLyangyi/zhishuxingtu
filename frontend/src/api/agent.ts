@@ -30,6 +30,22 @@ export interface CoreIntent {
   acceptance_criteria?: string[]
 }
 
+/** 二期2.6:任务(task 分层) */
+export interface AgentTask {
+  id: string
+  session_id: string
+  title: string
+  goal: string
+  constraints: Record<string, string>
+  acceptance_criteria: string[]
+  phase: string
+  status: 'active' | 'completed' | 'cancelled' | 'archived'
+  depends_on: string | null
+  intent_version: number
+  is_current: boolean
+  created_at: string | null
+}
+
 export interface PendingApproval {
   type: 'approval_required'
   session_id?: string
@@ -109,6 +125,30 @@ export const agentApi = {
 
   getMessages: async (sessionId: string): Promise<SessionMessages> => {
     const response = await api.get(`/agent/sessions/${sessionId}/messages`)
+    return response.data.data
+  },
+
+  // 二期2.6:task 创建/列表/切换/恢复
+  listTasks: async (sessionId: string): Promise<AgentTask[]> => {
+    const response = await api.get(`/agent/sessions/${sessionId}/tasks`)
+    return response.data.data
+  },
+
+  createTask: async (
+    sessionId: string,
+    payload: { title?: string; goal?: string; constraints?: Record<string, string>; acceptance_criteria?: string[] }
+  ): Promise<AgentTask> => {
+    const response = await api.post(`/agent/sessions/${sessionId}/tasks`, payload)
+    return response.data.data
+  },
+
+  switchTask: async (sessionId: string, taskId: string): Promise<AgentTask> => {
+    const response = await api.post(`/agent/sessions/${sessionId}/tasks/${taskId}/switch`)
+    return response.data.data
+  },
+
+  restoreTask: async (sessionId: string, taskId: string): Promise<AgentTask> => {
+    const response = await api.post(`/agent/sessions/${sessionId}/tasks/${taskId}/restore`)
     return response.data.data
   },
 
