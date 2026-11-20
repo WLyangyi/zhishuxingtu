@@ -54,7 +54,7 @@ npm run test:run
 
 | 层级 | 技术 |
 |------|------|
-| 前端 | Vue 3.4 + TypeScript + Pinia + vue-router + Tailwind CSS + D3 + Reka UI（naive-ui / gsap / lenis / sass 均已移除；设计方向见 `docs/design/深空观测站-前端设计文档.md` v2.2，P0–P6 已完成） |
+| 前端 | Vue 3.4 + TypeScript + Pinia + vue-router + Tailwind CSS + D3 + Reka UI（naive-ui / gsap / lenis / sass 均已移除；P0–P6 已完成）。**本地补充约定：`docs/design/前端规范.md`（不入库；若本机存在则改前端 UI 前先读）**，判定指南：原则 + 理由 + 反例；视觉值唯一真相为 `frontend/src/styles/tokens.css` |
 | 后端 | Python 3.11 + FastAPI + SQLAlchemy + FAISS + LangChain + LangGraph |
 | AI | DeepSeek agent（LangGraph 编排器 + 4 专职子 Agent + ReAct + 三查）+ qwen Embedding/裁判 + RAG + SSE |
 
@@ -83,7 +83,7 @@ npm run test:run
 
 - **笔记管理**: `backend/app/api/routes/notes.py` - 支持双向链接 (`[[标题]]` 语法)
 - **知识图谱**: `backend/app/api/routes/graph.py` - 全局/局部图谱可视化
-- **Agentic RAG**: `backend/app/services/agent/` + `llm/` + `tools/` - 编排器（`intent_classify` 四分类 + `route_intent_multi`）路由 4 专职子 Agent（chat / knowledge / web_research / note_write），工具与提示词由 `AGENT_CONFIGS` 按 `current_agent` 查表（knowledge 移出写入工具、note_write 结构强制查重、三查按 agent 裁剪）；`AGENT_MULTI_AGENT` 开关双图共存（false=单图回退位）；`execute_tool` 对重复检索/永久不可用工具/未查重写入三道熔断防死循环；写工具幂等键（`agent:{session_id}:{tool_call_id}`）防重放重复落库。`intent_classify` 同次结构化输出 core_intent 锚点（init/append/revise/none 迁移表裁决，锚点以稳定 id SystemMessage 注入 messages，`render_anchor` 保一致），`CORE_INTENT_ENABLED` off/shadow/on 三模式一键回滚
+- **Agentic RAG**: `backend/app/services/agent/` + `llm/` + `tools/` - 编排器（`intent_classify` 四分类 + `route_intent_multi`）路由 4 专职子 Agent（chat / knowledge / web_research / note_write），工具与提示词由 `AGENT_CONFIGS` 按 `current_agent` 查表（knowledge 移出写入工具、note_write 结构强制查重、三查按 agent 裁剪）；`AGENT_MULTI_AGENT` 开关双图共存（false=单图回退位）；`execute_tool` 对重复检索/永久不可用工具/未查重写入三道熔断防死循环；写工具幂等键（`agent:{session_id}:{tool_call_id}`）防重放重复落库。`intent_classify` 同次结构化输出 core_intent 锚点（init/append/revise/none 迁移表裁决，锚点以稳定 id SystemMessage 注入 messages，`render_anchor` 保一致），`CORE_INTENT_ENABLED` off/shadow/on 三模式一键回滚；二期 task 分层：`agent_tasks` 表（`WHERE status='active'` 部分唯一索引）+ 锚点下沉 task（`state_anchor_key` 切 task 替换锚点、无残留双锚）+ clarify/new_task 四分类闭环（`handle_clarification`，new_task 切任务+旧任务完成、revise 改锚点）
 - **MCP Server**: `backend/app/services/mcp_server.py` - 知识库 MCP 化（`/mcp` 端点，API Key 认证，与 agent 共享工具层）
 - **AI 问答**: `backend/app/services/rag_chain.py` - RAG 检索 + 流式输出（agent 降级 fallback）
 - **向量检索**: `backend/app/services/vector_store.py` - FAISS 向量索引 + 混合检索
@@ -91,6 +91,7 @@ npm run test:run
 - **Prompt 系统**: PromptLab + Skill Chain + Few-Shot 学习
 
 ## 前端红线与约定
+- **本地补充约定**：`docs/design/前端规范.md`（本机文档、不入库；存在则新增/改动 UI 前先读）。原则 + 理由 + 反例的判定指南，不写具体值（值查 `frontend/src/styles/tokens.css`）。尤其注意"领域 UI 抽 domain 组件 + 四态齐备"，锚点卡片是已知欠账、不是样板。
 - 叶子组件的渲染错误会冻结整棵组件树：独立区域用 `ErrorBoundary` 包裹；Teleport/portal 内容不在组件树内，这类错误靠 `main.ts` 全局 `errorHandler` 兜底。
 - 新增具名路由会被 `tests/smoke.routes.spec.ts` 自动覆盖；测试 mock 走 `@/api` 边界且**必须返回 Promise**（否则 `.catch` 链 TypeError 会被吞成 notFound）。
 - 视觉值只走 CSS 令牌（`npm run lint:hex` 为门禁）；测试用 `npm run test:run`，不要去掉 `--no-file-parallelism`（本机并行 worker 会 SIGTERM）。
@@ -104,6 +105,7 @@ npm run test:run
 - Note ↔ Tag (多对多)
 - Note ↔ Note (双向链接：`note_links` 关联表是出链/反链/图谱的查询入口；`notes.linked_note_ids` JSON 仅回滚保险，写路径同步维护)
 - agent_sessions / agent_tool_calls - Agent 会话与工具调用审计（M1；`agent_route` 命中路由 M7.4）。agent_sessions 含 core_intent 锚点字段：`core_intent`（JSON `{goal, constraints, acceptance_criteria}`，checkpoint 是唯一真相源、本列是查询镜像）、`intent_version`（每次变更 +1）、`intent_versions`（变更历史快照，含 version/change_type/source/confidence/unmapped_keys）
+- agent_tasks - Agent 任务分层（二期 2.1）：一会话可挂多任务，`WHERE status='active'` 部分唯一索引（同会话仅一个 active）；`phase`（执行阶段 clarify/executing/review/done）与 `status`（生命周期 active/completed/cancelled/archived）职责分离；core_intent 从 session 下沉到 task（goal/constraints/acceptance_criteria/intent_version/intent_versions），`depends_on` 支持 new_task 依赖；session 级 intent_versions 作 legacy 不动
 - eval_sets / eval_runs - 评测题库与成绩单（M2）
 - user_preferences - 用户长期偏好，跨会话记忆（M4）
 
@@ -139,6 +141,9 @@ npm run test:run
 - `/api/agent/chat/stream` - Agent ReAct 问答（SSE 流式）
 - `/api/agent/sessions` - Agent 会话管理（`?q=` 标题关键词过滤、`?limit=` 条数上限；`on` 模式返回 core_intent 锚点摘要 goal+version）
 - `/api/agent/sessions/{id}/messages` - 会话消息（过滤锚点 SystemMessage；`on` 模式额外返回完整 core_intent）
+- `/api/agent/sessions/{id}/tasks` - 任务列表（`GET`）/创建任务（`POST`，建 active、旧 active 完成）
+- `/api/agent/sessions/{id}/tasks/{tid}/switch` - 切换当前任务（旧 active 完成、目标激活、写入图状态 current_task_id）
+- `/api/agent/sessions/{id}/tasks/{tid}/restore` - 恢复非 active 任务
 - `/api/agent/resume` - 审批恢复（`Command(resume=...)`，理由可合并约束/偏好进锚点）
 
 ## 深入文档

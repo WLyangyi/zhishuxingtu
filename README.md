@@ -218,6 +218,10 @@ POST /api/search/ai             # RAG 问答（基线链路）
 # Agentic RAG
 POST /api/agent/chat/stream     # Agent 问答（SSE 流式：thought/action/observation/check/final_answer）
 GET  /api/agent/sessions        # 会话管理（?q= 标题关键词过滤、?limit= 条数上限）
+GET  /api/agent/sessions/{id}/tasks         # 任务列表
+POST /api/agent/sessions/{id}/tasks         # 创建任务（建 active、旧 active 完成）
+POST /api/agent/sessions/{id}/tasks/{tid}/switch   # 切换当前任务
+POST /api/agent/sessions/{id}/tasks/{tid}/restore  # 恢复非 active 任务
 POST /api/agent/resume          # HITL 审批恢复
 GET  /api/agent/traces          # 可观测 trace
 GET  /api/agent/observability/summary
