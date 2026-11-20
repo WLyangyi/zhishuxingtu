@@ -136,6 +136,8 @@ GLM_JUDGE_MODEL=glm-5.3-flash
 AGENT_MULTI_AGENT=true
 # 单轮 ReAct token 硬上限（默认 30000；勿调回 10000，会误杀 note_write 的 create_note）
 AGENT_TOKEN_BUDGET=30000
+# core_intent 意图锚点开关（off=回滚不注入 / shadow=只算不写不注入 / on=写 state+注入，默认 on）
+CORE_INTENT_ENABLED=on
 
 # 联网搜索（Tavily 免费注册 https://tavily.com；为空则工具优雅降级）
 TAVILY_API_KEY=tvly-xxx

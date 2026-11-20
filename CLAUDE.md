@@ -83,7 +83,7 @@ npm run test:run
 
 - **笔记管理**: `backend/app/api/routes/notes.py` - 支持双向链接 (`[[标题]]` 语法)
 - **知识图谱**: `backend/app/api/routes/graph.py` - 全局/局部图谱可视化
-- **Agentic RAG**: `backend/app/services/agent/` + `llm/` + `tools/` - 编排器（`intent_classify` 四分类 + `route_intent_multi`）路由 4 专职子 Agent（chat / knowledge / web_research / note_write），工具与提示词由 `AGENT_CONFIGS` 按 `current_agent` 查表（knowledge 移出写入工具、note_write 结构强制查重、三查按 agent 裁剪）；`AGENT_MULTI_AGENT` 开关双图共存（false=单图回退位）；`execute_tool` 对重复检索/永久不可用工具/未查重写入三道熔断防死循环；写工具幂等键（`agent:{session_id}:{tool_call_id}`）防重放重复落库
+- **Agentic RAG**: `backend/app/services/agent/` + `llm/` + `tools/` - 编排器（`intent_classify` 四分类 + `route_intent_multi`）路由 4 专职子 Agent（chat / knowledge / web_research / note_write），工具与提示词由 `AGENT_CONFIGS` 按 `current_agent` 查表（knowledge 移出写入工具、note_write 结构强制查重、三查按 agent 裁剪）；`AGENT_MULTI_AGENT` 开关双图共存（false=单图回退位）；`execute_tool` 对重复检索/永久不可用工具/未查重写入三道熔断防死循环；写工具幂等键（`agent:{session_id}:{tool_call_id}`）防重放重复落库。`intent_classify` 同次结构化输出 core_intent 锚点（init/append/revise/none 迁移表裁决，锚点以稳定 id SystemMessage 注入 messages，`render_anchor` 保一致），`CORE_INTENT_ENABLED` off/shadow/on 三模式一键回滚
 - **MCP Server**: `backend/app/services/mcp_server.py` - 知识库 MCP 化（`/mcp` 端点，API Key 认证，与 agent 共享工具层）
 - **AI 问答**: `backend/app/services/rag_chain.py` - RAG 检索 + 流式输出（agent 降级 fallback）
 - **向量检索**: `backend/app/services/vector_store.py` - FAISS 向量索引 + 混合检索
@@ -103,7 +103,7 @@ npm run test:run
 - Category → Folders (一对多，三大分类：个人/工作/素材)
 - Note ↔ Tag (多对多)
 - Note ↔ Note (双向链接：`note_links` 关联表是出链/反链/图谱的查询入口；`notes.linked_note_ids` JSON 仅回滚保险，写路径同步维护)
-- agent_sessions / agent_tool_calls - Agent 会话与工具调用审计（M1；`agent_route` 命中路由 M7.4）
+- agent_sessions / agent_tool_calls - Agent 会话与工具调用审计（M1；`agent_route` 命中路由 M7.4）。agent_sessions 含 core_intent 锚点字段：`core_intent`（JSON `{goal, constraints, acceptance_criteria}`，checkpoint 是唯一真相源、本列是查询镜像）、`intent_version`（每次变更 +1）、`intent_versions`（变更历史快照，含 version/change_type/source/confidence/unmapped_keys）
 - eval_sets / eval_runs - 评测题库与成绩单（M2）
 - user_preferences - 用户长期偏好，跨会话记忆（M4）
 
@@ -118,6 +118,7 @@ npm run test:run
 - `QWEN_EMBEDDING_MODEL=qwen3.7-text-embedding` - Embedding（M0）
 - `JUDGE_PROVIDER=glm` / `GLM_JUDGE_MODEL=glm-5.3-flash` - 默认评估裁判；qwen 回退用 `JUDGE_PROVIDER=qwen` + `QWEN_JUDGE_MODEL=qwen3.7-max-2026-06-08`（跨裁判分数不可直接比较）
 - `AGENT_MULTI_AGENT=false` - M7 A′ 多 Agent 图开关（true=编排器路由 4 子 Agent 的平铺图，false=单 Agent 图回退位）
+- `CORE_INTENT_ENABLED=on` - core_intent 意图锚点开关：`off`=回滚旧 QueryIntent schema 不注入锚点（state.core_intent 保留但忽略、清理锚点消息、/sessions /messages 不返回）、`shadow`=只算不写不注入（指标存日志）、`on`=写 state + 注入锚点。改 .env 一键回滚，非法值回退 on
 - `AGENT_TOKEN_BUDGET=30000` - 单轮 ReAct token 硬上限（勿调回 10000：note_write 多轮工具链约 21000，过低会在已生成 create_note 后误杀写入；仍须低于会话级 `AGENT_SESSION_TOKEN_BUDGET`）
 - `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL` - 可观测（M2，fail-silent；trace 上报遗留，需干净 `.venv-clean`）
 - `MCP_API_KEY` - MCP Server `/mcp` 认证（M3，为空则 fail-closed 拒绝所有请求）
@@ -136,7 +137,9 @@ npm run test:run
 - `/api/skills` - Skill 执行引擎
 - `/api/prompts` - Prompt 管理
 - `/api/agent/chat/stream` - Agent ReAct 问答（SSE 流式）
-- `/api/agent/sessions` - Agent 会话管理（`?q=` 标题关键词过滤、`?limit=` 条数上限）
+- `/api/agent/sessions` - Agent 会话管理（`?q=` 标题关键词过滤、`?limit=` 条数上限；`on` 模式返回 core_intent 锚点摘要 goal+version）
+- `/api/agent/sessions/{id}/messages` - 会话消息（过滤锚点 SystemMessage；`on` 模式额外返回完整 core_intent）
+- `/api/agent/resume` - 审批恢复（`Command(resume=...)`，理由可合并约束/偏好进锚点）
 
 ## 深入文档
 
@@ -149,3 +152,4 @@ npm run test:run
 - [M7 多 Agent 协作计划](docs/agentic-rag-upgrade/多Agent协作计划.md) — 三方案对比 / A′ 平铺图定稿 / P0 风险清单 / 决策拍板
 - [Agentic RAG 待做清单](docs/agentic-rag-upgrade/待做清单.md) — 收尾遗留与新发现缺陷（含 M7 盘点）
 - [升级开发文档](docs/upgrade-2026-11-18/升级开发文档.md) — 前端重构收官后的下一阶段路线图（P0 稳健性加固 / P1 数据层与测试 / P2 体验增强，含验收标准）
+- [状态管理升级路线图](docs/状态管理升级/roadmap.md) — core_intent 意图锚点三期交付路线（一期单任务锚点/二期 task 分层/三期恢复核对+幂等），含当前进度与验收门禁；同目录有改造方案 v7、开发实施文档（TDD）、开发笔记
