@@ -621,13 +621,27 @@ def grade_documents(state: AgentState) -> Dict[str, Any]:
     return {"documents_grade": score, "thoughts": thoughts}
 
 
-def _best_answer(messages: List[Any], turn_start_index: int = 0) -> str:
-    """取本轮(自 turn_start_index 起)内容最长的 AIMessage 作为答案。
+def _turn_start_id(state: AgentState) -> str:
+    """取本轮问题(messages 末条)的 message id,供 _best_answer 按 id 定位起点。
+    用 id 而非下标:agent_step 每轮 RemoveMessage 裁剪历史,下标会错位,id 裁剪后仍稳定。"""
+    msgs = state.get("messages") or []
+    if not msgs:
+        return ""
+    return getattr(msgs[-1], "id", None) or ""
+
+
+def _best_answer(messages: List[Any], turn_start_id: str = "") -> str:
+    """取本轮(自 turn_start_id 对应的本轮问题起)内容最长的 AIMessage 作为答案。
     (病灶B)rewrite/迭代循环后最后一条可能是退化短句,最长内容通常是最实质的答案;
-    (M7.0 修复跨轮污染)限定本轮范围——checkpoint 保留近 24 条历史,若不限定,
-    之前轮次的长答案会盖掉本轮较精炼的答案;多 agent 后 chat 冗长直答与知识答案同池,误选概率更大。
+    (任务0.1 修复跨轮污染+裁剪越界)用 message id 定位本轮起点——agent_step 每轮
+    RemoveMessage 裁剪历史,下标会错位越界导致本轮答案丢失,id 裁剪后仍稳定命中。
     带 tool_calls 的消息 content 多为空,已排除。"""
-    start = max(0, int(turn_start_index or 0))
+    start = 0
+    if turn_start_id:
+        for i, m in enumerate(messages or []):
+            if getattr(m, "id", None) == turn_start_id:
+                start = i
+                break
     best = ""
     for m in (messages or [])[start:]:
         if isinstance(m, AIMessage) and not getattr(m, "tool_calls", None):
@@ -640,7 +654,7 @@ def _best_answer(messages: List[Any], turn_start_index: int = 0) -> str:
 def generate(state: AgentState) -> Dict[str, Any]:
     return {
         "answer": _best_answer(
-            state.get("messages") or [], state.get("turn_start_index") or 0
+            state.get("messages") or [], state.get("turn_start_id") or ""
         )
     }
 
@@ -714,7 +728,7 @@ def output(state: AgentState) -> Dict[str, Any]:
     # 会跨轮残留(checkpoint 不清零)——note_write 因 token 上限被强制 output 时,
     # 会误把上一轮总结当本轮答案吐出(实测"保存为笔记"复述总结、笔记没落库)。
     answer = _best_answer(
-        state.get("messages") or [], state.get("turn_start_index") or 0
+        state.get("messages") or [], state.get("turn_start_id") or ""
     )
     if not answer:
         answer = _fallback_from_documents(state.get("documents") or [])
@@ -777,7 +791,7 @@ def intent_classify(state: AgentState) -> Dict[str, Any]:
         return {
             "intent": forced,
             "current_agent": forced,
-            "turn_start_index": max(0, len(state.get("messages") or []) - 1),
+            "turn_start_id": _turn_start_id(state),
             "task_brief": "",
             "thoughts": _append_thought(
                 state, {"type": "intent", "content": f"意图识别: {forced} | 消融强制(跳过分类器)"}
@@ -798,7 +812,7 @@ def intent_classify(state: AgentState) -> Dict[str, Any]:
         return {
             "intent": "note_write",
             "current_agent": "note_write",
-            "turn_start_index": max(0, len(state.get("messages") or []) - 1),
+            "turn_start_id": _turn_start_id(state),
             "task_brief": "用户要求写入/合并/整理笔记:先 search_notes 查重,必要时 get_note 读原笔记,无重复后必须调用 create_note 写入(会请求审批),禁止复述内容。",
             "thoughts": _append_thought(
                 state, {"type": "intent", "content": f"意图识别: note_write | 命中写入关键词兜底"}
@@ -832,7 +846,7 @@ def intent_classify(state: AgentState) -> Dict[str, Any]:
         # M7 A′:记录命中的子 Agent + 本轮起点(修复 _best_answer 跨轮污染:
         # 消息通道最后一条是本轮新问题,本轮答案只能从它之后产生)
         "current_agent": intent,
-        "turn_start_index": max(0, len(state.get("messages") or []) - 1),
+        "turn_start_id": _turn_start_id(state),
         # M7.1:编排器任务简报,为空不注入(防错误简报误导子 Agent)
         "task_brief": task_brief,
         "thoughts": _append_thought(state, {"type": "intent", "content": f"意图识别: {intent} | {reason}"}),

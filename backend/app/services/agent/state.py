@@ -26,5 +26,7 @@ class AgentState(TypedDict, total=False):
     current_agent: str
     # M7.1:编排器任务简报(为空不注入子 Agent system prompt)
     task_brief: str
-    # M7.0:本轮起点在 messages 通道中的下标,修复 _best_answer 跨轮污染
-    turn_start_index: int
+    # 任务0.1:本轮起点问题的 message id,修复 _best_answer 裁剪后下标越界
+    turn_start_id: str
+    # 任务0.2:本轮开始时的 checkpoint_id,断流后用它作 config 重放
+    turn_start_checkpoint_id: str

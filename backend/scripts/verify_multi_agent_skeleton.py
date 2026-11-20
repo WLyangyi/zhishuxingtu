@@ -7,7 +7,7 @@
 验证项:
   1. 注册/登录 → SSE 会话
   2. 知识问题:路由 knowledge_agent → 完整 ReAct(intent/thought/action/observation/check/final_answer)
-  3. 同会话追问:checkpoint 多轮连续 + turn_start_index 本轮范围(追问答案 ≠ 上轮答案)
+  3. 同会话追问:checkpoint 多轮连续 + turn_start_id 本轮范围(追问答案 ≠ 上轮答案)
   4. 闲聊问题:路由 chat_agent → direct_answer 直答(无工具执行事件)
   5. 事件契约:时间线事件字段 = {type, content, node};final_answer 含 answer;流以 [DONE] 结束
 
@@ -161,7 +161,7 @@ def main():
         final = next((e["answer"] for e in events if e.get("type") == "final_answer"), "")
         record("final_answer 非空", bool(final.strip()), f"长度 {len(final)}")
 
-        # ---- 2. 同会话追问 → checkpoint 多轮 + turn_start_index ----
+        # ---- 2. 同会话追问 → checkpoint 多轮 + turn_start_id ----
         print("\n[2] 同会话追问(期望 checkpoint 多轮连续,追问答案独立于上轮)")
         events2, done2 = stream_chat(client, headers, "用一句话概括你上一条回答的核心内容", sid)
         problems2, _ = check_event_contract(events2)

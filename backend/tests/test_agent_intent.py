@@ -82,7 +82,7 @@ def test_intent_classify_rejects_invalid_intent(monkeypatch):
 
 
 def test_intent_classify_sets_current_agent_and_turn_start(monkeypatch):
-    """M7 A′:intent_classify 需写入 current_agent 与 turn_start_index(本轮起点)。"""
+    """M7 A′:intent_classify 需写入 current_agent 与 turn_start_id(本轮起点)。"""
     from langchain_core.messages import HumanMessage
 
     class FakeResp:
@@ -98,11 +98,11 @@ def test_intent_classify_sets_current_agent_and_turn_start(monkeypatch):
             return FakeStructured()
 
     monkeypatch.setitem(intent_classify.__globals__, "get_deepseek_provider", lambda: FakeProvider())
-    msgs = [AIMessage(content="上一轮的旧答案"), HumanMessage(content="今天有什么AI新闻")]
+    msgs = [AIMessage(content="上一轮的旧答案", id="old-a"), HumanMessage(content="今天有什么AI新闻", id="new-q")]
     out = intent_classify(_state(question="今天有什么AI新闻", messages=msgs))
     assert out["intent"] == "web_search"
     assert out["current_agent"] == "web_search"
-    assert out["turn_start_index"] == 1  # 最后一条(本轮新问题)在通道中的下标
+    assert out["turn_start_id"] == "new-q"  # 本轮新问题 message id
     assert out["task_brief"] == ""  # 模型未返回 task_brief 时为空(为空不注入)
 
 
@@ -181,19 +181,19 @@ def test_agent_step_injects_task_brief_first_round_only(monkeypatch):
 
 def test_best_answer_scoped_to_current_turn():
     """M7.0 跨轮污染修复:上一轮长答案不得盖掉本轮短答案;
-    不带 turn_start_index 时保持旧行为(全通道取最长)。"""
+    不带 turn_start_id 时保持旧行为(全通道取最长)。"""
     from langchain_core.messages import HumanMessage
 
     msgs = [
-        HumanMessage(content="旧问题"),
-        AIMessage(content="这是一轮非常非常长的旧答案,长度远超本轮答案,若不限定本轮范围会被误选为答案。"),
-        HumanMessage(content="新问题"),
-        AIMessage(content="短答案"),
+        HumanMessage(content="旧问题", id="q1"),
+        AIMessage(content="这是一轮非常非常长的旧答案,长度远超本轮答案,若不限定本轮范围会被误选为答案。", id="a1"),
+        HumanMessage(content="新问题", id="q2"),
+        AIMessage(content="短答案", id="a2"),
     ]
-    # 旧行为(无 turn_start_index):全通道取最长
+    # 旧行为(无 turn_start_id):全通道取最长
     assert "非常非常长" in generate({"messages": msgs})["answer"]
-    # 新行为(M7.0):只在本轮范围内取
-    out = generate({"messages": msgs, "turn_start_index": 2})
+    # 新行为(任务0.1):按本轮问题 id 限定范围取
+    out = generate({"messages": msgs, "turn_start_id": "q2"})
     assert out["answer"] == "短答案"
 
 

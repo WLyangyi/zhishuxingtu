@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import json
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterator, List, Optional
@@ -218,6 +219,49 @@ def _pending_approval_payload(snapshot: Any, session_id: str) -> Optional[dict]:
     return None
 
 
+# 任务0.3:并发 in-flight 标记(内存 dict,单进程假设,多 worker 留二期)
+_IN_FLIGHT: dict[str, float] = {}
+_IN_FLIGHT_TTL = 600  # 10 分钟兜底,防进程崩溃/客户端早断留下永久 409
+
+
+def _acquire_in_flight(thread_id: str) -> bool:
+    """尝试获取 in-flight 标记。已存在且未超时返回 False(应 409),成功获取返回 True。"""
+    now = time.time()
+    ts = _IN_FLIGHT.get(thread_id)
+    if ts is not None and now - ts < _IN_FLIGHT_TTL:
+        return False
+    _IN_FLIGHT[thread_id] = now
+    return True
+
+
+def _release_in_flight(thread_id: str) -> None:
+    _IN_FLIGHT.pop(thread_id, None)
+
+
+def _resolve_stream_config(snapshot: Any, session_id: str) -> tuple[Optional[dict], str]:
+    """根据 checkpoint 快照决定流式 config(任务0.2)。
+
+    snapshot.next 是节点名元组,不是 interrupt;真实 interrupt 在 tasks[*].interrupts。
+    - 有真实 interrupt → (None, "blocked"),路由层 409(待审批)
+    - 无 interrupt 但有 pending next → 用 turn_start_checkpoint_id 重放,(config, "replay")
+    - 无 pending → (默认 config, "normal")
+    """
+    if snapshot.next:
+        has_interrupt = any(
+            getattr(task, "interrupts", None)
+            for task in (getattr(snapshot, "tasks", None) or ())
+        )
+        if has_interrupt:
+            return None, "blocked"
+        replay_id = (getattr(snapshot, "values", None) or {}).get("turn_start_checkpoint_id")
+        if replay_id:
+            return {
+                "configurable": {"thread_id": session_id, "checkpoint_id": replay_id}
+            }, "replay"
+        return None, "blocked"
+    return {"configurable": {"thread_id": session_id}}, "normal"
+
+
 def _stream_graph(
     db: Session,
     graph_input: Any,
@@ -225,6 +269,8 @@ def _stream_graph(
     user_id: str,
     fallback_question: str = "",
     emitted_offset: int = 0,
+    config: Optional[dict] = None,
+    in_flight_thread_id: Optional[str] = None,
 ) -> Iterator[str]:
     emitted = emitted_offset
     tool_logs: List[dict] = []
@@ -233,9 +279,9 @@ def _stream_graph(
     emitted_fallback = False
     turn_tokens = 0
 
+    stream_config = config if config is not None else build_stream_config(session.id, user_id=user_id)
     try:
-        config = build_stream_config(session.id, user_id=user_id)
-        for step in get_graph().stream(graph_input, config=config):
+        for step in get_graph().stream(graph_input, config=stream_config):
             interrupt_payloads = _extract_interrupts(step)
             if interrupt_payloads:
                 interrupted = True
@@ -273,10 +319,15 @@ def _stream_graph(
                 fallback = "Agent 暂时不可用，请稍后重试。"
             yield _sse({"type": "final_answer", "answer": fallback})
             emitted_fallback = True
+    finally:
+        # 任务0.3:流结束释放 in-flight 标记,不残留永久 409(TTL 兜底客户端早断)
+        if in_flight_thread_id:
+            _release_in_flight(in_flight_thread_id)
 
     # M7.4:从图终态回写命中 agent 路由到会话(本地审计的 agent 维度,供路由准确率分析)
+    # 重放场景 stream_config 带 checkpoint_id,回写须用默认 config 取 stream 后最新状态
     try:
-        _snapshot = get_graph().get_state(config)
+        _snapshot = get_graph().get_state(build_stream_config(session.id, user_id=user_id))
         session.agent_route = ((_snapshot.values or {}).get("current_agent") or "")[:32]
     except Exception:  # noqa: BLE001 审计回写失败不影响主流程
         session.agent_route = session.agent_route or ""
@@ -325,10 +376,15 @@ async def agent_chat_stream(
             media_type="text/event-stream",
             headers=SSE_HEADERS,
         )
+    # 任务0.3:in-flight 检查(最先),并发写直接 409
+    if not _acquire_in_flight(session.id):
+        raise HTTPException(status_code=409, detail="该会话正在处理中，请稍后重试")
     snapshot = get_graph().get_state(config)
-    if snapshot.next:
-        # checkpoint 存在 pending interrupt 时拒绝新输入：langgraph 会静默丢弃挂起
+    stream_config, mode = _resolve_stream_config(snapshot, session.id)
+    if mode == "blocked":
+        # 真实 interrupt(待审批)才拒绝新输入：langgraph 会静默丢弃挂起
         # 审批任务，并在历史中留下悬挂的 AIMessage(tool_calls)，导致后续轮次持续报错。
+        _release_in_flight(session.id)
         raise HTTPException(status_code=409, detail="该会话有待审批操作，请先在审批卡中确认或拒绝")
     # Checkpoint 已有消息时不再接受客户端历史，避免每轮重复注入。
     effective_history = [] if snapshot.values.get("messages") else parsed_history
@@ -338,8 +394,14 @@ async def agent_chat_stream(
         user_id=current_user.id,
         history=effective_history,
     )
+    # 任务0.2:每轮写入当前 checkpoint_id,供断流后用它作 config 重放
+    graph_input["turn_start_checkpoint_id"] = (snapshot.config or {}).get("configurable", {}).get("checkpoint_id", "") or ""
     return StreamingResponse(
-        _stream_graph(db, graph_input, session, current_user.id, fallback_question=question),
+        _stream_graph(
+            db, graph_input, session, current_user.id,
+            fallback_question=question, config=stream_config,
+            in_flight_thread_id=session.id,
+        ),
         media_type="text/event-stream",
         headers=SSE_HEADERS,
     )
@@ -360,8 +422,12 @@ async def resume_agent(
             media_type="text/event-stream",
             headers=SSE_HEADERS,
         )
+    # 任务0.3:resume 同样受 in-flight 约束
+    if not _acquire_in_flight(session.id):
+        raise HTTPException(status_code=409, detail="该会话正在处理中，请稍后重试")
     snapshot = get_graph().get_state(config)
     if not snapshot.next:
+        _release_in_flight(session.id)
         raise HTTPException(status_code=409, detail="该会话没有待审批操作")
     question = str(snapshot.values.get("question") or "")
     emitted_offset = len(snapshot.values.get("thoughts") or [])
@@ -374,6 +440,7 @@ async def resume_agent(
             current_user.id,
             fallback_question=question,
             emitted_offset=emitted_offset,
+            in_flight_thread_id=session.id,
         ),
         media_type="text/event-stream",
         headers=SSE_HEADERS,

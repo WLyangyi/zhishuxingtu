@@ -250,18 +250,18 @@ def test_output_does_not_reuse_stale_cross_turn_answer():
 
     实测复现:第二轮"保存为笔记"命中 create_note 后因 token 超限被 should_continue
     强制 output,output 用了 state["answer"](上一轮总结)→ 用户看到复述、笔记没落库。
-    output 必须与 generate 一致,只用本轮 _best_answer(messages, turn_start_index)。
+    output 必须与 generate 一致,只用本轮 _best_answer(messages, turn_start_id)。
     """
     msgs = [
-        AIMessage(content="上一轮的总结,很长很完整,绝不能作为本轮答案"),
-        AIMessage(content="本轮问题"),
-        AIMessage(content="本轮正确的简短答复"),
+        AIMessage(content="上一轮的总结,很长很完整,绝不能作为本轮答案", id="a0"),
+        AIMessage(content="本轮问题", id="q1"),
+        AIMessage(content="本轮正确的简短答复", id="a1"),
     ]
     out = output(
         {
             "answer": "上一轮的总结,很长很完整,绝不能作为本轮答案",
             "messages": msgs,
-            "turn_start_index": 1,
+            "turn_start_id": "q1",
         }
     )
     assert "本轮正确" in out["answer"]
@@ -271,10 +271,10 @@ def test_output_does_not_reuse_stale_cross_turn_answer():
 def test_output_falls_back_to_current_turn_when_state_answer_stale(monkeypatch):
     """state answer 为空/过期时,output 仅从本轮消息兜底,不回退到跨轮。"""
     msgs = [
-        AIMessage(content="上一轮残留"),
-        AIMessage(content="本轮答复"),
+        AIMessage(content="上一轮残留", id="a0"),
+        AIMessage(content="本轮答复", id="a1"),
     ]
-    out = output({"answer": "", "messages": msgs, "turn_start_index": 1})
+    out = output({"answer": "", "messages": msgs, "turn_start_id": "a1"})
     assert out["answer"] == "本轮答复"
 
 
