@@ -29,6 +29,8 @@ class AgentToolCall(Base, TimestampMixin):
     __tablename__ = "agent_tool_calls"
     __table_args__ = (
         Index("idx_agent_tool_calls_session_created", "session_id", "created_at"),
+        # 三期3.1:按 operation_id 查恢复核对(planned 行重放后核对副作用)
+        Index("idx_agent_tool_calls_operation", "session_id", "operation_id"),
         # Phase 4 幂等键：同一会话内同一个模型 tool_call_id 只允许落一行。
         # 主键 id 已按 uuid5(session_id, tool_call_id) 确定性生成，这里再加一道库级约束，
         # 防止将来改主键生成方式或并发重放把同一调用写成两行审计。
@@ -39,6 +41,10 @@ class AgentToolCall(Base, TimestampMixin):
     session_id = Column(String(36), index=True)
     # 模型侧 tool_call.id（幂等键的一半）；旧数据为 NULL，SQLite 唯一索引允许多行 NULL
     tool_call_id = Column(String(64))
+    # 三期3.1:业务级幂等键(session+tool_name+args 哈希),驱动 planned→succeeded/failed
+    # 生命周期。与模型侧 tool_call_id 解耦:同参数重放产出相同 operation_id,
+    # 断流恢复时按它查 query_result 核对副作用。旧数据为 NULL。
+    operation_id = Column(String(128))
     tool_name = Column(String(100))
     args_json = Column(Text)
     result_json = Column(Text)

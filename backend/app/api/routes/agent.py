@@ -20,6 +20,7 @@ from app.models.agent_session import AgentSession, AgentTask, AgentToolCall
 from app.models.user import User
 from app.services.agent.graph import build_input, delete_thread, get_graph
 from app.services.agent.config import CORE_INTENT_ENABLED
+from app.services.agent.recovery import reconcile_recovery
 from app.services.agent.nodes import (
     _apply_resume_merge,
     _extract_resume_changes,
@@ -191,7 +192,10 @@ def _persist_pending_approval(db: Session, session_id: str, payload: Dict[str, A
         ensure_ascii=False,
     )
     row.latency_ms = 0
-    row.status = "pending"
+    # 三期3.1:execute_tool 已写 planned 行(operation_id 已设)时,不覆盖其生命周期状态,
+    # 审批等待只是 planned 的子态,由 checkpoint interrupt 检测,不靠 status 字段。
+    if not row.operation_id:
+        row.status = "pending"
     db.commit()
 
 
@@ -200,6 +204,10 @@ def _persist_tool_logs(db: Session, session_id: str, logs: List[dict]) -> None:
         tool_call_id = str(log.get("tool_call_id") or uuid.uuid4())
         record_id = _record_id(session_id, tool_call_id)
         row = db.query(AgentToolCall).filter(AgentToolCall.id == record_id).first()
+        # 三期3.1:execute_tool 已用 operation_id 管理生命周期(planned→succeeded/failed),
+        # 路由层不再覆盖其状态/结果,只补无 operation_id 的 legacy 行。
+        if row and row.operation_id:
+            continue
         if not row:
             row = AgentToolCall(id=record_id, session_id=session_id)
             db.add(row)
@@ -370,6 +378,13 @@ def _acquire_in_flight(thread_id: str) -> bool:
 
 def _release_in_flight(thread_id: str) -> None:
     _IN_FLIGHT.pop(thread_id, None)
+
+
+def _is_in_flight(thread_id: str) -> bool:
+    """只读检查 in-flight 标记(含 TTL),供恢复接口判断是否与运行中流冲突。"""
+    now = time.time()
+    ts = _IN_FLIGHT.get(thread_id)
+    return ts is not None and now - ts < _IN_FLIGHT_TTL
 
 
 def _resolve_stream_config(snapshot: Any, session_id: str) -> tuple[Optional[dict], str]:
@@ -582,12 +597,32 @@ async def agent_chat_stream(
     )
     # 任务0.2:每轮写入当前 checkpoint_id,供断流后用它作 config 重放
     graph_input["turn_start_checkpoint_id"] = (snapshot.config or {}).get("configurable", {}).get("checkpoint_id", "") or ""
-    return StreamingResponse(
-        _stream_graph(
+    # 三期3.4:断流重放(replay)前核对 planned 行副作用,SSE 推送恢复报告。
+    # 核对确认的行补记 succeeded,后续 execute_tool 按 operation_id 幂等跳过重执行。
+    recovery_report = None
+    if mode == "replay":
+        try:
+            recovery_report = reconcile_recovery(session.id, current_user.id, db=db)
+        except Exception:  # noqa: BLE001 恢复核对失败不阻断重放主流程
+            recovery_report = None
+
+    def _stream_with_recovery():
+        if recovery_report is not None:
+            yield _sse(
+                {
+                    "type": "recovery",
+                    "session_id": session.id,
+                    "report": recovery_report,
+                }
+            )
+        yield from _stream_graph(
             db, graph_input, session, current_user.id,
             fallback_question=question, config=stream_config,
             in_flight_thread_id=session.id,
-        ),
+        )
+
+    return StreamingResponse(
+        _stream_with_recovery(),
         media_type="text/event-stream",
         headers=SSE_HEADERS,
     )
@@ -857,6 +892,45 @@ async def get_session_messages(
             "pending_approval": pending_approval,
             "core_intent": _core_intent_full(db, session) if on_mode else None,
         },
+    }
+
+
+@router.get("/sessions/{session_id}/recovery")
+async def get_session_recovery(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """三期3.5:断流恢复核对接口。
+
+    检查顺序与 chat_stream 一致:in-flight → 真实 interrupt → 恢复核对。
+    - in_flight:会话正在处理中,不核对(避免与运行中流冲突)
+    - blocked:有待审批 interrupt,优先提示审批
+    - ready:核对 planned 行副作用,返回恢复报告(confirmed/unknown)
+    """
+    session = _get_owned_session(db, current_user.id, session_id)
+    if _is_in_flight(session.id):
+        return {
+            "success": True,
+            "code": 200,
+            "data": {"status": "in_flight", "recovery": None},
+        }
+    snapshot = get_graph().get_state({"configurable": {"thread_id": session.id}})
+    pending_approval = _pending_approval_payload(snapshot, session.id)
+    if pending_approval:
+        return {
+            "success": True,
+            "code": 200,
+            "data": {"status": "blocked", "pending_approval": pending_approval, "recovery": None},
+        }
+    try:
+        report = reconcile_recovery(session.id, current_user.id, db=db)
+    except Exception:  # noqa: BLE001 核对失败返回空报告,不阻断接口
+        report = None
+    return {
+        "success": True,
+        "code": 200,
+        "data": {"status": "ready", "recovery": report},
     }
 
 

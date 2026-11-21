@@ -32,6 +32,13 @@ from app.services.agent.config import (
     TOOL_TIMEOUT_SECONDS,
 )
 from app.services.agent.artifacts import compress_result, save_artifact
+from app.services.agent.tool_ops import (
+    compute_operation_id,
+    find_succeeded_by_operation,
+    register_planned,
+    update_result,
+    verify_note_by_id,
+)
 from app.services.agent.memory import get_preference_context
 from app.services.agent.prompts import (
     DIRECT_ANSWER_PROMPT,
@@ -419,6 +426,7 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
     documents = list(state.get("documents") or [])
     searched_queries = set(state.get("searched_queries") or [])
     new_msgs: List[Any] = []
+    pending_tools = list(state.get("pending_tools") or [])
 
     for tc in tool_calls:
         name = tc.get("name", "")
@@ -426,8 +434,58 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
         fn = TOOL_MAP.get(name)
         started = time.perf_counter()
         status = "success"
-
+        session_id = state.get("session_id", "")
+        operation_id = compute_operation_id(session_id, name, args)
+        # 三期3.3:写工具(create_note)业务级幂等——operation_id 已成功且副作用(Note)已落地
+        # 才跳过重复执行;只信 status 不够(测试 FakeCreateNote/写入回滚会让 status=succeeded 但无 Note)。
+        idempotent_replay = False
         if name == create_note.name:
+            try:
+                _cached = find_succeeded_by_operation(session_id, operation_id)
+                if _cached:
+                    # 核对副作用:从缓存结果取 note id,验证 Note 真落库。
+                    # 业务级 operation_id 是 args 级,跨 tool_call_id 重放时 Note 在首个 tool_call_id
+                    # 名下,按 idempotency_key 核对会漏,按 note id 统一可验。
+                    _note_id = None
+                    try:
+                        _parsed = json.loads(_cached.get("result") or "")
+                        if isinstance(_parsed, dict):
+                            _note_id = _parsed.get("id")
+                    except (TypeError, json.JSONDecodeError):
+                        pass
+                    if _note_id and verify_note_by_id(state.get("user_id", ""), _note_id):
+                        idempotent_replay = True
+                        result = _cached.get("result") or json.dumps({"status": "ok"}, ensure_ascii=False)
+            except Exception:  # noqa: BLE001 幂等核对失败不阻断,按首次执行处理
+                logger.warning("idempotency check failed: %s", operation_id, exc_info=True)
+        # 三期3.1:调用工具前写 planned 行(operation_id + 参数摘要,状态=planned)
+        if not idempotent_replay:
+            try:
+                register_planned(session_id, tc.get("id", ""), name, args, operation_id)
+            except Exception:  # noqa: BLE001 登记失败不阻断工具执行
+                logger.warning("register_planned failed: %s", operation_id, exc_info=True)
+            # 三期3.2:pending_tools 记 planned 态(本轮工具操作四态工作集)
+            pending_tools.append(
+                {
+                    "operation_id": operation_id,
+                    "tool_call_id": tc.get("id", ""),
+                    "tool_name": name,
+                    "status": "planned",
+                }
+            )
+        elif idempotent_replay:
+            # 幂等命中已成功:pending_tools 直接记 succeeded(复用缓存)
+            pending_tools.append(
+                {
+                    "operation_id": operation_id,
+                    "tool_call_id": tc.get("id", ""),
+                    "tool_name": name,
+                    "status": "succeeded",
+                    "result": result,
+                }
+            )
+
+        if not idempotent_replay and name == create_note.name:
             # M7.3:note_write 专职流程强制查重前置——实测 deepseek-flash 无视 prompt 的
             # "先查重再创建"流程指令,由结构兜底:本会话未执行过 search_notes 就请求写入,
             # 直接拒绝并要求先查重(错误恢复遵从性远高于预防性指令遵从性)
@@ -466,7 +524,7 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
                     status, result = _call_tool(
                         fn, name, args, state, tool_call_id=tc.get("id", "")
                     )
-        else:
+        elif not idempotent_replay:
             if _failed_calls(tool_log, name) >= MAX_TOOL_FAILURES:
                 # Phase 4:同一工具本轮失败/超时达到阈值即熔断,后续请求直接短路,
                 # 不再真调工具、不再烧 token,并明确要求模型换路子或直接作答。
@@ -548,6 +606,20 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
             except (TypeError, json.JSONDecodeError):
                 pass
 
+        # 三期3.1:执行后更新结果 planned→succeeded/failed(幂等跳过的已成功,无需更新)
+        if not idempotent_replay:
+            _lifecycle = "succeeded" if status == "success" else "failed"
+            try:
+                update_result(session_id, tc.get("id", ""), _lifecycle, result, latency_ms)
+            except Exception:  # noqa: BLE001 结果回写失败不阻断主流程
+                logger.warning("update_result failed: %s", operation_id, exc_info=True)
+            # 三期3.2:pending_tools 同步为 succeeded/failed
+            for _pt in pending_tools:
+                if _pt.get("operation_id") == operation_id:
+                    _pt["status"] = _lifecycle
+                    _pt["result"] = result
+                    break
+
         new_msgs.append(
             ToolMessage(
                 content=_offload_for_message(state, tc.get("id", ""), name, result),
@@ -611,6 +683,7 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
         "tool_calls_log": tool_log,
         "documents": documents,
         "searched_queries": sorted(searched_queries),
+        "pending_tools": pending_tools,
     }
 
 

@@ -50,3 +50,7 @@ class AgentState(TypedDict, total=False):
     pending_preference: dict
     # 二期2.4:待澄清问题(本轮需要用户澄清时写入,output 节点据此提问;build_input 每轮重置)
     pending_clarification: dict
+    # 三期3.2:本轮工具操作四态工作集(build_input 每轮重置,断流恢复核对读 DB 不读它)。
+    # 每条 {operation_id, tool_call_id, tool_name, status, result};
+    # status 四态:planned(已登记未执行)/succeeded/failed(已执行)/unknown(恢复时 DB 仍 planned 无结果)
+    pending_tools: List[dict]
