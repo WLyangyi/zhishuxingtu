@@ -1,8 +1,9 @@
 """M7.3: verify_m73_specialists.py — web_research / note_write 专职 Agent 经编排器路由的真实链路冒烟。
 
 验证项:
-  1. web_research_agent:明确联网问题 → intent=web_search → 真实 Tavily web_search →
-     跳过文档评级(thoughts 无 grade_documents)→ 有幻觉查 → final_answer 含信源标注
+  1. web_research_agent:明确联网问题 → intent=web_search → 真实联网 web_search(provider 由
+     WEB_SEARCH_PROVIDER 决定,默认 deepseek)→ 跳过文档评级(thoughts 无 grade_documents)→
+     有幻觉查 → final_answer 含信源标注
   2. note_write_agent(批准):保存诉求 → approval_required → POST /resume approved=true →
      笔记真正创建 → final_answer 确认
   3. note_write_agent(拒绝):保存诉求 → approval_required → approved=false → 不创建 →
@@ -29,6 +30,7 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BACKEND_DIR)
 
 from app.core.config import settings  # noqa: E402
+from app.services.tools.web_tools import _resolve_provider  # noqa: E402
 
 PASS, FAIL = "PASS", "FAIL"
 results = []
@@ -108,6 +110,13 @@ def thought_contents(events):
 
 
 def main():
+    provider = _resolve_provider()
+    active_key = settings.DEEPSEEK_API_KEY if provider == "deepseek" else settings.TAVILY_API_KEY
+    active_key_name = "DEEPSEEK_API_KEY" if provider == "deepseek" else "TAVILY_API_KEY"
+    if not active_key:
+        print(f"[失败] WEB_SEARCH_PROVIDER={provider} 但 {active_key_name} 未配置,联网冒烟无法进行。")
+        sys.exit(1)
+    print(f"联网 provider={provider}({active_key_name} 已配置)")
     proc = start_server()
     try:
         client = httpx.Client()
@@ -127,7 +136,8 @@ def main():
             # FAIL 时 dump 全部事件,便于定位(一次性调试输出)
             print("    [debug] 事件序列:")
             for e in events:
-                print(f"      - {json.dumps(e, ensure_ascii=False)[:220]}")
+                # ensure_ascii=True:联网正文可能含 emoji(如 🦜),Windows GBK 控制台直印会 UnicodeEncodeError
+                print(f"      - {json.dumps(e, ensure_ascii=True)[:220]}")
         # 节点执行的确定性标记是 "grade_documents: 开始"(grade_documents 节点开头固定 append);
         # 不能用子串匹配——LLM 生成的 reason 文本可能偶然提到 grade_documents
         record("跳过文档评级(无 grade_documents 节点标记)", not any(t.startswith("grade_documents") for t in thoughts))
@@ -135,6 +145,9 @@ def main():
         final = final_of(events)
         record("答案含信源标注", ("来源" in final or "http" in final or "PyPI" in final), f"长度 {len(final)}")
         record("无写入工具调用", not any("create_note" in t for t in thoughts))
+        # 软观察(非硬断言):是否按需调用 web_fetch 抓全文(版本号题未必需要,故不作门禁)
+        fetched = any("web_fetch" in t for t in thoughts)
+        print(f"    [soft] web_fetch 调用观察: {'出现' if fetched else '未出现(版本号题可仅凭 summary 作答)'}")
 
         # ---- 2. note_write_agent 批准流 ----
         print("\n[2] 保存诉求(期望 note_write_agent → 审批卡 → 批准 → 创建)")

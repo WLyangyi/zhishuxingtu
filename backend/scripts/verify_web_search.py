@@ -32,9 +32,12 @@ sys.path.insert(0, BACKEND_DIR)
 
 # P11 教训：独立脚本必须先 import app.core.config 再 import 服务模块
 from app.core.config import settings  # noqa: E402
+from app.services.tools.web_tools import _resolve_provider  # noqa: E402
 
 MCP_API_KEY = settings.MCP_API_KEY
-TAVILY_KEY = settings.TAVILY_API_KEY
+PROVIDER = _resolve_provider()
+ACTIVE_KEY = settings.DEEPSEEK_API_KEY if PROVIDER == "deepseek" else settings.TAVILY_API_KEY
+ACTIVE_KEY_NAME = "DEEPSEEK_API_KEY" if PROVIDER == "deepseek" else "TAVILY_API_KEY"
 
 PASS, FAIL = "PASS", "FAIL"
 results = []
@@ -83,8 +86,8 @@ def test_direct_tool():
 
     record("web_search 返回合法 JSON", True)
 
-    if not TAVILY_KEY:
-        degraded = isinstance(data, dict) and "TAVILY_API_KEY" in data.get("error", "")
+    if not ACTIVE_KEY:
+        degraded = isinstance(data, dict) and ACTIVE_KEY_NAME in data.get("error", "")
         record("key 缺失时优雅降级(明确提示,不抛异常)", degraded, str(data.get("error", ""))[:60])
         return None
 
@@ -119,8 +122,8 @@ async def test_mcp_web_search():
             return
 
         record("MCP 端 web_search 返回合法 JSON", True)
-        if not TAVILY_KEY:
-            degraded = isinstance(data, dict) and "TAVILY_API_KEY" in data.get("error", "")
+        if not ACTIVE_KEY:
+            degraded = isinstance(data, dict) and ACTIVE_KEY_NAME in data.get("error", "")
             record("MCP 端 key 缺失时优雅降级一致", degraded)
         else:
             ok = isinstance(data, list) and len(data) > 0 and "url" in data[0]
@@ -133,7 +136,7 @@ async def main():
         print("[SKIP] .env 未配置 MCP_API_KEY，无法验证（先跑 verify_mcp_server.py）")
         return
 
-    mode = "全量验证(真实 Tavily 搜索)" if TAVILY_KEY else "降级验证(TAVILY_API_KEY 未配置)"
+    mode = f"全量验证(真实 {PROVIDER} 搜索)" if ACTIVE_KEY else f"降级验证({ACTIVE_KEY_NAME} 未配置)"
     print(f"== 1. agent 工具直调 [{mode}] ==")
     test_direct_tool()
 
@@ -153,8 +156,8 @@ async def main():
     for name, ok, detail in results:
         print(f"  {PASS if ok else FAIL}  {name}")
     print(f"共 {len(results)} 项，通过 {passed} 项")
-    if not TAVILY_KEY:
-        print("\n提示: .env 填入 TAVILY_API_KEY 并重启后端后，重跑本脚本做全量验证")
+    if not ACTIVE_KEY:
+        print(f"\n提示: .env 填入 {ACTIVE_KEY_NAME} 并重启后端后，重跑本脚本做全量验证")
     if passed != len(results):
         sys.exit(1)
 

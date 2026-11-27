@@ -146,7 +146,7 @@ def run_agent(question: str, user_id: str):
                 final_answer = v["answer"]
             tool_calls = max(tool_calls, len(v.get("tool_calls_log") or []))
             for d in v.get("documents") or []:
-                did = d.get("id")
+                did = d.get("id") or d.get("url")
                 if did and did not in seen:
                     seen.add(did)
                     documents.append(d)
@@ -156,7 +156,7 @@ def run_agent(question: str, user_id: str):
     state_values = graph.get_state(config).values or {}
     intent = state_values.get("intent") or "knowledge"
     token_used = state_values.get("token_used") or 0
-    retrieved_ids = [d["id"] for d in documents]
+    retrieved_ids = [d["id"] for d in documents if d.get("id")]
     return retrieved_ids, final_answer or "", documents, intent, tool_calls, latency_ms, token_used
 
 
@@ -168,6 +168,22 @@ def get_full_sources(note_ids: List[str], db) -> List[dict]:
         return []
     notes = db.query(Note).filter(Note.id.in_(note_ids)).all()
     return [{"id": n.id, "title": n.title, "content": (n.content or "")[:2000]} for n in notes]
+
+
+def agent_full_sources(a_ids: List[str], a_sources: List[dict], db) -> List[dict]:
+    """faithfulness/coverage 证据:笔记按 id 查 DB 全文;联网文档(无 DB 行)用 full_content/snippet
+    映射成裁判认识的 {title,content}(_format_sources 只读 content/text,直接传 url 文档会证据为空)。"""
+    full = get_full_sources(a_ids, db) if a_ids else []
+    for d in a_sources:
+        if d.get("id") or not d.get("url"):
+            continue
+        full.append(
+            {
+                "title": d.get("title") or d.get("url"),
+                "content": (d.get("full_content") or d.get("snippet") or "")[:6000],
+            }
+        )
+    return full or a_sources
 
 
 def aggregate(results: List[dict]) -> Dict[str, Any]:
@@ -519,7 +535,7 @@ def main() -> int:
             }
 
             if judge_faithfulness:
-                a_full = get_full_sources(a_ids, db) if a_ids else a_sources
+                a_full = agent_full_sources(a_ids, a_sources, db)
                 if b_answer:
                     row["baseline"]["faithfulness"] = judge_faithfulness(question, b_answer, b_sources)["score"]
                     row["baseline"]["relevancy"] = judge_answer_relevancy(question, b_answer)["score"]
@@ -530,7 +546,7 @@ def main() -> int:
                 # Phase 3 新指标:context_recall(证据是否撑得起标准答案)+ answer_coverage(答案覆盖要点)
                 expected_answer = row["expected_answer"]
                 if expected_answer.strip():
-                    if a_ids:
+                    if a_full:
                         row["agent"]["context_recall"] = judge_context_recall(
                             question, expected_answer, a_full
                         )["score"]

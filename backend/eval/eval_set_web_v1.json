@@ -1,0 +1,47 @@
+[
+  {
+    "id": "w01",
+    "question": "帮我上网查一下 Python 3.12 官方版本有哪些主要新特性",
+    "expected_answer": "Python 3.12 的主要新特性包括：更友好的错误提示消息、f-string 语法放宽（PEP 701，可嵌套引号与反斜杠）、per-interpreter GIL（PEP 684）、以及新的类型参数语法 type 语句（PEP 695）。（信源要求：Python 官方 What's New in 3.12 文档）",
+    "relevant_doc_ids": [],
+    "category": "web_search",
+    "expected_intent": "web_search",
+    "note": "稳定事实题：版本已发布,新特性不随时间漂移;显式上网措辞保证路由 web_search"
+  },
+  {
+    "id": "w02",
+    "question": "需要联网搜索：FastAPI 官方文档推荐的异步数据库用法是什么",
+    "expected_answer": "FastAPI 官方推荐在 async def 路径操作中使用异步数据库驱动（如 SQLAlchemy 异步引擎 / asyncpg / databases），避免在异步路径里执行阻塞的同步数据库调用；若使用同步驱动则应放在普通 def 路径由线程池处理。（信源要求：FastAPI 官方文档 async 章节）",
+    "relevant_doc_ids": [],
+    "category": "web_search",
+    "expected_intent": "web_search",
+    "note": "稳定事实题：官方推荐用法长期稳定;显式联网措辞保证路由"
+  },
+  {
+    "id": "w03",
+    "question": "帮我上网查一下 HTTP 状态码 429 的官方定义和常见处理建议",
+    "expected_answer": "HTTP 429 表示 Too Many Requests（请求过多），用于限流场景，说明用户在给定时间内发送了太多请求；响应通常携带 Retry-After 头指示等待多久后重试，客户端应据此退避重试。（信源要求：MDN / RFC 6585 官方定义）",
+    "relevant_doc_ids": [],
+    "category": "web_search",
+    "expected_intent": "web_search",
+    "note": "稳定事实题：HTTP 语义由 RFC 固定,不漂移"
+  },
+  {
+    "id": "w04",
+    "question": "需要联网搜索：PEP 8 对 Python 代码缩进的官方建议是什么",
+    "expected_answer": "PEP 8 建议每个缩进层级使用 4 个空格，优先用空格而非制表符（tab），续行应与包裹分隔符内的元素垂直对齐或使用悬挂缩进。（信源要求：PEP 8 官方风格指南）",
+    "relevant_doc_ids": [],
+    "category": "web_search",
+    "expected_intent": "web_search",
+    "note": "稳定事实题：PEP 8 缩进规则长期稳定"
+  },
+  {
+    "id": "w05",
+    "question": "帮我上网查一下 SQLite 官方文档中 WAL 模式的作用",
+    "expected_answer": "WAL（Write-Ahead Logging，预写日志）模式将修改先写入独立的 wal 文件而非直接改主数据库文件，从而允许读与写并发进行（读不阻塞写、写不阻塞读），通过 checkpoint 把 wal 内容合并回主库。（信源要求：SQLite 官方 WAL 文档）",
+    "relevant_doc_ids": [],
+    "category": "web_search",
+    "expected_intent": "web_search",
+    "note": "稳定事实题：SQLite WAL 机制由官方文档固定"
+  }
+]

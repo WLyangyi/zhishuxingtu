@@ -69,6 +69,7 @@ from app.services.tools import (
     read_tool_artifact,
     search_notes,
     web_search,
+    web_fetch,
     create_note,
 )
 from app.services.tools.context import ToolContext, reset_tool_context, set_tool_context
@@ -80,6 +81,7 @@ ALL_TOOLS = [
     list_tags,
     list_folders,
     web_search,
+    web_fetch,
     create_note,
     read_tool_artifact,
 ]
@@ -90,10 +92,10 @@ TOOL_MAP = {t.name: t for t in ALL_TOOLS}
 # M7.2 knowledge 差异化(移出 create_note,web_search 保留作回退);
 # M7.3 web_research/note_write 专职化(工具面收窄到各自职责)。
 # chat_agent 走 direct_answer 节点,无工具,不入表。
-KNOWLEDGE_TOOLS = [t for t in ALL_TOOLS if t.name != "create_note"]
+KNOWLEDGE_TOOLS = [t for t in ALL_TOOLS if t.name not in ("create_note", "web_fetch")]
 # Phase 4:offload 后的原文靠 read_tool_artifact 取回,故三个工具面都要带上它,
 # 否则子 Agent 拿到 artifact_id 却无权读取,压缩就退化成单向截断。
-WEB_RESEARCH_TOOLS = [web_search, search_notes, read_tool_artifact]
+WEB_RESEARCH_TOOLS = [web_search, web_fetch, search_notes, read_tool_artifact]
 NOTE_WRITE_TOOLS = [create_note, search_notes, get_note, read_tool_artifact]
 
 AGENT_CONFIGS: Dict[str, Dict[str, Any]] = {
@@ -112,8 +114,13 @@ def _agent_config(current_agent: Any) -> Dict[str, Any]:
 def _doc_text(docs: List[dict], limit: int = 5) -> str:
     lines = []
     for d in docs[:limit]:
-        snippet = (d.get("snippet") or "")[:200]
-        lines.append(f"- 《{d.get('title', '')}》: {snippet}")
+        if d.get("url"):
+            # 联网文档:模型凭完整 summary/正文作答,证据也须给到 2000(full_content 优先),
+            # 否则 200 字截断会把真实依据判成幻觉→无辜触发 rewrite。
+            text = (d.get("full_content") or d.get("snippet") or "")[:2000]
+        else:
+            text = (d.get("snippet") or "")[:200]
+        lines.append(f"- 《{d.get('title', '')}》: {text}")
     return "\n".join(lines) if lines else "(无)"
 
 
@@ -235,6 +242,11 @@ def _failed_calls(tool_log: List[dict], name: str) -> int:
     )
 
 
+# 按工具名覆盖 offload 阈值:web_search 5 条完整 summary≈5k,抬到 8000 让其内联供模型直读;
+# web_fetch 长文仍走默认 4000(全文落库 + 预览 + read_tool_artifact 分页)。
+_OFFLOAD_THRESHOLDS = {"web_search": 8000}
+
+
 def _offload_for_message(
     state: AgentState, tool_call_id: str, name: str, result: str
 ) -> str:
@@ -244,7 +256,8 @@ def _offload_for_message(
     失败必须退回完整结果,不能以"省 token"为由丢证据。
     返回值只用于消息内容;documents / tool_log 仍用原始 result。
     """
-    if len(result) <= ARTIFACT_THRESHOLD_CHARS:
+    threshold = _OFFLOAD_THRESHOLDS.get(name, ARTIFACT_THRESHOLD_CHARS)
+    if len(result) <= threshold:
         return result
     artifact = save_artifact(
         str(state.get("session_id") or ""), tool_call_id, name, result
@@ -581,7 +594,7 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
             ):
                 result = json.dumps(
                     {
-                        "error": "web_search 已确认永久不可用(未配置 TAVILY_API_KEY),禁止再次调用。"
+                        "error": "web_search 已确认永久不可用(未配置搜索 API Key),禁止再次调用。"
                         "请直接基于已有信息回答,或明确告知用户联网搜索未启用。"
                     },
                     ensure_ascii=False,
@@ -674,6 +687,24 @@ def execute_tool(state: AgentState) -> Dict[str, Any]:
                 web_docs = json.loads(result)
                 if isinstance(web_docs, list):
                     documents.extend(web_docs)
+            except Exception:
+                pass
+
+        if name == "web_fetch":
+            # 抓取的整页正文并入 documents:full_content 供幻觉查/评级看到完整证据,
+            # snippet 取前 800 字。error dict(403/404/空正文等)不是证据,不收集。
+            try:
+                fetched = json.loads(result)
+                if isinstance(fetched, dict) and not fetched.get("error") and fetched.get("url"):
+                    content = fetched.get("content") or ""
+                    documents.append(
+                        {
+                            "title": fetched.get("title") or "",
+                            "url": fetched["url"],
+                            "snippet": content[:800],
+                            "full_content": content,
+                        }
+                    )
             except Exception:
                 pass
 

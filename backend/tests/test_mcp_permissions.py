@@ -40,6 +40,19 @@ def test_session_bound_tool_not_exposed_even_if_read():
     ) is False
 
 
+def test_web_fetch_agent_only_not_exposed_even_with_write(monkeypatch):
+    """web_fetch 返回整页正文,对外分发面大:显式 READ 但 mcp_exposed=False,
+    即便开写权限也不进 MCP 默认/写工具集（fail-closed 双保险）。"""
+    assert policy_for("web_fetch").level == READ
+    assert policy_for("web_fetch").mcp_exposed is False
+    assert should_register_on_mcp(
+        "web_fetch", enable_write=True, has_write_user=True
+    ) is False
+    monkeypatch.setattr(mcp_server.settings, "MCP_ENABLE_WRITE", True)
+    monkeypatch.setattr(mcp_server.settings, "MCP_WRITE_USER_ID", "u1")
+    assert "web_fetch" not in _registered_names()
+
+
 def test_write_tool_requires_switch_and_user():
     assert should_register_on_mcp("create_note", enable_write=False, has_write_user=True) is False
     assert should_register_on_mcp("create_note", enable_write=True, has_write_user=False) is False

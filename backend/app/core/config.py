@@ -85,8 +85,10 @@ class Settings(BaseSettings):
     AGENT_MAX_ITERATIONS: int = 8
     # 单轮 ReAct token 上限。实测 note_write 多轮工具链(查重→写入+强制重试)单轮可达 ~21000,
     # 原 10000 会在模型已生成 create_note tool_call 后误杀写入,用户保存诉求被静默丢弃。
-    # 仍远低于会话级 AGENT_SESSION_TOKEN_BUDGET(200000),保留有界自主。
-    AGENT_TOKEN_BUDGET: int = 30000
+    # web_research 多页 web_fetch 编排单轮实测可达 ~51000(多Agent w02=50820/6工具):预算不足会在
+    # 模型仍调工具/综合时撞顶→should_continue 转 output→_best_answer 退化为文档兜底(coverage=0)。
+    # 55000 给综合收尾留余量,仍远低于会话级 AGENT_SESSION_TOKEN_BUDGET(200000),保留有界自主。
+    AGENT_TOKEN_BUDGET: int = 55000
     AGENT_MAX_HISTORY_MESSAGES: int = 24
     AGENT_CHECKPOINT_DB: str = os.path.join("data", "langgraph_checkpoints.db")
     # M7: A′ 多 Agent 图开关(false=单 Agent 图回退位,双图共存支持一键回滚与 eval 同进程对比)
@@ -169,7 +171,12 @@ class Settings(BaseSettings):
     # 通过 MCP 写笔记时归属的用户 id（users.id）；为空则拒发写权限（fail-closed）
     MCP_WRITE_USER_ID: str = ""
 
-    # M3-2: web_search 联网搜索（Tavily；key 为空则工具优雅降级返回未启用提示）
+    # 联网搜索 provider 开关:deepseek=官方 Search API(默认) / tavily=一键回滚旧通道(非法值回退 deepseek)
+    WEB_SEARCH_PROVIDER: str = "deepseek"
+    DEEPSEEK_SEARCH_TIMEOUT: int = 20   # 均 < AGENT_TOOL_TIMEOUT_SECONDS=30,让工具优雅 error 先于硬超时触发
+    DEEPSEEK_FETCH_TIMEOUT: int = 25
+
+    # M3-2 回滚位:WEB_SEARCH_PROVIDER=tavily 时生效（key 为空则工具优雅降级返回未启用提示）
     TAVILY_API_KEY: str = ""
     TAVILY_MAX_RESULTS: int = 5     # 每次搜索返回条数
     TAVILY_TIMEOUT: int = 15        # Tavily API 超时（秒）

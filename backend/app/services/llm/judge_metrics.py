@@ -6,8 +6,10 @@ from pydantic import BaseModel, Field
 
 from app.services.llm.judge_provider import get_judge_provider
 
-# 证据给裁判看时防爆上下文(只给检索到的来源,不给全库)
-EVIDENCE_MAX_CHARS = 6000
+# 证据给裁判看时防爆上下文(只给检索到的来源,不给全库)。
+# web_research 多文档(搜索摘要 + web_fetch 全文)证据可达 ~9000,6000 会截掉 fetch 正文后半,
+# 致答案后半 claims 被判 ungrounded(faithfulness 伪低,实测 w04≈0.53);放宽 12000 容纳联网证据。
+EVIDENCE_MAX_CHARS = 12000
 
 Source = Union[str, Dict[str, Any]]
 

@@ -160,7 +160,7 @@
   "eval_routing_accuracy": 1.0,
   "eval_routing_threshold": 0.9,
   "eval_detail": {
-    "summary": "D:\\知枢星图\\backend\\eval\\reports\\2026-11-20-comparison.json",
+    "summary": "D:\\知枢星图\\backend\\eval\\reports\\2026-11-27-comparison.json",
     "count": 50,
     "routing_accuracy": 1.0
   },

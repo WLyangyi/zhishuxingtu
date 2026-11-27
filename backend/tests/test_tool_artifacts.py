@@ -13,6 +13,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
+from langchain_core.messages import AIMessage
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -41,6 +42,25 @@ def _state(**extra):
     base = {"session_id": "s1", "user_id": "u1"}
     base.update(extra)
     return base
+
+
+def _execute_tool(monkeypatch, name, args, result):
+    class FakeTool:
+        def invoke(self, _args):
+            return result
+
+    fake = FakeTool()
+    fake.name = name
+    monkeypatch.setitem(nodes.TOOL_MAP, name, fake)
+    state = _state(
+        messages=[AIMessage(content="", tool_calls=[
+            {"name": name, "args": args, "id": "call_1", "type": "tool_call"}])],
+        thoughts=[],
+        tool_calls_log=[],
+        documents=[],
+        searched_queries=[],
+    )
+    return nodes.execute_tool(state)
 
 
 # ---------- 消息层压缩 ----------
@@ -80,6 +100,28 @@ def test_offload_failure_falls_back_to_full_result(monkeypatch):
     assert nodes._offload_for_message(_state(), "call_1", "get_note", large) == large
 
 
+def test_web_search_summary_under_8000_not_offloaded(db_factory, monkeypatch):
+    """行为15：5 条完整 summary(≈5k)在 web_search 专属 8000 阈值内联，不常态 offload，
+    让模型直接读到全文摘要而非压缩预览。"""
+    monkeypatch.setattr("app.db.session.SessionLocal", db_factory)
+    result = json.dumps(
+        [{"title": f"t{i}", "url": f"https://e.com/{i}", "snippet": "s" * 900,
+          "rerank_score": 2.0, "authority": 3} for i in range(5)],
+        ensure_ascii=False,
+    )
+    assert 4000 < len(result) <= 8000
+
+    out = _execute_tool(monkeypatch, "web_search", {"query": "q"}, result)
+
+    assert out["messages"][-1].content == result
+    assert "[已压缩]" not in out["messages"][-1].content
+    db = db_factory()
+    try:
+        assert db.query(AgentToolArtifact).count() == 0
+    finally:
+        db.close()
+
+
 # ---------- 压缩策略 ----------
 def test_compress_json_list_projects_fields_and_truncates_snippet():
     raw = json.dumps(
@@ -91,6 +133,80 @@ def test_compress_json_list_projects_fields_and_truncates_snippet():
     assert item["id"] == "n1"
     assert len(item["snippet"]) == artifacts.SNIPPET_KEEP
     assert "noise" not in item
+
+
+def test_compress_web_list_keeps_url_and_quality_fields():
+    """行为15：联网检索 list 压缩白名单须保 url/rerank_score/authority/date/site_name，
+    否则预览丢 url→模型无法据摘要选优后 web_fetch(url)，编排断链。"""
+    raw = json.dumps(
+        [{"title": "t", "url": "https://e.com", "snippet": "s" * 900,
+          "rerank_score": 2.0, "authority": 3, "date": "2026-01-01",
+          "site_name": "SN", "noise": "drop-me"}],
+        ensure_ascii=False,
+    )
+    item = json.loads(artifacts.compress_result(raw))[0]
+    assert item["url"] == "https://e.com"
+    assert item["rerank_score"] == 2.0
+    assert item["authority"] == 3
+    assert item["date"] == "2026-01-01"
+    assert item["site_name"] == "SN"
+    assert "noise" not in item
+    assert len(item["snippet"]) == artifacts.SNIPPET_KEEP
+
+
+def test_web_search_over_8000_compress_keeps_url(db_factory, monkeypatch):
+    """行为15：偶发超 8000 的 web_search list 仍压缩，但白名单兜底保 url/rerank_score。"""
+    monkeypatch.setattr("app.db.session.SessionLocal", db_factory)
+    result = json.dumps(
+        [{"title": f"t{i}", "url": f"https://e.com/{i}", "snippet": "s" * 1500,
+          "rerank_score": 2.5, "authority": 4, "date": "2026-01-01", "site_name": "SN"}
+         for i in range(6)],
+        ensure_ascii=False,
+    )
+    assert len(result) > 8000
+
+    out = _execute_tool(monkeypatch, "web_search", {"query": "q"}, result)
+    content = out["messages"][-1].content
+
+    assert "artifact_id=" in content
+    preview = json.loads(content.split("\n\n[已压缩]")[0])
+    assert preview[0]["url"] == "https://e.com/0"
+    assert preview[0]["rerank_score"] == 2.5
+    assert preview[0]["authority"] == 4
+    db = db_factory()
+    try:
+        row = db.query(AgentToolArtifact).one()
+        assert row.length == len(result)
+    finally:
+        db.close()
+
+
+def test_web_fetch_offloaded_keeps_url_and_full_artifact(db_factory, monkeypatch):
+    """行为15：web_fetch 长文 dict 走默认 4000 阈值 offload，预览保 url、content 截 1200，
+    全文完整落库（length==原文），可凭 artifact_id 分页取回。"""
+    monkeypatch.setattr("app.db.session.SessionLocal", db_factory)
+    content = "# 标题\n" + "正" * 12000
+    result = json.dumps(
+        {"title": "T", "url": "https://e.com/page", "content": content},
+        ensure_ascii=False,
+    )
+    assert len(result) > 4000
+
+    out = _execute_tool(
+        monkeypatch, "web_fetch", {"url": "https://e.com/page"}, result
+    )
+    content = out["messages"][-1].content
+
+    assert "artifact_id=" in content
+    preview = json.loads(content.split("\n\n[已压缩]")[0])
+    assert preview["url"] == "https://e.com/page"
+    assert len(preview["content"]) == artifacts.NOTE_BODY_KEEP
+    db = db_factory()
+    try:
+        row = db.query(AgentToolArtifact).first()
+        assert row.length == len(result)
+    finally:
+        db.close()
 
 
 def test_compress_plain_text_keeps_head_and_tail():

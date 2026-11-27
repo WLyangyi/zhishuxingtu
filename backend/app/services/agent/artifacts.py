@@ -37,7 +37,10 @@ def _shrink_json_list(result: str) -> Optional[str]:
     for item in data:
         if not isinstance(item, dict):
             return None
-        slim = {k: v for k, v in item.items() if k in ("id", "title", "score", "updated_at")}
+        slim = {k: v for k, v in item.items() if k in (
+            "id", "title", "score", "updated_at",
+            "url", "rerank_score", "authority", "date", "site_name",
+        )}
         if "snippet" in item:
             slim["snippet"] = str(item.get("snippet") or "")[:SNIPPET_KEEP]
         if "content" in item:

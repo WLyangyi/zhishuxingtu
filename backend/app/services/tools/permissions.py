@@ -30,6 +30,8 @@ TOOL_POLICIES: Dict[str, ToolPolicy] = {
     "list_folders": ToolPolicy(READ),
     # 联网出站,但对知识库本身只读
     "web_search": ToolPolicy(READ, open_world=True),
+    # 抓整页正文:对外分发面大,显式 agent-only(仿 read_tool_artifact),不进 MCP
+    "web_fetch": ToolPolicy(READ, mcp_exposed=False, open_world=True),
     # 会话绑定的存档取回:换到 MCP 没有 session_id,读了也只会报错,故不对外
     "read_tool_artifact": ToolPolicy(READ, mcp_exposed=False),
     # 写操作:默认不对外,需 MCP_ENABLE_WRITE + MCP_WRITE_USER_ID

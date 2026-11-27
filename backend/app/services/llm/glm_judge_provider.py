@@ -22,10 +22,12 @@ class GLMJudgeProvider(BaseLLMProvider):
             # 裁判调用必须有上界：不设 timeout 时 openai 客户端默认等 600s，
             # 一次端点卡住就能让整轮批跑停在某条用例上（实测 4 分钟无进展）。
             # 实测 GLM-5.3-flash 给 6000 字证据打分约 10~14s，长答案会再慢一些，
-            # 30s 偏紧会误杀正常调用，故给 60s。
+            # 30s 偏紧会误杀正常调用，故给 60s。web_research 完整长答案(单轮预算 55000)的
+            # faithfulness 要从长答案逐条拆 claims(输出数组大)+证据窗 12000,实测 60s/120s 仍偶超时,
+            # 故放宽 150s;context_recall 从短标准答案拆 statements(输出小)不受影响。
             # max_retries 必须为 0：judge_metrics 每个指标自己已重试 2 次，
             # 客户端再重试会叠乘成更多次 × timeout，单指标最坏等待成倍放大。
-            timeout=60,
+            timeout=150,
             max_retries=0,
         )
 
