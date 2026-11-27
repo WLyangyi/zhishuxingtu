@@ -56,7 +56,7 @@ npm run test:run
 |------|------|
 | 前端 | Vue 3.4 + TypeScript + Pinia + vue-router + Tailwind CSS + D3 + Reka UI（naive-ui / gsap / lenis / sass 均已移除；P0–P6 已完成）。**本地补充约定：`docs/design/前端规范.md`（不入库；若本机存在则改前端 UI 前先读）**，判定指南：原则 + 理由 + 反例；视觉值唯一真相为 `frontend/src/styles/tokens.css` |
 | 后端 | Python 3.11 + FastAPI + SQLAlchemy + FAISS + LangChain + LangGraph |
-| AI | DeepSeek agent（LangGraph 编排器 + 4 专职子 Agent + ReAct + 三查）+ qwen Embedding/裁判 + RAG + SSE |
+| AI | DeepSeek agent（LangGraph 编排器 + 4 专职子 Agent + ReAct + 三查）+ qwen Embedding + GLM 独立裁判 + RAG + SSE |
 
 ## 架构概览
 
@@ -83,11 +83,11 @@ npm run test:run
 
 - **笔记管理**: `backend/app/api/routes/notes.py` - 支持双向链接 (`[[标题]]` 语法)
 - **知识图谱**: `backend/app/api/routes/graph.py` - 全局/局部图谱可视化
-- **Agentic RAG**: `backend/app/services/agent/` + `llm/` + `tools/` - 编排器（`intent_classify` 四分类 + `route_intent_multi`）路由 4 专职子 Agent（chat / knowledge / web_research / note_write），工具与提示词由 `AGENT_CONFIGS` 按 `current_agent` 查表（knowledge 移出写入工具、note_write 结构强制查重、三查按 agent 裁剪）；`AGENT_MULTI_AGENT` 开关双图共存（false=单图回退位）；`execute_tool` 对重复检索/永久不可用工具/未查重写入三道熔断防死循环；写工具幂等键（`agent:{session_id}:{tool_call_id}`）防重放重复落库。`intent_classify` 同次结构化输出 core_intent 锚点（init/append/revise/none 迁移表裁决，锚点以稳定 id SystemMessage 注入 messages，`render_anchor` 保一致），`CORE_INTENT_ENABLED` off/shadow/on 三模式一键回滚；二期 task 分层：`agent_tasks` 表（`WHERE status='active'` 部分唯一索引）+ 锚点下沉 task（`state_anchor_key` 切 task 替换锚点、无残留双锚）+ clarify/new_task 四分类闭环（`handle_clarification`，new_task 切任务+旧任务完成、revise 改锚点）
-- **MCP Server**: `backend/app/services/mcp_server.py` - 知识库 MCP 化（`/mcp` 端点，API Key 认证，与 agent 共享工具层）
+- **Agentic RAG**: `backend/app/services/agent/` + `llm/` + `tools/` - 编排器（`intent_classify` 四分类 + `route_intent_multi`）路由 4 专职子 Agent（chat / knowledge / web_research / note_write），工具与提示词由 `AGENT_CONFIGS` 按 `current_agent` 查表（knowledge 移出写入工具、note_write 结构强制查重、三查按 agent 裁剪）；联网工具为独立 `web_search` + `web_fetch`（DeepSeek 默认、Tavily 可回滚）；`AGENT_MULTI_AGENT` 开关双图共存（false=单图回退位）；`execute_tool` 对重复检索/永久不可用工具/未查重写入三道熔断防死循环；写工具幂等键（`agent:{session_id}:{tool_call_id}`）防重放重复落库。`intent_classify` 同次结构化输出 core_intent 锚点（init/append/revise/none 迁移表裁决，锚点以稳定 id SystemMessage 注入 messages，`render_anchor` 保一致），`CORE_INTENT_ENABLED` off/shadow/on 三模式一键回滚；二期 task 分层：`agent_tasks` 表（`WHERE status='active'` 部分唯一索引）+ 锚点下沉 task（`state_anchor_key` 切 task 替换锚点、无残留双锚）+ clarify/new_task 四分类闭环（`handle_clarification`，new_task 切任务+旧任务完成、revise 改锚点）
+- **MCP Server**: `backend/app/services/mcp_server.py` - 知识库 MCP 化（`/mcp` 端点，API Key 认证，与 agent 共享只读/写入工具；`web_fetch` 仅 Agent 可用，不暴露 MCP）
 - **AI 问答**: `backend/app/services/rag_chain.py` - RAG 检索 + 流式输出（agent 降级 fallback）
 - **向量检索**: `backend/app/services/vector_store.py` - FAISS 向量索引 + 混合检索
-- **评估体系**: `backend/eval/` + `services/llm/judge_metrics.py` - 50 条 eval set（含 `expected_intent` 标注）+ 14 条意图边界用例 + `QWEN_JUDGE_MODEL` 独立裁判（P22 坏输出容错）+ 延迟/token/路由准确率口径（`run_eval.py` 新旧对比，报告在 `eval/reports/`）
+- **评估体系**: `backend/eval/` + `services/llm/judge_metrics.py` - 50 条主 eval set（含 `expected_intent` 标注）+ 14 条意图边界用例 + 独立 5 条联网专项；默认 GLM 独立裁判（qwen 可回退、坏输出容错）+ 延迟/token/路由准确率口径（`run_eval.py` 新旧对比，报告在 `eval/reports/`）
 - **Prompt 系统**: PromptLab + Skill Chain + Few-Shot 学习
 
 ## 前端红线与约定
@@ -116,17 +116,18 @@ npm run test:run
 - `JWT_SECRET_KEY` - JWT 认证密钥
 - `DATABASE_URL` - SQLite 数据库路径
 - `FAISS_INDEX_PATH` - 向量索引路径
-- `DEEPSEEK_API_KEY` / `DEEPSEEK_MODEL=deepseek-v4-flash` / `DEEPSEEK_THINKING=disabled` - Agent 推理（M1，P2 必须关思考）
+- `DEEPSEEK_API_KEY` / `DEEPSEEK_MODEL=deepseek-v4-flash` / `DEEPSEEK_THINKING=disabled` - Agent 推理与联网 Search/Fetch（P2 必须关思考）
+- `WEB_SEARCH_PROVIDER=deepseek` / `DEEPSEEK_SEARCH_TIMEOUT=20` / `DEEPSEEK_FETCH_TIMEOUT=25` - 联网 provider（非法值回退 deepseek）与超时；`tavily` 为回滚通道
 - `QWEN_EMBEDDING_MODEL=qwen3.7-text-embedding` - Embedding（M0）
 - `JUDGE_PROVIDER=glm` / `GLM_JUDGE_MODEL=glm-5.3-flash` - 默认评估裁判；qwen 回退用 `JUDGE_PROVIDER=qwen` + `QWEN_JUDGE_MODEL=qwen3.7-max-2026-06-08`（跨裁判分数不可直接比较）
 - `AGENT_MULTI_AGENT=false` - M7 A′ 多 Agent 图开关（true=编排器路由 4 子 Agent 的平铺图，false=单 Agent 图回退位）
 - `CORE_INTENT_ENABLED=on` - core_intent 意图锚点开关：`off`=回滚旧 QueryIntent schema 不注入锚点（state.core_intent 保留但忽略、清理锚点消息、/sessions /messages 不返回）、`shadow`=只算不写不注入（指标存日志）、`on`=写 state + 注入锚点。改 .env 一键回滚，非法值回退 on
-- `AGENT_TOKEN_BUDGET=30000` - 单轮 ReAct token 硬上限（勿调回 10000：note_write 多轮工具链约 21000，过低会在已生成 create_note 后误杀写入；仍须低于会话级 `AGENT_SESSION_TOKEN_BUDGET`）
+- `AGENT_TOKEN_BUDGET=55000` - 单轮 ReAct token 硬上限（web_research 多页 `web_fetch` 实测约 51000 token；仍须低于会话级 `AGENT_SESSION_TOKEN_BUDGET`）
 - `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL` - 可观测（M2，fail-silent；trace 上报遗留，需干净 `.venv-clean`）
 - `MCP_API_KEY` - MCP Server `/mcp` 认证（M3，为空则 fail-closed 拒绝所有请求）
 - `MCP_ENABLE_WRITE` / `MCP_WRITE_USER_ID` / `MCP_DRY_RUN` - MCP 写工具三重闸门（默认全关：ENABLE_WRITE=true 且 WRITE_USER_ID 非空才暴露 `create_note`；DRY_RUN=true 只回预览不落库。本机当前为真写）
 - `USE_LANGCHAIN_VECTORSTORE` - 必须与 FAISS 索引格式一致：现网索引是 `index.faiss + meta.json`（原生 store），置 true 会因缺 `index.pkl` 加载失败、检索恒空
-- `TAVILY_API_KEY` - web_search 联网搜索（M3，为空则工具优雅降级）
+- `TAVILY_API_KEY` - 仅 `WEB_SEARCH_PROVIDER=tavily` 时需要；为空则工具优雅降级
 
 ## API 路由前缀
 
@@ -135,7 +136,7 @@ npm run test:run
 - `/api/folders` - 文件夹管理
 - `/api/tags` - 标签管理
 - `/api/search` - 搜索 + AI 问答
-- `/api/graph` - 知识图谱
+- `/api/graph/global` / `/api/graph/local/{id}` - 全局/局部知识图谱
 - `/api/skills` - Skill 执行引擎
 - `/api/prompts` - Prompt 管理
 - `/api/agent/chat/stream` - Agent ReAct 问答（SSE 流式）
@@ -156,5 +157,4 @@ npm run test:run
 - [Agentic RAG 实施计划](docs/agentic-rag-upgrade/实施计划.md) — M0-M7 执行步骤清单（含验收标准与 eval 硬门槛）
 - [M7 多 Agent 协作计划](docs/agentic-rag-upgrade/多Agent协作计划.md) — 三方案对比 / A′ 平铺图定稿 / P0 风险清单 / 决策拍板
 - [Agentic RAG 待做清单](docs/agentic-rag-upgrade/待做清单.md) — 收尾遗留与新发现缺陷（含 M7 盘点）
-- [升级开发文档](docs/upgrade-2026-11-18/升级开发文档.md) — 前端重构收官后的下一阶段路线图（P0 稳健性加固 / P1 数据层与测试 / P2 体验增强，含验收标准）
 - [状态管理升级路线图](docs/状态管理升级/roadmap.md) — core_intent 意图锚点三期交付路线（一期单任务锚点/二期 task 分层/三期恢复核对+幂等），含当前进度与验收门禁；同目录有改造方案 v7、开发实施文档（TDD）、开发笔记

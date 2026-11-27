@@ -1,216 +1,111 @@
-# 知枢星图 - 个人知识库系统
+# 知枢星图后端
 
-> 🚀 现代化的个人知识资产管理平台，支持双向链接、知识图谱、AI 智能问答
+Python 3.11 + FastAPI + SQLAlchemy + LangGraph 服务，提供笔记、检索、知识图谱、Agentic RAG、MCP 与评估能力。项目总览见 [../README.md](../README.md)。
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Vue 3.4+](https://img.shields.io/badge/Vue-3.4%2B-brightgreen)](https://vuejs.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.109%2B-blue)](https://fastapi.tiangolo.com/)
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-green)](https://www.python.org/)
-
-## ✨ 特性亮点
-
-### 🎯 核心功能
-- **📝 笔记管理** - Markdown 编辑器，分屏预览，语法高亮
-- **🔗 双向链接** - `[[笔记标题]]` 语法，建立知识关联
-- **🕸️ 知识图谱** - 全局/局部图谱可视化，直观探索知识网络
-- **🔍 智能检索** - 全文搜索 + AI 智能问答
-
-### 🤖 AI 智能
-- **RAG 检索增强生成** - 基于知识库的 AI 问答
-- **SSE 流式输出** - 逐字实时显示，打字机效果
-- **语义分块** - 按语义边界分割，提升检索精度
-- **混合检索** - 向量 + BM25 融合，召回率提升 15-25%
-- **Reranker 重排序** - Cross-Encoder 精排，检索精度提升 20-30%
-- **向量长期记忆** - 基于 FAISS 的对话记忆，突破轮数限制
-
-### 🎨 内容组织
-- **三大入口** - 个人 / 工作 / 素材分类
-- **4 层嵌套文件夹** - 灵活的知识结构
-- **标签系统** - 自定义颜色，扁平化标签管理
-- **Skill 智能模块** - 可执行的 AI 技能包
-
-### 🛡️ 安全可靠
-- **前后端分离** - API Key 存储在后端，不暴露在前端
-- **JWT 认证** - 安全的身份验证机制
-- **环境变量配置** - 敏感信息通过环境变量管理
-
-## 🏗️ 技术栈
-
-### 前端
-| 技术 | 说明 |
-|------|------|
-| Vue 3.4+ | 渐进式 JavaScript 框架 |
-| TypeScript 5.x | 类型安全的 JavaScript |
-| Pinia | Vue 状态管理 |
-| Reka UI | Vue 3 无样式组件原语 |
-| Tailwind CSS | 原子化 CSS |
-| Shiki | 代码高亮 |
-
-### 后端
-| 技术 | 说明 |
-|------|------|
-| Python 3.11+ | 高性能后端语言 |
-| FastAPI 0.109+ | 现代 Web 框架 |
-| SQLAlchemy 2.x | ORM 框架 |
-| FAISS | Facebook 开源向量索引 |
-| LangChain | RAG 应用开发框架 |
-| 通义千问 embedding | 阿里云文本向量化服务 |
-
-## 🚀 快速开始
-
-### 环境要求
-- Python 3.11+
-- Node.js 18+
-- npm 或 yarn
-
-### 1. 克隆项目
-```bash
-git clone <your-repo-url>
-cd 知枢星图
-```
-
-### 2. 后端配置
+## 环境与启动
 
 ```bash
 cd backend
-
-# 创建虚拟环境
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# 或 venv\Scripts\activate  # Windows
-
-# 安装依赖
-pip install -r requirements.txt
-
-# 配置环境变量
+uv venv --python <Python 3.11+> --system-site-packages .venv
+uv pip install --python .venv\Scripts\python.exe -r requirements.txt
 cp .env.example .env
-# 编辑 .env 填入你的 API Key
 ```
 
-`.env.example` 配置项：
-```env
-# 阿里云 DashScope API（用于文本向量化）
-DASHSCOPE_API_KEY=your_api_key_here
-
-# JWT 密钥
-JWT_SECRET_KEY=your_secret_key_here
-
-# LLM 模型配置（可选，默认为通义千问）
-LLM_API_KEY=your_api_key_here
-LLM_MODEL=qwen-plus
-```
-
-### 3. 前端配置
+编辑 `.env` 后启动：
 
 ```bash
-cd frontend
+# Windows 本机必须使用此脚本，裸 uvicorn 会卡在 WMI 查询
+.venv\Scripts\python.exe -u start_dev.py
 
-# 安装依赖
-npm install
-
-# 启动开发服务器
-npm run dev
+# 其他环境可使用标准入口
+uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-### 4. 启动后端
+服务地址：`http://127.0.0.1:8000`，交互式接口文档：`http://127.0.0.1:8000/docs`。
+
+## 关键环境变量
+
+完整配置见 [.env.example](.env.example)。
+
+| 变量 | 默认值/用途 |
+|------|-------------|
+| `DATABASE_URL` | SQLite 数据库路径 |
+| `JWT_SECRET_KEY` | JWT 认证密钥 |
+| `DEEPSEEK_API_KEY` | Agent 推理与 DeepSeek Search/Fetch |
+| `DEEPSEEK_MODEL` | `deepseek-v4-flash` |
+| `DEEPSEEK_THINKING` | Agent 工具调用必须设为 `disabled` |
+| `DASHSCOPE_API_KEY` | DashScope 向量化 |
+| `QWEN_EMBEDDING_MODEL` | `qwen3.7-text-embedding` |
+| `WEB_SEARCH_PROVIDER` | `deepseek`（默认）；`tavily` 为回滚通道 |
+| `DEEPSEEK_SEARCH_TIMEOUT` | Search 超时，默认 20 秒 |
+| `DEEPSEEK_FETCH_TIMEOUT` | Fetch 超时，默认 25 秒 |
+| `TAVILY_API_KEY` | 仅 `WEB_SEARCH_PROVIDER=tavily` 时需要 |
+| `JUDGE_PROVIDER` | `glm`（默认）；`qwen` 为回退裁判 |
+| `GLM_API_KEY` / `GLM_JUDGE_MODEL` | GLM 评估裁判配置 |
+| `AGENT_MULTI_AGENT` | 多 Agent 平铺图开关；`start_dev.py` 默认开启 |
+| `AGENT_TOKEN_BUDGET` | 单轮 ReAct token 上限，默认 55000 |
+| `AGENT_SESSION_TOKEN_BUDGET` | 单会话 token 上限，默认 200000 |
+| `CORE_INTENT_ENABLED` | `off` / `shadow` / `on`，默认 `on` |
+| `MCP_API_KEY` | MCP 认证；为空时拒绝所有 `/mcp` 请求 |
+| `MCP_ENABLE_WRITE` / `MCP_WRITE_USER_ID` / `MCP_DRY_RUN` | MCP 写工具三重闸门，默认关闭 |
+| `USE_LANGCHAIN_VECTORSTORE` | 必须与 FAISS 索引格式一致；现网原生索引保持 `false` |
+
+## 测试
 
 ```bash
-cd backend
-python -m uvicorn app.main:app --reload --port 8000
+# Windows 本机：测试需进程内 platform workaround，且禁用 xdist
+.venv\Scripts\python.exe -m pytest tests/ -q -p no:xdist
+
+# 双链 JSON → note_links 回填（幂等）
+.venv\Scripts\python.exe scripts/migrate_note_links.py
 ```
 
-### 5. 访问应用
+当前后端测试基线：**422 passed**（2026-11-27）。
 
-打开浏览器访问 `http://localhost:5173`
+## 主要接口
 
-## 📁 项目结构
+所有业务接口以 `/api` 为前缀：
 
-```
-知枢星图/
-├── frontend/                 # Vue 3 前端项目
-│   ├── src/
-│   │   ├── api/             # API 客户端
-│   │   ├── components/      # Vue 组件
-│   │   ├── views/           # 页面视图
-│   │   ├── stores/          # Pinia 状态管理
-│   │   ├── router/          # 路由配置
-│   │   ├── types/           # TypeScript 类型
-│   │   └── utils/           # 工具函数
-│   └── package.json
-│
-├── backend/                  # Python 后端项目
-│   ├── app/
-│   │   ├── api/             # API 路由
-│   │   ├── core/            # 核心配置
-│   │   ├── models/          # 数据模型
-│   │   ├── schemas/         # Pydantic 模型
-│   │   ├── services/        # 业务逻辑
-│   │   └── main.py          # 应用入口
-│   ├── requirements.txt
-│   └── .env.example
-│
-└── docs/                    # 项目文档
+```text
+POST /api/auth/login
+GET/POST/PUT/DELETE /api/notes
+GET  /api/notes/{id}/backlinks
+GET  /api/notes/{id}/unlinked-mentions
+GET  /api/search
+GET  /api/search/hybrid
+POST /api/search/ai
+POST /api/agent/chat/stream
+GET  /api/agent/sessions
+GET  /api/agent/sessions/{id}/messages
+GET/POST /api/agent/sessions/{id}/tasks
+POST /api/agent/sessions/{id}/tasks/{tid}/switch
+POST /api/agent/sessions/{id}/tasks/{tid}/restore
+POST /api/agent/resume
+GET  /api/graph/global
+GET  /api/graph/local/{id}
+POST /mcp
 ```
 
-## 🎨 界面预览
+## 目录结构
 
-### 首页 - 三大入口
-```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│    个人     │    │    工作     │    │    素材     │
-│   Personal  │    │    Work     │    │   Assets    │
-└─────────────┘    └─────────────┘    └─────────────┘
-```
-
-### 「个人」知识空间
-- 📁 笔记文件夹（支持 4 层嵌套）
-- 🔍 智能检索
-- 🔗 知识图谱
-- 🤖 AI 助手
-
-## 🔧 API 接口
-
-### 认证
-```
-POST /api/auth/login     # 登录
-POST /api/auth/logout    # 登出
-GET  /api/auth/me        # 获取当前用户
+```text
+backend/
+├── app/
+│   ├── api/routes/       # HTTP 路由
+│   ├── core/             # 配置与安全
+│   ├── db/               # 数据库会话
+│   ├── models/           # SQLAlchemy 模型
+│   ├── schemas/          # Pydantic 模型
+│   └── services/         # Agent、RAG、工具、评估与可观测
+├── eval/                 # 评测集、运行器与报告
+├── scripts/              # 迁移与验证脚本
+├── tests/                # pytest 测试
+├── requirements.txt
+└── start_dev.py          # Windows 本机开发启动垫片
 ```
 
-### 笔记
-```
-GET    /api/notes              # 获取笔记列表
-POST   /api/notes              # 创建笔记
-GET    /api/notes/:id           # 获取笔记详情
-PUT    /api/notes/:id           # 更新笔记
-DELETE /api/notes/:id           # 删除笔记
-GET    /api/notes/:id/backlinks # 获取反向链接
-```
+更多架构与运维说明见 [CODE_WIKI.md](../docs/CODE_WIKI.md) 和 [启动文档.md](../docs/启动文档.md)。
 
-### 搜索
-```
-GET  /api/search              # 全文搜索
-POST /api/search/ai           # AI 问答
-GET  /api/search/vector       # 向量搜索
-```
+## License
 
-### 知识图谱
-```
-GET /api/graph/global         # 全局图谱
-GET /api/graph/local/:id      # 局部图谱
-```
-
-
-
-
-```
-
-## 📄 License
-
-MIT License - 详见 [LICENSE](LICENSE) 文件
-
----
-
-<p align="center">
-Made with ❤️ for personal knowledge management
-</p>
+项目声明 MIT；仓库当前未附 `LICENSE` 文件。

@@ -4,9 +4,9 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Vue 3.4+](https://img.shields.io/badge/Vue-3.4%2B-brightgreen)](https://vuejs.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.109%2B-blue)](https://fastapi.tiangolo.com/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-blue)](https://fastapi.tiangolo.com/)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-green)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-166%20passed-brightgreen)](backend/tests/)
+[![Tests](https://img.shields.io/badge/tests-422%20passed-brightgreen)](backend/tests/)
 
 ## ✨ 核心亮点：多 Agent Agentic RAG
 
@@ -28,7 +28,7 @@ flowchart TD
     N --> T3[查重 search_notes] --> H[interrupt 人工审批] -->|批准| W3[create_note] --> O
 ```
 
-- **🎯 编排器 + 4 专职子 Agent** - 入口 LLM 结构化输出意图四分类（fail-safe 兜底），各子 Agent **工具面收窄 + 专属提示词**：知识 Agent 移出写入工具（联网保留作误判回退）、联网 Agent 信源标注 + 仅幻觉查、写入 Agent 人工审批即质量关；**14 条意图边界用例集回归**（3 轮多数票 100%），路由准确率 **98%**
+- **🎯 编排器 + 4 专职子 Agent** - 入口 LLM 结构化输出意图四分类（fail-safe 兜底），各子 Agent **工具面收窄 + 专属提示词**：知识 Agent 移出写入工具（联网保留作误判回退）、联网 Agent 信源标注 + 仅幻觉查、写入 Agent 人工审批即质量关；**14 条意图边界用例集回归**与 50 条主集路由准确率均为 **100%**
 - **🪞 Self-RAG 三查反思** - 资料相关性 / 幻觉检测 / 答案质量实现为**图强制节点 + 条件边**（结构保证每轮必检），并按子 Agent 裁剪：联网仅幻觉查、写入以人工审批为质量关
 - **🛡️ 结构兜底优于提示词恳求** - 实测模型会无视"先查重再写入"的流程指令，`execute_tool` 以结构拦截未查重的写入请求（复用熔断模式，错误恢复遵从性 > 预防性指令遵从性）
 - **🛑 防失控四道闸** - 最大迭代 + token 预算双硬截断、同轮重复检索短路、不可用工具熔断、编排意图提示仅首轮注入（防反复推回同一路由）；Agent 异常自动降级混合检索兜底链路
@@ -67,6 +67,12 @@ flowchart TD
 >
 > 门禁：`python eval/eval_gate.py` 读最新摘要按 7 项阈值判定，exit 0/1 直接用于 CI 阻断；本地已验证「放行达标」与「拦住人为回退」两条路径。
 
+### 2026-11-27 联网搜索升级回归
+
+- 后端全量测试 **422 passed**；DeepSeek Search/Fetch 真实冒烟 **4/4**，provider/MCP 权限冒烟 **5/5**。
+- 独立联网评测集 **5 条**（不并入上方冻结主集）：routing **5/5**、faithfulness **0.800**、relevancy **0.780**、context_recall **0.894**、coverage **0.666**、pass **1/5**；未通过项已归因为裁判错误、生成幻觉、答案不完整与覆盖不足，报告见 `backend/eval/reports/2026-11-27-comparison-web.md`。
+- 50 条主集回归（skip-judge）：recall **0.983**、routing **1.0**、pass **49/50**；路由硬门禁 `boundary_accuracy=1.0`、`routing_accuracy=1.0`。
+
 ## ✨ 功能特性
 
 ### 🎯 知识管理
@@ -77,7 +83,7 @@ flowchart TD
 
 ### 🤖 AI 能力
 - **Agentic RAG 智能问答** - 见上方核心亮点，SSE 流式输出
-- **联网搜索** - Tavily 集成，限速 + TTL 缓存 + 缺 Key 优雅降级（不阻塞主流程）
+- **联网搜索** - DeepSeek 官方 Search/Fetch 直调（默认），`web_search` 负责检索、`web_fetch` 按需抓正文；保留 Tavily 一键回滚、限速 + TTL 缓存 + 缺 Key 优雅降级
 - **结构化输出** - function_calling 方式结构化判定，规避 response_format 兼容问题
 - **Prompt / Skill 系统** - PromptLab + Skill 执行引擎 + Few-Shot 学习
 
@@ -95,8 +101,8 @@ flowchart TD
 | 后端 | Python 3.11 · FastAPI · SQLAlchemy · SSE |
 | AI 编排 | LangGraph 0.2.x（编排器 + 4 专职子 Agent / ReAct / 三查 / HITL / checkpoint / 双图回退开关）· LangChain |
 | 模型 | DeepSeek-V4-flash（Agent 推理，显式关思考）· qwen3.7-text-embedding（向量化）· GLM-5.3-Flash（独立评估裁判，JSON mode + 坏输出容错） |
-| 数据 | FAISS（向量索引 + 混合检索）· SQLite · Redis |
-| 生态 | FastMCP 3.x（MCP Server）· Tavily（联网搜索）· Langfuse（可观测）· pytest（后端 166 用例）· Vitest（前端 206 用例） |
+| 数据 | FAISS（向量索引 + 混合检索）· SQLite |
+| 生态 | FastMCP 3.x（MCP Server）· DeepSeek Search/Fetch（联网主通道，Tavily 可回滚）· Langfuse（可观测）· pytest（后端 422 用例）· Vitest（前端 206 用例） |
 
 ## 🚀 快速开始
 
@@ -134,12 +140,15 @@ GLM_JUDGE_MODEL=glm-5.3-flash
 
 # 多 Agent 编排（配置默认 false=单 Agent 图回退位；本机 start_dev.py 默认 true）
 AGENT_MULTI_AGENT=true
-# 单轮 ReAct token 硬上限（默认 30000；勿调回 10000，会误杀 note_write 的 create_note）
-AGENT_TOKEN_BUDGET=30000
+# 单轮 ReAct token 硬上限（默认 55000；web_research 多页 fetch 实测约 51000 token）
+AGENT_TOKEN_BUDGET=55000
 # core_intent 意图锚点开关（off=回滚不注入 / shadow=只算不写不注入 / on=写 state+注入，默认 on）
 CORE_INTENT_ENABLED=on
 
-# 联网搜索（Tavily 免费注册 https://tavily.com；为空则工具优雅降级）
+# 联网搜索（deepseek=官方 Search/Fetch 默认；tavily=回滚旧通道）
+WEB_SEARCH_PROVIDER=deepseek
+DEEPSEEK_SEARCH_TIMEOUT=20
+DEEPSEEK_FETCH_TIMEOUT=25
 TAVILY_API_KEY=tvly-xxx
 
 # MCP Server 认证（为空则拒绝所有 MCP 请求）
@@ -187,10 +196,11 @@ docker compose ps                        # backend 显示 healthy 即就绪
 ### 4. 验证脚本（推荐先跑）
 ```bash
 python scripts/verify_deepseek_tools.py       # 模型工具调用契约 4/4
+python scripts/verify_deepseek_search.py      # DeepSeek Search/Fetch 真实链路 4/4
 python scripts/verify_mcp_server.py           # MCP Server 全链路 7/7
-python scripts/verify_web_search.py           # 联网搜索（含降级模式）5/5
+python scripts/verify_web_search.py           # 联网 provider 与降级链路 5/5
 python scripts/verify_multi_agent_skeleton.py # 多 Agent 骨架真实链路（SSE 契约 + 跨轮隔离）
-python scripts/verify_m73_specialists.py      # 专职子 Agent 全流程（联网路由 + 写入审批/拒绝）15/15
+python scripts/verify_m73_specialists.py      # 专职子 Agent 全流程（联网路由 + 写入审批/拒绝）
 python scripts/probe_intent_boundary.py       # 意图边界用例集路由准确率（14 条 × N 轮）
 python eval/run_eval.py                       # 50 条评测集新旧对比（recall/裁判/延迟/token）
 python eval/eval_gate.py                      # 回归门禁：校验最新基线摘要是否达标（CI 同款，exit 0/1）
@@ -253,4 +263,4 @@ V1 MVP          V2 分类升级       V3 Skill         V4 扩展           V5 Ag
 
 ## 📄 License
 
-MIT License - 详见 [LICENSE](LICENSE) 文件
+MIT License（仓库当前未附 `LICENSE` 文件）
