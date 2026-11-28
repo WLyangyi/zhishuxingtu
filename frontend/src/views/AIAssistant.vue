@@ -174,6 +174,17 @@
             </div>
           </ErrorBoundary>
 
+          <ErrorBoundary v-if="message.role === 'assistant' && message.visual_evidence?.length">
+            <div class="visual-evidence-list">
+              <VisualEvidenceCard
+                v-for="evidence in message.visual_evidence"
+                :key="evidence.asset_id"
+                :evidence="evidence"
+                @view="openVisualEvidence"
+              />
+            </div>
+          </ErrorBoundary>
+
           <details v-if="message.trace?.length" class="turn-trace">
             <summary class="turn-trace__head">
               <Wrench :size="11" :stroke-width="1.8" />
@@ -220,6 +231,17 @@
                 :saved="savedSourceIds.has(source.source_id)"
                 :class="{ 'source-card--highlighted': highlightedSourceKey === sourceHighlightKey('streaming', source.source_id) }"
                 @save="openSourceSave"
+              />
+            </div>
+          </ErrorBoundary>
+
+          <ErrorBoundary v-if="streamingVisualEvidence.length">
+            <div class="visual-evidence-list">
+              <VisualEvidenceCard
+                v-for="evidence in streamingVisualEvidence"
+                :key="evidence.asset_id"
+                :evidence="evidence"
+                @view="openVisualEvidence"
               />
             </div>
           </ErrorBoundary>
@@ -371,6 +393,26 @@
         </AppButton>
       </template>
     </AppModal>
+
+    <AppModal
+      :open="!!visualPreview"
+      title="原图核验"
+      description="对照原始页面确认视觉描述"
+      @update:open="handleVisualPreviewOpen"
+    >
+      <div v-if="visualPreview" class="visual-evidence-preview">
+        <p v-if="visualPreview.loading" class="visual-evidence-preview__status">正在加载原图…</p>
+        <p v-else-if="visualPreview.error" class="visual-evidence-preview__status" role="alert">
+          {{ visualPreview.error }}
+        </p>
+        <img
+          v-else-if="visualPreview.url"
+          class="visual-evidence-preview__image"
+          :src="visualPreview.url"
+          :alt="`${visualPreview.evidence.source_filename || '文档'}第 ${visualPreview.evidence.page_number} 页原图`"
+        />
+      </div>
+    </AppModal>
   </div>
 </template>
 
@@ -406,11 +448,13 @@ import {
   type CoreIntent,
   type PendingApproval,
   type TimelineEvent,
+  type VisualEvidence,
   type WebSource,
 } from '@/api/agent'
 import MessageBubble from '@/components/domain/MessageBubble.vue'
 import ApprovalCard from '@/components/domain/ApprovalCard.vue'
 import SourceCard from '@/components/domain/SourceCard.vue'
+import VisualEvidenceCard from '@/components/domain/VisualEvidenceCard.vue'
 import ToolTrace from '@/components/agent/ToolTrace.vue'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppModal from '@/components/ui/AppModal.vue'
@@ -436,6 +480,7 @@ const loading = ref(false)
 const isStreaming = ref(false)
 const streamingContent = ref('')
 const streamingSources = ref<WebSource[]>([])
+const streamingVisualEvidence = ref<VisualEvidence[]>([])
 const streamingMessageId = ref('')
 const highlightedSourceKey = ref('')
 const persistedTimeline = ref<TimelineEvent[]>([])
@@ -445,6 +490,12 @@ const saveTarget = ref<WebSource | null>(null)
 const savingSourceId = ref('')
 const savedSourceIds = ref(new Set<string>())
 const sourceSaveError = ref('')
+const visualPreview = ref<{
+  evidence: VisualEvidence
+  url: string
+  loading: boolean
+  error: string
+} | null>(null)
 /** 阶段1b:会话锚点(完整 core_intent),off/shadow 模式后端返回 null 即隐藏 */
 const anchorInfo = ref<CoreIntent | null>(null)
 const anchorVersion = ref(0)
@@ -541,6 +592,38 @@ function openSourceSave(source: WebSource) {
 function closeSourceSave() {
   saveTarget.value = null
   sourceSaveError.value = ''
+}
+
+async function openVisualEvidence(evidence: VisualEvidence) {
+  closeVisualPreview()
+  visualPreview.value = { evidence, url: '', loading: true, error: '' }
+  try {
+    const blob = await agentApi.getVisualEvidenceImage(evidence.note_id, evidence.asset_id)
+    const url = URL.createObjectURL(blob)
+    if (visualPreview.value?.evidence.asset_id === evidence.asset_id) {
+      visualPreview.value = { evidence, url, loading: false, error: '' }
+    } else {
+      URL.revokeObjectURL(url)
+    }
+  } catch (error) {
+    if (visualPreview.value?.evidence.asset_id === evidence.asset_id) {
+      visualPreview.value = {
+        evidence,
+        url: '',
+        loading: false,
+        error: error instanceof Error ? error.message : '原图加载失败，请重试'
+      }
+    }
+  }
+}
+
+function closeVisualPreview() {
+  if (visualPreview.value?.url) URL.revokeObjectURL(visualPreview.value.url)
+  visualPreview.value = null
+}
+
+function handleVisualPreviewOpen(open: boolean) {
+  if (!open) closeVisualPreview()
 }
 
 function handleSaveModalOpen(open: boolean) {
@@ -699,6 +782,7 @@ async function switchChat(chatId: string) {
 
   streamingContent.value = ''
   streamingSources.value = []
+  streamingVisualEvidence.value = []
   streamingMessageId.value = ''
   loading.value = false
   isStreaming.value = false
@@ -797,6 +881,9 @@ function handleStreamMessage(message: SSEMessage) {
   } else if (message.type === 'sources') {
     streamingSources.value = message.sources || []
     streamingMessageId.value = message.message_id || streamingMessageId.value
+  } else if (message.type === 'visual_evidence') {
+    streamingVisualEvidence.value = message.visual_evidence || []
+    streamingMessageId.value = message.message_id || streamingMessageId.value
   } else if (message.type === 'usage') {
     sessionUsage.value = {
       tokens: message.session_tokens || 0,
@@ -830,11 +917,13 @@ async function refreshAfterStream() {
       role: 'assistant',
       content: streamingContent.value,
       sources: streamingSources.value.length ? [...streamingSources.value] : undefined,
+      visual_evidence: streamingVisualEvidence.value.length ? [...streamingVisualEvidence.value] : undefined,
       trace: liveTimeline.value.length ? [...liveTimeline.value] : undefined
     })
   }
   streamingContent.value = ''
   streamingSources.value = []
+  streamingVisualEvidence.value = []
   streamingMessageId.value = ''
   liveTimeline.value = []
   loading.value = false
@@ -956,6 +1045,7 @@ async function sendMessage() {
   liveTimeline.value = []
   streamingContent.value = ''
   streamingSources.value = []
+  streamingVisualEvidence.value = []
   streamingMessageId.value = ''
   loading.value = true
   isStreaming.value = true
@@ -982,6 +1072,7 @@ async function resumeApproval(approved: boolean) {
   })
   streamingContent.value = ''
   streamingSources.value = []
+  streamingVisualEvidence.value = []
   streamingMessageId.value = ''
   loading.value = true
   isStreaming.value = true
@@ -1041,6 +1132,7 @@ onUnmounted(() => {
   disposed = true
   sseClient.value?.abort()
   clearRetry()
+  closeVisualPreview()
 })
 </script>
 
@@ -1643,6 +1735,34 @@ onUnmounted(() => {
   gap: var(--sp-3);
   margin-top: var(--sp-4);
   scroll-margin-block: var(--sp-6);
+}
+
+.visual-evidence-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+}
+
+.visual-evidence-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.visual-evidence-preview__status {
+  color: var(--t2);
+  font-size: var(--fs-small);
+}
+
+.visual-evidence-preview__image {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
 }
 
 .source-save-preview {

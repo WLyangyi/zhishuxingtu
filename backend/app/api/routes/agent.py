@@ -553,6 +553,14 @@ def _stream_graph(
                 "message_id": getattr(final_message, "id", None) or "",
                 "sources": sources,
             })
+        visual_evidence = (getattr(final_message, "additional_kwargs", None) or {}).get("visual_evidence")
+        if isinstance(visual_evidence, list) and visual_evidence:
+            yield _sse({
+                "type": "visual_evidence",
+                "session_id": session.id,
+                "message_id": getattr(final_message, "id", None) or "",
+                "visual_evidence": visual_evidence,
+            })
     yield _sse({"type": "usage", **_budget_usage_payload(session, turn_tokens, turn_cost)})
     yield "data: [DONE]\n\n"
 
@@ -903,14 +911,17 @@ async def get_session_messages(
                 "content": content,
             })
         elif isinstance(message, AIMessage) and content:
-            messages.append({
+            additional_kwargs = getattr(message, "additional_kwargs", None) or {}
+            payload = {
                 "role": "assistant",
                 "id": getattr(message, "id", None) or "",
                 "content": content,
-                "sources": validate_web_sources(
-                    (getattr(message, "additional_kwargs", None) or {}).get("sources")
-                ),
-            })
+                "sources": validate_web_sources(additional_kwargs.get("sources")),
+            }
+            visual_evidence = additional_kwargs.get("visual_evidence")
+            if isinstance(visual_evidence, list) and visual_evidence:
+                payload["visual_evidence"] = visual_evidence
+            messages.append(payload)
     pending_approval = _pending_approval_payload(snapshot, session_id)
     on_mode = CORE_INTENT_ENABLED == "on"
     return {

@@ -2,14 +2,16 @@ import os
 import json
 import asyncio
 import uuid
+from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.user import User
 from app.models.note import Note
 from app.models.tag import Tag
+from app.models.import_asset import ImportVisualAsset
 from app.api.deps import get_current_user
 from app.schemas.response import Response
 from app.services.import_task_store import get_import_task_store, ImportTask
@@ -22,7 +24,9 @@ from app.services.import_orchestrator import (
     VideoImportOrchestrator,
     VideoURLImportOrchestrator,
 )
-from app.services.file_helper import save_temp_file
+from app.services.file_helper import save_temp_file, cleanup_temp_file
+from app.services.visual_assets import VisualAssetStore
+from app.services.visual_description import VISUAL_PROMPT_VERSION
 from app.core.config import settings
 from app.core.exceptions import sanitize_error
 
@@ -32,7 +36,7 @@ MAX_FILE_SIZE = getattr(settings, 'IMPORT_MAX_FILE_SIZE', 209715200)
 TEMP_DIR = getattr(settings, 'IMPORT_TEMP_DIR', './temp/imports')
 
 
-def _format_note_content(result: dict, source_info: dict) -> str:
+def _format_note_content(result: dict, source_info: dict, extracted_content: str = "") -> str:
     parts = []
 
     parts.append(f"# {result.get('title', '导入文档')}")
@@ -48,6 +52,11 @@ def _format_note_content(result: dict, source_info: dict) -> str:
         parts.append("## 关键要点\n")
         for point in key_points:
             parts.append(f"- {point}")
+        parts.append("")
+
+    if extracted_content and source_info.get("type") == "pdf":
+        parts.append("## 原文\n")
+        parts.append(extracted_content)
         parts.append("")
 
     parts.append("## 来源信息\n")
@@ -550,9 +559,10 @@ async def save_as_note(
         "key_points": key_points,
         "tags": tags,
     }
-    note_content = _format_note_content(result_data, source_info)
+    note_content = _format_note_content(result_data, source_info, task.extracted_content)
 
     note = Note(
+        id=str(uuid.uuid4()),
         title=title,
         content=note_content,
         folder_id=folder_id,
@@ -566,9 +576,47 @@ async def save_as_note(
             if existing_tag:
                 note.tags.append(existing_tag)
 
+    asset_rows = []
+    created_paths = []
+    temp_paths = []
+    store = VisualAssetStore(Path(settings.VISUAL_ASSET_DIR))
+    for item in getattr(task, "visual_assets", []):
+        png = item.get("png")
+        temp_path = item.get("temp_path")
+        if png is None:
+            if not temp_path or not Path(temp_path).is_file():
+                raise HTTPException(status_code=409, detail="视觉原图临时文件不可用")
+            png = Path(temp_path).read_bytes()
+            temp_paths.append(temp_path)
+        saved = store.save(current_user.id, note.id, item["page_number"], png)
+        created_paths.append(saved.path)
+        asset_rows.append(ImportVisualAsset(
+            user_id=current_user.id,
+            note_id=note.id,
+            task_id=task_id,
+            page_number=item["page_number"],
+            image_path=str(saved.path),
+            mime_type=item.get("mime_type", saved.mime_type),
+            sha256=item.get("sha256") or saved.sha256,
+            source_filename=item.get("source_filename") or source_info.get("filename"),
+            description=item.get("description"),
+            description_status=item.get("description_status", "pending"),
+            model=settings.VISUAL_MODEL,
+            prompt_version=VISUAL_PROMPT_VERSION,
+        ))
+
     db.add(note)
-    db.commit()
+    db.add_all(asset_rows)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        for path in created_paths:
+            cleanup_temp_file(str(path))
+        raise HTTPException(status_code=500, detail="笔记与视觉资产保存失败")
     db.refresh(note)
+    for temp_path in temp_paths:
+        cleanup_temp_file(temp_path)
 
     try:
         from app.services import get_vector_store, embedding_service
@@ -598,6 +646,31 @@ async def save_as_note(
     task_store.delete_task(task_id)
 
     return Response(data={"note_id": note.id}, message="保存为笔记成功")
+
+
+@router.get("/notes/{note_id}/assets/{asset_id}/image")
+async def get_import_visual_asset(
+    note_id: str,
+    asset_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    note = db.query(Note).filter(Note.id == note_id, Note.user_id == current_user.id).first()
+    asset = db.query(ImportVisualAsset).filter(
+        ImportVisualAsset.id == asset_id,
+        ImportVisualAsset.note_id == note_id,
+        ImportVisualAsset.user_id == current_user.id,
+    ).first()
+    if not note or not asset:
+        raise HTTPException(status_code=404, detail="视觉原图不存在")
+    image_path = Path(asset.image_path)
+    if not image_path.is_file():
+        raise HTTPException(status_code=404, detail="视觉原图不可用")
+    return FileResponse(
+        image_path,
+        media_type=asset.mime_type,
+        filename=f"page-{asset.page_number}.png",
+    )
 
 
 @router.get("/history/list")

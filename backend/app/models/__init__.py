@@ -9,5 +9,6 @@ from app.models.skill import Skill, SkillExecution
 from app.models.prompt import Prompt
 from app.models.few_shot import FewShotExample, PromptVersion, ABExperiment, ABTestResult, PromptEvaluation
 from app.models.import_history import ImportHistory
+from app.models.import_asset import ImportVisualAsset
 from app.models.agent_session import AgentSession, AgentTask, AgentToolCall, UserPreference
 from app.models.eval import EvalSet, EvalRun

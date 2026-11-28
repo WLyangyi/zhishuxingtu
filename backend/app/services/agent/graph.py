@@ -216,4 +216,5 @@ def build_input(question: str, session_id: str, user_id: str, history: Optional[
         # 三期3.2:本轮工具操作四态工作集每轮重置(临时字段);断流恢复核对读 DB planned 行,
         # 不依赖本字段跨轮保留。
         "pending_tools": [],
+        "visual_evidence_attached": False,
     }

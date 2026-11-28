@@ -54,3 +54,4 @@ class AgentState(TypedDict, total=False):
     # 每条 {operation_id, tool_call_id, tool_name, status, result};
     # status 四态:planned(已登记未执行)/succeeded/failed(已执行)/unknown(恢复时 DB 仍 planned 无结果)
     pending_tools: List[dict]
+    visual_evidence_attached: bool

@@ -1,8 +1,20 @@
 import os
+from dataclasses import dataclass
+
+from app.core.config import settings
+from app.services.deepseek_ocr import DeepSeekOCRClient
+from app.services.ocr_layout import clean_ocr_text
 
 
 class PDFParseError(Exception):
     pass
+
+
+@dataclass(frozen=True)
+class PDFExtractionResult:
+    text: str
+    page_count: int
+    source: str
 
 
 class PDFService:
@@ -67,11 +79,42 @@ class PDFService:
             return full_text
 
         except PDFParseError:
-            doc.close()
+            if not doc.is_closed:
+                doc.close()
             raise
         except Exception as e:
-            doc.close()
+            if not doc.is_closed:
+                doc.close()
             raise PDFParseError(f"解析 PDF 时出错: {str(e)}")
+
+    def extract_document(self, file_path: str) -> PDFExtractionResult:
+        if settings.PDF_OCR_MODE == "force":
+            return self._extract_with_ocr(file_path)
+        try:
+            text = self.extract_text(file_path)
+        except PDFParseError as exc:
+            if "无法识别文字" in str(exc) and settings.PDF_OCR_MODE == "off":
+                raise PDFParseError("OCR 已关闭，无法识别扫描版 PDF") from exc
+            if settings.PDF_OCR_MODE != "auto" or "无法识别文字" not in str(exc):
+                raise
+            return self._extract_with_ocr(file_path)
+        return PDFExtractionResult(
+            text=text,
+            page_count=self.get_page_count(file_path),
+            source="pymupdf",
+        )
+
+    def _extract_with_ocr(self, file_path: str) -> PDFExtractionResult:
+        page_count = self.get_page_count(file_path)
+        result = DeepSeekOCRClient().recognize(file_path, page_count=page_count)
+        parts = []
+        for page in sorted(result.non_empty_pages, key=lambda item: item.index):
+            notice = "\n[该页输出不完整]" if page.finish_reason == "length" else ""
+            parts.append(f"[第 {page.index + 1} 页]\n{clean_ocr_text(page.text)}{notice}")
+        text = "\n\n".join(parts)
+        if not text.strip():
+            raise PDFParseError("OCR 未识别到文字")
+        return PDFExtractionResult(text=text, page_count=page_count, source="deepseek_ocr")
 
     def get_page_count(self, file_path: str) -> int:
         fitz = self._get_fitz()

@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 import os
 import tempfile
@@ -139,6 +140,21 @@ class Settings(BaseSettings):
     IMPORT_MAX_CHARS: int = 50000           # 最大处理字符数
     IMPORT_TIMEOUT: int = 300               # 处理超时（秒）
     IMPORT_TEMP_DIR: str = "./temp/imports" # 临时文件目录
+    PDF_OCR_MODE: str = "auto"
+    PDF_OCR_TIMEOUT: int = 240
+    PDF_OCR_MAX_FILE_MB: int = 100
+    PDF_OCR_MAX_PAGES: int = 1000
+    VISUAL_EVIDENCE_ENABLED: bool = False
+    VISUAL_MAX_PAGES_PER_DOC: int = 3
+    VISUAL_ASSET_DIR: str = "./data/import_assets"
+    VISUAL_MODEL: str = "deepseek-v4-flash"
+    VISUAL_TIMEOUT: int = 120
+
+    @field_validator("PDF_OCR_MODE", mode="before")
+    @classmethod
+    def _normalize_pdf_ocr_mode(cls, value):
+        normalized = str(value or "").strip().lower()
+        return normalized if normalized in {"auto", "off", "force"} else "auto"
 
     # Whisper 语音转文字配置
     WHISPER_MODEL: str = "base"             # tiny/base/small/medium/large

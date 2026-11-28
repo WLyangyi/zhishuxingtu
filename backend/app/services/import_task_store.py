@@ -47,6 +47,7 @@ class ImportTask:
     progress: int = 0
     progress_message: str = ""
     extracted_content: str = ""
+    visual_assets: List[dict] = field(default_factory=list)
     video_info: Optional[VideoInfo] = None
     result: Optional[ImportResult] = None
     error: str = ""

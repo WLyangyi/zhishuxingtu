@@ -6,7 +6,7 @@
 [![Vue 3.4+](https://img.shields.io/badge/Vue-3.4%2B-brightgreen)](https://vuejs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-blue)](https://fastapi.tiangolo.com/)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-green)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-472%20passed-brightgreen)](backend/tests/)
+[![Tests](https://img.shields.io/badge/tests-540%20passed-brightgreen)](backend/tests/)
 
 ## ✨ 核心亮点：多 Agent Agentic RAG
 
@@ -67,9 +67,10 @@ flowchart TD
 >
 > 门禁：`python eval/eval_gate.py` 读最新摘要按 7 项阈值判定，exit 0/1 直接用于 CI 阻断；本地已验证「放行达标」与「拦住人为回退」两条路径。
 
-### 2026-11-28 联网来源卡片验收
+### 2026-11-28 联网来源卡片与 PDF OCR 验收
 
-- 后端全量 **472 passed**；前端 **47 个文件 / 250 项通过**，色值令牌检查与 `vue-tsc` 类型检查通过。
+- 后端全量 **540 passed**；前端 **48 个文件 / 258 项通过**，色值令牌检查、`vue-tsc` 类型检查与生产构建通过。
+- 两份测试 PDF 已完成 DeepSeek OCR、扫描件自动回退、原文切块检索、视觉页描述与原图预览验收；临时验收数据已清理。
 - 独立联网评测 **5/5** 通过、路由 **5/5**，faithfulness **0.852**、relevancy **0.980**、context_recall **0.820**、coverage **0.900**、`judge_error=0`；未降低门槛，报告见 `backend/eval/reports/2026-11-28-comparison-source-cards-2026-11-28.md`。
 - 真实浏览器已验证引用定位、流式与历史恢复、保存取消/失败重试/幂等成功、摘要/失败/截断/快照缺失状态、XSS 防护、键盘焦点及深浅主题对比度。
 
@@ -91,6 +92,7 @@ flowchart TD
 - **Agentic RAG 智能问答** - 见上方核心亮点，SSE 流式输出
 - **联网搜索** - DeepSeek 官方 Search/Fetch 直调（默认），`web_search` 负责检索、`web_fetch` 按需抓正文；保留 Tavily 一键回滚、限速 + TTL 缓存 + 缺 Key 优雅降级
 - **联网来源卡片** - 回答中的 `[n]` 可点击定位到来源卡片；展示 URL、检索/抓取时间、证据摘录与正文状态，刷新后恢复；用户确认后把已有快照幂等存入知识库，不重新抓取
+- **PDF OCR 与视觉核验** - 文字型 PDF 优先提取文本层，扫描件自动回退 DeepSeek OCR；仅对含图片或复杂矢量绘图的页面生成视觉描述，问答时可附加原图核对
 - **结构化输出** - function_calling 方式结构化判定，规避 response_format 兼容问题
 - **Prompt / Skill 系统** - PromptLab + Skill 执行引擎 + Few-Shot 学习
 
@@ -109,7 +111,7 @@ flowchart TD
 | AI 编排 | LangGraph 0.2.x（编排器 + 4 专职子 Agent / ReAct / 三查 / HITL / checkpoint / 双图回退开关）· LangChain |
 | 模型 | DeepSeek-V4-flash（Agent 推理，显式关思考）· qwen3.7-text-embedding（向量化）· GLM-5.3-Flash（独立评估裁判，JSON mode + 坏输出容错） |
 | 数据 | FAISS（向量索引 + 混合检索）· SQLite |
-| 生态 | FastMCP 3.x（MCP Server）· DeepSeek Search/Fetch（联网主通道，Tavily 可回滚）· Langfuse（可观测）· pytest（后端 472 用例）· Vitest（前端 250 用例） |
+| 生态 | FastMCP 3.x（MCP Server）· DeepSeek Search/Fetch（联网主通道，Tavily 可回滚）· Langfuse（可观测）· pytest（后端 540 用例）· Vitest（前端 258 用例） |
 
 ## 🚀 快速开始
 
@@ -233,7 +235,7 @@ GET  /api/search/hybrid         # 混合检索
 POST /api/search/ai             # RAG 问答（基线链路）
 
 # Agentic RAG
-POST /api/agent/chat/stream     # Agent 问答（SSE 含 intent/thought/action/observation/check/approval_required/final_answer/sources/error/budget_exceeded/recovery/usage）
+POST /api/agent/chat/stream     # Agent 问答（SSE 含 intent/thought/action/observation/check/approval_required/final_answer/sources/visual_evidence/error/budget_exceeded/recovery/usage）
 GET  /api/agent/sessions        # 会话管理（?q= 标题关键词过滤、?limit= 条数上限）
 GET  /api/agent/sessions/{id}/messages      # 历史消息（助手消息含稳定 id 与 sources）
 GET  /api/agent/sessions/{id}/recovery      # 断流恢复核对
@@ -245,6 +247,10 @@ POST /api/agent/sessions/{id}/tasks/{tid}/restore  # 恢复非 active 任务
 POST /api/agent/resume          # HITL 审批恢复
 GET  /api/agent/traces          # 可观测 trace
 GET  /api/agent/observability/summary
+
+# 文档导入
+POST /api/import/pdf            # PDF 上传（文字层优先，扫描件自动 OCR）
+GET  /api/import/notes/{note_id}/assets/{asset_id}/image  # 受保护的原图核验端点
 
 # 知识图谱
 GET  /api/graph/global          GET /api/graph/local/:id

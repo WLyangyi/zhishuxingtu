@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { nextTick } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { agentApi, type WebSource } from '@/api/agent'
+import { agentApi, type VisualEvidence, type WebSource } from '@/api/agent'
 import MessageBubble from '@/components/domain/MessageBubble.vue'
 import AppModal from '@/components/ui/AppModal.vue'
 import AIAssistant from '../AIAssistant.vue'
@@ -20,6 +20,16 @@ const webSource: WebSource = {
   content_state: 'fetched',
   artifact_id: 'artifact-1',
   truncated: false,
+}
+
+const visualEvidence: VisualEvidence = {
+  asset_id: 'asset-1',
+  note_id: 'n1',
+  page_number: 2,
+  source_filename: 'visual.pdf',
+  description: '第二页图表描述',
+  description_status: 'completed',
+  image_url: '/api/import/notes/n1/assets/asset-1/image'
 }
 
 const sseState = vi.hoisted(() => ({
@@ -54,7 +64,8 @@ vi.mock('@/api/agent', () => ({
     listTasks: vi.fn(),
     switchTask: vi.fn(),
     restoreTask: vi.fn(),
-    saveSource: vi.fn()
+    saveSource: vi.fn(),
+    getVisualEvidenceImage: vi.fn()
   }
 }))
 
@@ -818,6 +829,39 @@ describe('AIAssistant 联网来源', () => {
     wrapper.unmount()
   })
 
+  it('历史消息恢复视觉证据卡片', async () => {
+    vi.mocked(agentApi.getMessages).mockReturnValue(Promise.resolve({
+      messages: [
+        { id: 'a1', role: 'assistant', content: '对照原图的回答', visual_evidence: [visualEvidence] }
+      ],
+      pending_approval: null
+    }) as never)
+    const wrapper = await mountAssistant()
+
+    expect(wrapper.text()).toContain('原图证据')
+    expect(wrapper.text()).toContain('第 2 页')
+    expect(wrapper.text()).toContain('第二页图表描述')
+    wrapper.unmount()
+  })
+
+  it('收到 visual_evidence 后流式展示并在完成后保留', async () => {
+    const wrapper = await mountAssistant()
+    await wrapper.find('textarea.composer__input').setValue('这张图说明什么')
+    await wrapper.find('button[aria-label="发送"]').trigger('click')
+    await flushPromises()
+    const options = sseState.connects[0].options
+
+    options.onMessage({ type: 'final_answer', answer: '对照原图的回答', message_id: 'a1' })
+    options.onMessage({ type: 'visual_evidence', message_id: 'a1', visual_evidence: [visualEvidence] })
+    await nextTick()
+    expect(wrapper.find('.stream-block').text()).toContain('原图证据')
+
+    options.onComplete()
+    await flushPromises()
+    expect(wrapper.find('.visual-evidence-list').text()).toContain('第二页图表描述')
+    wrapper.unmount()
+  })
+
   it('来源区域渲染失败不会冻结聊天正文', async () => {
     vi.mocked(agentApi.getMessages).mockReturnValue(Promise.resolve({
       messages: [
@@ -835,6 +879,51 @@ describe('AIAssistant 联网来源', () => {
     expect(wrapper.find('[data-error-boundary]').exists()).toBe(true)
     expect(wrapper.find('.message-markdown').text()).toContain('仍可阅读的回答')
 
+    wrapper.unmount()
+  })
+
+  it('点击查看原图通过认证 API 打开预览', async () => {
+    vi.mocked(agentApi.getMessages).mockReturnValue(Promise.resolve({
+      messages: [
+        { id: 'a1', role: 'assistant', content: '对照原图的回答', visual_evidence: [visualEvidence] }
+      ],
+      pending_approval: null
+    }) as never)
+    const blob = new Blob(['png'], { type: 'image/png' })
+    vi.mocked(agentApi.getVisualEvidenceImage).mockResolvedValue(blob)
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:visual') })
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() })
+    const wrapper = await mountAssistant()
+
+    await wrapper.find('button.visual-evidence-card__view').trigger('click')
+    await flushPromises()
+
+    expect(agentApi.getVisualEvidenceImage).toHaveBeenCalledWith('n1', 'asset-1')
+    expect(wrapper.findAllComponents(AppModal).some(modal => modal.props('open'))).toBe(true)
+    expect(document.body.querySelector('img.visual-evidence-preview__image')?.getAttribute('src')).toBe('blob:visual')
+    wrapper.unmount()
+  })
+
+  it('关闭原图预览时释放 Object URL', async () => {
+    vi.mocked(agentApi.getMessages).mockReturnValue(Promise.resolve({
+      messages: [
+        { id: 'a1', role: 'assistant', content: '对照原图的回答', visual_evidence: [visualEvidence] }
+      ],
+      pending_approval: null
+    }) as never)
+    vi.mocked(agentApi.getVisualEvidenceImage).mockResolvedValue(new Blob(['png'], { type: 'image/png' }))
+    const revoke = vi.fn()
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:visual') })
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revoke })
+    const wrapper = await mountAssistant()
+    await wrapper.find('button.visual-evidence-card__view').trigger('click')
+    await flushPromises()
+
+    const modals = wrapper.findAllComponents(AppModal)
+    modals[modals.length - 1].vm.$emit('update:open', false)
+    await nextTick()
+
+    expect(revoke).toHaveBeenCalledWith('blob:visual')
     wrapper.unmount()
   })
 })

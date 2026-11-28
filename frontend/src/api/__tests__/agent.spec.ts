@@ -50,3 +50,17 @@ describe('agentApi.saveSource（联网来源入库）', () => {
     expectTypeOf<SSEMessage['sources']>().toEqualTypeOf<WebSource[] | undefined>()
   })
 })
+
+describe('agentApi.getVisualEvidenceImage（原图核验）', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('按受保护端点获取 PNG Blob', async () => {
+    const blob = new Blob(['png'], { type: 'image/png' })
+    vi.mocked(api.get).mockResolvedValue({ data: blob } as never)
+
+    const result = await agentApi.getVisualEvidenceImage('n1', 'asset-1')
+
+    expect(api.get).toHaveBeenCalledWith('/import/notes/n1/assets/asset-1/image', { responseType: 'blob' })
+    expect(result).toBe(blob)
+  })
+})

@@ -73,6 +73,47 @@ def test_stream_graph_emits_sources_after_final_answer(monkeypatch):
     }
 
 
+def test_stream_graph_emits_visual_evidence_after_final_answer(monkeypatch):
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    session = AgentSession(id="s1", title="视觉问答", user_id="u1")
+    db.add(session)
+    db.commit()
+    evidence = [{
+        "asset_id": "asset-1",
+        "note_id": "n1",
+        "page_number": 1,
+        "source_filename": "visual.pdf",
+        "description": "图表描述",
+        "description_status": "completed",
+        "image_url": "/api/import/notes/n1/assets/asset-1/image",
+    }]
+    final_message = AIMessage(
+        content="已对照原图回答",
+        id="a1",
+        additional_kwargs={"visual_evidence": evidence},
+    )
+
+    class FakeGraph:
+        def stream(self, graph_input, config):
+            yield {"output": {"answer": "已对照原图回答", "messages": [final_message]}}
+
+        def get_state(self, config):
+            return SimpleNamespace(values={"current_agent": "knowledge", "messages": [final_message]})
+
+    monkeypatch.setattr(agent_route, "get_graph", lambda: FakeGraph())
+    try:
+        events = _events(list(agent_route._stream_graph(db, {}, session, "u1")))
+    finally:
+        db.close()
+        engine.dispose()
+
+    assert [event["type"] for event in events] == ["final_answer", "visual_evidence", "usage"]
+    assert events[1]["visual_evidence"] == evidence
+    assert events[1]["message_id"] == "a1"
+
+
 def test_session_messages_restore_message_id_and_sources(monkeypatch):
     engine = create_engine(
         "sqlite://",
@@ -115,6 +156,51 @@ def test_session_messages_restore_message_id_and_sources(monkeypatch):
     assistant = response.json()["data"]["messages"][1]
     assert assistant["id"] == "a1"
     assert assistant["sources"] == sources
+
+
+def test_session_messages_restore_visual_evidence(monkeypatch):
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    user = User(id="u1", username="tester", password_hash="x")
+    db.add_all([user, AgentSession(id="s1", title="视觉问答", user_id="u1")])
+    db.commit()
+    evidence = [{
+        "asset_id": "asset-1",
+        "note_id": "n1",
+        "page_number": 1,
+        "source_filename": "visual.pdf",
+        "description": "图表描述",
+        "description_status": "completed",
+        "image_url": "/api/import/notes/n1/assets/asset-1/image",
+    }]
+
+    class FakeGraph:
+        def get_state(self, config):
+            return SimpleNamespace(values={"messages": [
+                HumanMessage(content="问题", id="h1"),
+                AIMessage(content="答案", id="a1", additional_kwargs={"visual_evidence": evidence}),
+            ]})
+
+    monkeypatch.setattr(agent_route, "get_graph", lambda: FakeGraph())
+    app = FastAPI()
+    app.include_router(agent_route.router, prefix="/api")
+    app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[get_current_user] = lambda: user
+    try:
+        with TestClient(app) as client:
+            response = client.get("/api/agent/sessions/s1/messages")
+    finally:
+        db.close()
+        engine.dispose()
+
+    assert response.status_code == 200
+    assistant = response.json()["data"]["messages"][1]
+    assert assistant["visual_evidence"] == evidence
 
 
 def test_session_messages_filter_malformed_sources_without_renumbering(monkeypatch):

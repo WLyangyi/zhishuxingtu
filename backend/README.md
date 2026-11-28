@@ -60,9 +60,11 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000
 .venv\Scripts\python.exe scripts/migrate_note_links.py
 ```
 
-当前后端测试基线：**472 passed**（2026-11-28）。
+当前后端测试基线：**540 passed**（2026-11-28）。
 
-`/api/agent/chat/stream` 在 `final_answer` 后按需发送 `sources` SSE 事件（含 `session_id`、`message_id`、`sources`）；历史助手消息返回相同来源数组。来源保存端点不重新抓取网页，重复请求由 `agent:{session_id}:source:{source_id}` 幂等键返回同一篇笔记。
+`/api/agent/chat/stream` 在 `final_answer` 后按需发送 `sources`（联网来源）与 `visual_evidence`（视觉原图）SSE 事件；历史助手消息返回相同数组。来源保存端点不重新抓取网页，重复请求由 `agent:{session_id}:source:{source_id}` 幂等键返回同一篇笔记。
+
+PDF 导入在 `PDF_OCR_MODE=auto` 下优先提取文字层，扫描件自动调用 DeepSeek OCR；`VISUAL_EVIDENCE_ENABLED=true` 时仅对视觉候选页生成描述并在问答时附加原图。配置见 `.env.example`，修改后需重启后端。
 
 ## 主要接口
 
@@ -76,6 +78,8 @@ GET  /api/notes/{id}/unlinked-mentions
 GET  /api/search
 GET  /api/search/hybrid
 POST /api/search/ai
+POST /api/import/pdf
+GET  /api/import/notes/{note_id}/assets/{asset_id}/image
 POST /api/agent/chat/stream
 GET  /api/agent/sessions
 GET  /api/agent/sessions/{id}/messages

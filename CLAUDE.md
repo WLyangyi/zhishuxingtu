@@ -85,6 +85,7 @@ npm run test:run
 - **知识图谱**: `backend/app/api/routes/graph.py` - 全局/局部图谱可视化
 - **Agentic RAG**: `backend/app/services/agent/` + `llm/` + `tools/` - 编排器（`intent_classify` 四分类 + `route_intent_multi`）路由 4 专职子 Agent（chat / knowledge / web_research / note_write），工具与提示词由 `AGENT_CONFIGS` 按 `current_agent` 查表（knowledge 移出写入工具、note_write 结构强制查重、三查按 agent 裁剪）；联网工具为独立 `web_search` + `web_fetch`（DeepSeek 默认、Tavily 可回滚）；`AGENT_MULTI_AGENT` 开关双图共存（false=单图回退位）；`execute_tool` 对重复检索/永久不可用工具/未查重写入三道熔断防死循环；写工具幂等键（`agent:{session_id}:{tool_call_id}`）防重放重复落库；联网来源按规范化 URL 合并为稳定 `[n]` 引用与卡片，成功 Fetch 一律存 `AgentToolArtifact`，来源随最终 `AIMessage.additional_kwargs["sources"]` 持久化，用户确认后经来源保存端点复用 `create_note` 入库。`intent_classify` 同次结构化输出 core_intent 锚点（init/append/revise/none 迁移表裁决，锚点以稳定 id SystemMessage 注入 messages，`render_anchor` 保一致），`CORE_INTENT_ENABLED` off/shadow/on 三模式一键回滚；二期 task 分层：`agent_tasks` 表（`WHERE status='active'` 部分唯一索引）+ 锚点下沉 task（`state_anchor_key` 切 task 替换锚点、无残留双锚）+ clarify/new_task 四分类闭环（`handle_clarification`，new_task 切任务+旧任务完成、revise 改锚点）
 - **联网来源卡片**: `backend/app/services/agent/sources.py` + `frontend/src/components/domain/SourceCard.vue` - 同 URL 摘要/正文合并、稳定引用与状态卡片；来源区域用 `ErrorBoundary`，引用按钮按消息 scope 定位，保存前确认且不重新抓取
+- **PDF OCR 与视觉证据**: `pdf_service.py` 文字层优先、扫描件 DeepSeek OCR；`visual_pages.py` 检测视觉候选页，`visual_assets.py` 隔离保存原图，`visual_description.py` 生成结构化描述，问答最多附加 3 张原图核验；`VISUAL_EVIDENCE_ENABLED` 默认关闭
 - **MCP Server**: `backend/app/services/mcp_server.py` - 知识库 MCP 化（`/mcp` 端点，API Key 认证，与 agent 共享只读/写入工具；`web_fetch` 仅 Agent 可用，不暴露 MCP）
 - **AI 问答**: `backend/app/services/rag_chain.py` - RAG 检索 + 流式输出（agent 降级 fallback）
 - **向量检索**: `backend/app/services/vector_store.py` - FAISS 向量索引 + 混合检索
@@ -108,6 +109,7 @@ npm run test:run
 - agent_sessions / agent_tool_calls - Agent 会话与工具调用审计（M1；`agent_route` 命中路由 M7.4）。agent_sessions 含 core_intent 锚点字段：`core_intent`（JSON `{goal, constraints, acceptance_criteria}`，checkpoint 是唯一真相源、本列是查询镜像）、`intent_version`（每次变更 +1）、`intent_versions`（变更历史快照，含 version/change_type/source/confidence/unmapped_keys）
 - agent_tasks - Agent 任务分层（二期 2.1）：一会话可挂多任务，`WHERE status='active'` 部分唯一索引（同会话仅一个 active）；`phase`（执行阶段 clarify/executing/review/done）与 `status`（生命周期 active/completed/cancelled/archived）职责分离；core_intent 从 session 下沉到 task（goal/constraints/acceptance_criteria/intent_version/intent_versions），`depends_on` 支持 new_task 依赖；session 级 intent_versions 作 legacy 不动
 - 联网来源 - 元数据与摘录随最终 `AIMessage.additional_kwargs["sources"]` 保存在 LangGraph checkpoint，不新增来源表；Fetch 正文只存 `AgentToolArtifact`，一键入库复用该快照
+- 文档视觉资产 - `ImportVisualAsset` 保存页码、原图路径、hash、视觉描述和状态，`(note_id, page_number)` 唯一；问答元数据随最终 `AIMessage.additional_kwargs["visual_evidence"]` 持久化
 - eval_sets / eval_runs - 评测题库与成绩单（M2）
 - user_preferences - 用户长期偏好，跨会话记忆（M4）
 
@@ -120,6 +122,8 @@ npm run test:run
 - `FAISS_INDEX_PATH` - 向量索引路径
 - `DEEPSEEK_API_KEY` / `DEEPSEEK_MODEL=deepseek-v4-flash` / `DEEPSEEK_THINKING=disabled` - Agent 推理与联网 Search/Fetch（P2 必须关思考）
 - `WEB_SEARCH_PROVIDER=deepseek` / `DEEPSEEK_SEARCH_TIMEOUT=20` / `DEEPSEEK_FETCH_TIMEOUT=25` - 联网 provider（非法值回退 deepseek）与超时；`tavily` 为回滚通道
+- `PDF_OCR_MODE=auto` / `PDF_OCR_TIMEOUT=240` / `PDF_OCR_MAX_FILE_MB=100` / `PDF_OCR_MAX_PAGES=1000` - PDF 文字层优先、扫描件 OCR、强制/关闭模式与上限
+- `VISUAL_EVIDENCE_ENABLED=false` / `VISUAL_MAX_PAGES_PER_DOC=3` / `VISUAL_ASSET_DIR=./data/import_assets` / `VISUAL_MODEL=deepseek-v4-flash` / `VISUAL_TIMEOUT=120` - 视觉候选页描述、原图隔离存储与问答核验；改 .env 后需重启
 - `QWEN_EMBEDDING_MODEL=qwen3.7-text-embedding` - Embedding（M0）
 - `JUDGE_PROVIDER=glm` / `GLM_JUDGE_MODEL=glm-5.3-flash` - 默认评估裁判；qwen 回退用 `JUDGE_PROVIDER=qwen` + `QWEN_JUDGE_MODEL=qwen3.7-max-2026-06-08`（跨裁判分数不可直接比较）
 - `AGENT_MULTI_AGENT=false` - M7 A′ 多 Agent 图开关（true=编排器路由 4 子 Agent 的平铺图，false=单 Agent 图回退位）
@@ -141,7 +145,9 @@ npm run test:run
 - `/api/graph/global` / `/api/graph/local/{id}` - 全局/局部知识图谱
 - `/api/skills` - Skill 执行引擎
 - `/api/prompts` - Prompt 管理
-- `/api/agent/chat/stream` - Agent ReAct 问答（SSE：`final_answer` 后按需发送含 `message_id/sources` 的来源事件）
+- `/api/import/pdf` - PDF 上传与 OCR/视觉处理
+- `/api/import/notes/{note_id}/assets/{asset_id}/image` - 受保护的视觉原图读取端点
+- `/api/agent/chat/stream` - Agent ReAct 问答（SSE：`final_answer` 后按需发送含 `message_id` 的 `sources` 来源与 `visual_evidence` 视觉证据事件）
 - `/api/agent/sessions` - Agent 会话管理（`?q=` 标题关键词过滤、`?limit=` 条数上限；`on` 模式返回 core_intent 锚点摘要 goal+version）
 - `/api/agent/sessions/{id}/messages` - 会话消息（过滤锚点 SystemMessage；`on` 模式额外返回完整 core_intent；助手消息含稳定 `id/sources`）
 - `/api/agent/sessions/{id}/recovery` - 断流恢复核对（in-flight/blocked/ready）

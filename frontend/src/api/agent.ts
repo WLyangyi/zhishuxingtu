@@ -26,11 +26,22 @@ export interface WebSource {
   truncated: boolean
 }
 
+export interface VisualEvidence {
+  asset_id: string
+  note_id: string
+  page_number: number
+  source_filename: string
+  description: string
+  description_status: 'pending' | 'completed' | 'failed'
+  image_url: string
+}
+
 export interface AgentMessage {
   id?: string
   role: 'user' | 'assistant'
   content: string
   sources?: WebSource[]
+  visual_evidence?: VisualEvidence[]
 }
 
 /** 阶段1b:会话列表锚点摘要(仅 CORE_INTENT_ENABLED=on 时后端返回,off/shadow 为 null) */
@@ -154,6 +165,14 @@ export const agentApi = {
       `/agent/sessions/${encodeURIComponent(sessionId)}/sources/${encodeURIComponent(sourceId)}/save`
     )
     return response.data.data
+  },
+
+  getVisualEvidenceImage: async (noteId: string, assetId: string): Promise<Blob> => {
+    const response = await api.get(
+      `/import/notes/${encodeURIComponent(noteId)}/assets/${encodeURIComponent(assetId)}/image`,
+      { responseType: 'blob' }
+    )
+    return response.data
   },
 
   // 二期2.6:task 创建/列表/切换/恢复

@@ -1,7 +1,7 @@
-import type { WebSource } from '@/api/agent'
+import type { VisualEvidence, WebSource } from '@/api/agent'
 
 export interface SSEMessage {
-  type: 'content' | 'sources' | 'disclaimer' | 'error' | 'done' |
+  type: 'content' | 'sources' | 'visual_evidence' | 'disclaimer' | 'error' | 'done' |
     'thought' | 'action' | 'observation' | 'check' | 'final_answer' | 'approval_required' |
     'usage' | 'budget_exceeded'
   text?: string
@@ -13,6 +13,7 @@ export interface SSEMessage {
   session_id?: string
   message_id?: string
   sources?: WebSource[]
+  visual_evidence?: VisualEvidence[]
   tool_call_id?: string
   tool_name?: string
   title?: string

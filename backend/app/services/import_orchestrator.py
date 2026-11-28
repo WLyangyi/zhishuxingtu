@@ -1,7 +1,10 @@
 import os
 import asyncio
+import hashlib
 import logging
 from abc import ABC, abstractmethod
+
+import fitz
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -11,12 +14,16 @@ from app.services.import_task_store import (
 )
 from app.services.summarizer_service import get_summarizer_service
 from app.services.pdf_service import get_pdf_service, PDFParseError
+from app.services.deepseek_ocr import OCRError
+from app.services.visual_description import describe_page_safely
+from app.services.visual_pages import detect_visual_pages, render_visual_page
 from app.services.crawler_service import get_crawler_service, CrawlerError
 from app.services.video_service import get_video_service, VideoError
 from app.services.subtitle_service import get_subtitle_service
 from app.services.whisper_service import get_whisper_service, WhisperError
 from app.services.ytdlp_service import get_ytdl_service, YTDLError
 from app.services.file_helper import cleanup_temp_file, cleanup_temp_dir, TEMP_DIR
+from app.core.config import settings
 
 
 class ProgressManager:
@@ -119,7 +126,7 @@ class BaseImportOrchestrator(ABC):
 
     def _format_error(self, e: Exception) -> str:
         error_msg = str(e)
-        known_errors = (PDFParseError, CrawlerError, VideoError, WhisperError, YTDLError)
+        known_errors = (PDFParseError, OCRError, CrawlerError, VideoError, WhisperError, YTDLError)
         if isinstance(e, known_errors):
             return error_msg
         return f"处理失败: {error_msg}"
@@ -134,10 +141,47 @@ class PDFImportOrchestrator(BaseImportOrchestrator):
 
     async def _extract_content(self) -> str:
         await self.progress.update("parsing", 10, "正在解析文件...")
-        text = self.pdf_service.extract_text(self.file_path)
+        text = self.pdf_service.extract_document(self.file_path).text
+        if settings.VISUAL_EVIDENCE_ENABLED:
+            visual_text = self._describe_visual_pages()
+            if visual_text:
+                text = f"{text}\n\n{visual_text}"
         await self.progress.update("extracting", 30, "正在提取内容...")
         await self.progress.update("analyzing", 50, "正在分析内容...")
         return text
+
+    def _describe_visual_pages(self) -> str:
+        parts = []
+        processed = 0
+        self.task.visual_assets = []
+        try:
+            with fitz.open(self.file_path) as doc:
+                for page_index, page in enumerate(doc):
+                    for candidate in detect_visual_pages(page, page_index):
+                        if processed >= settings.VISUAL_MAX_PAGES_PER_DOC:
+                            break
+                        processed += 1
+                        png = render_visual_page(page)
+                        description, error = describe_page_safely(png, candidate.page_index + 1)
+                        self.task.visual_assets.append({
+                            "page_number": candidate.page_index + 1,
+                            "png": png,
+                            "sha256": hashlib.sha256(png).hexdigest(),
+                            "mime_type": "image/png",
+                            "description": description.summary if description else None,
+                            "description_status": "completed" if description else "failed",
+                            "description_error": error or None,
+                            "source_filename": self.filename,
+                        })
+                        if description:
+                            parts.append(
+                                f"[视觉描述-第 {candidate.page_index + 1} 页]\n{description.summary}"
+                            )
+                    if processed >= settings.VISUAL_MAX_PAGES_PER_DOC:
+                        break
+        except Exception:
+            return ""
+        return "\n\n".join(parts)
 
     def _build_source_info(self) -> SourceInfo:
         return SourceInfo(
