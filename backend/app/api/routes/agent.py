@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.db.session import get_db
-from app.models.agent_session import AgentSession, AgentTask, AgentToolCall
+from app.models.agent_session import AgentSession, AgentTask, AgentToolArtifact, AgentToolCall
 from app.models.user import User
 from app.services.agent.graph import build_input, delete_thread, get_graph
 from app.services.agent.config import CORE_INTENT_ENABLED
@@ -33,6 +33,9 @@ from app.services.agent.memory import (
     list_preferences,
     upsert_preference,
 )
+from app.services.agent.sources import validate_web_sources
+from app.services.tools.context import ToolContext, reset_tool_context, set_tool_context
+from app.services.tools.write_tools import create_note
 from app.services.observability.langfuse_trace import build_stream_config
 from app.services.observability.trace_service import (
     list_traces,
@@ -535,6 +538,21 @@ def _stream_graph(
 
     if final_answer and not interrupted and not emitted_fallback:
         yield _sse({"type": "final_answer", "answer": final_answer})
+        final_message = next(
+            (message for message in reversed(snapshot_values.get("messages") or [])
+             if isinstance(message, AIMessage)),
+            None,
+        )
+        sources = validate_web_sources(
+            (getattr(final_message, "additional_kwargs", None) or {}).get("sources")
+        )
+        if sources:
+            yield _sse({
+                "type": "sources",
+                "session_id": session.id,
+                "message_id": getattr(final_message, "id", None) or "",
+                "sources": sources,
+            })
     yield _sse({"type": "usage", **_budget_usage_payload(session, turn_tokens, turn_cost)})
     yield "data: [DONE]\n\n"
 
@@ -879,9 +897,20 @@ async def get_session_messages(
     for message in snapshot.values.get("messages") or []:
         content = message.content if isinstance(message.content, str) else str(message.content)
         if isinstance(message, HumanMessage) and content:
-            messages.append({"role": "user", "content": content})
+            messages.append({
+                "role": "user",
+                "id": getattr(message, "id", None) or "",
+                "content": content,
+            })
         elif isinstance(message, AIMessage) and content:
-            messages.append({"role": "assistant", "content": content})
+            messages.append({
+                "role": "assistant",
+                "id": getattr(message, "id", None) or "",
+                "content": content,
+                "sources": validate_web_sources(
+                    (getattr(message, "additional_kwargs", None) or {}).get("sources")
+                ),
+            })
     pending_approval = _pending_approval_payload(snapshot, session_id)
     on_mode = CORE_INTENT_ENABLED == "on"
     return {
@@ -893,6 +922,79 @@ async def get_session_messages(
             "core_intent": _core_intent_full(db, session) if on_mode else None,
         },
     }
+
+
+@router.post("/sessions/{session_id}/sources/{source_id}/save")
+async def save_agent_source(
+    session_id: str,
+    source_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    session = _get_owned_session(db, current_user.id, session_id)
+    snapshot = get_graph().get_state({"configurable": {"thread_id": session_id}})
+    source = None
+    for message in reversed(snapshot.values.get("messages") or []):
+        if not isinstance(message, AIMessage):
+            continue
+        sources = validate_web_sources(
+            (getattr(message, "additional_kwargs", None) or {}).get("sources")
+        )
+        source = next((item for item in sources if item["source_id"] == source_id), None)
+        if source is not None:
+            break
+    if source is None:
+        raise HTTPException(status_code=404, detail="来源不存在")
+
+    if source["content_state"] in {"summary", "fetch_failed"}:
+        body = source.get("excerpt") or ""
+        summary_notice = (
+            "正文抓取失败，当前为搜索摘要。\n\n"
+            if source["content_state"] == "fetch_failed"
+            else "仅搜索摘要：未抓取网页正文。\n\n"
+        )
+    else:
+        summary_notice = ""
+        artifact_id = source.get("artifact_id")
+        artifact = (
+            db.query(AgentToolArtifact)
+            .filter(AgentToolArtifact.id == artifact_id, AgentToolArtifact.session_id == session_id)
+            .first()
+            if artifact_id
+            else None
+        )
+        if artifact is None:
+            raise HTTPException(status_code=409, detail="正文快照不可用")
+        try:
+            body = json.loads(artifact.content).get("content")
+        except (TypeError, ValueError, AttributeError):
+            body = None
+        if not isinstance(body, str) or not body:
+            raise HTTPException(status_code=409, detail="正文快照不可用")
+
+    title = str(source.get("title") or source["url"]).strip()[:500]
+    truncation_notice = (
+        "正文已截断：以下内容仅包含抓取上限内的部分。\n\n"
+        if source.get("truncated") else ""
+    )
+    content = (
+        f"来源：{source['url']}\n"
+        f"检索时间：{source.get('retrieved_at') or '未知'}\n"
+        f"抓取时间：{source.get('fetched_at') or '未知'}\n\n"
+        f"{summary_notice}{truncation_notice}{body}"
+    )
+    token = set_tool_context(ToolContext(
+        user_id=current_user.id,
+        session_id=session_id,
+        tool_call_id=f"source:{source_id}",
+    ))
+    try:
+        result = json.loads(create_note.invoke({"title": title, "content": content}))
+    finally:
+        reset_tool_context(token)
+    if result.get("error"):
+        raise HTTPException(status_code=400, detail=result["error"])
+    return {"success": True, "code": 200, "data": result}
 
 
 @router.get("/sessions/{session_id}/recovery")

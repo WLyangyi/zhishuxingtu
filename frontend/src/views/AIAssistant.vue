@@ -99,7 +99,7 @@
         </button>
       </div>
 
-      <div ref="chatContainer" class="conversation">
+      <div ref="chatContainer" class="conversation" @click="handleConversationClick">
         <div v-if="anchorInfo" class="anchor-bar" data-test="anchor-bar">
           <Target :size="12" :stroke-width="2" class="anchor-bar__icon" />
           <span class="anchor-bar__label">任务锚点</span>
@@ -149,16 +149,30 @@
 
         <MessageBubble
           v-for="(message, index) in messages"
-          :key="index"
+          :key="messageScope(message, index)"
           :role="message.role"
           :name="message.role === 'assistant' ? '观测员' : ''"
         >
           <div
             v-if="message.role === 'assistant'"
             class="message-markdown"
-            v-html="renderAssistant(message.content)"
+            :data-source-scope="messageScope(message, index)"
+            v-html="renderAssistant(message.content, message.sources, messageScope(message, index))"
           />
           <span v-else>{{ message.content }}</span>
+
+          <ErrorBoundary v-if="message.role === 'assistant' && message.sources?.length">
+            <div class="message-sources" :data-source-scope="messageScope(message, index)">
+              <SourceCard
+                v-for="source in message.sources"
+                :key="source.source_id"
+                :source="source"
+                :saved="savedSourceIds.has(source.source_id)"
+                :class="{ 'source-card--highlighted': highlightedSourceKey === sourceHighlightKey(messageScope(message, index), source.source_id) }"
+                @save="openSourceSave"
+              />
+            </div>
+          </ErrorBoundary>
 
           <details v-if="message.trace?.length" class="turn-trace">
             <summary class="turn-trace__head">
@@ -191,10 +205,24 @@
           <div
             v-if="streamingContent"
             class="message-markdown stream-answer"
-            v-html="renderAssistant(streamingContent)"
+            data-source-scope="streaming"
+            v-html="renderAssistant(streamingContent, streamingSources, 'streaming')"
           />
           <span v-if="!streamingContent" class="typing"><i /><i /><i /></span>
           <span v-else class="stream-cursor" aria-hidden="true" />
+
+          <ErrorBoundary v-if="streamingSources.length">
+            <div class="message-sources" data-source-scope="streaming">
+              <SourceCard
+                v-for="source in streamingSources"
+                :key="source.source_id"
+                :source="source"
+                :saved="savedSourceIds.has(source.source_id)"
+                :class="{ 'source-card--highlighted': highlightedSourceKey === sourceHighlightKey('streaming', source.source_id) }"
+                @save="openSourceSave"
+              />
+            </div>
+          </ErrorBoundary>
         </div>
 
         <div v-if="pendingApproval && approvalVm" class="approval-wrap">
@@ -316,6 +344,33 @@
         <span v-if="preferenceStatus" class="prefs__status">{{ preferenceStatus }}</span>
       </section>
     </aside>
+
+    <AppModal
+      :open="!!saveTarget"
+      title="确认存入知识库"
+      description="核对来源后创建笔记"
+      :hide-close="!!savingSourceId"
+      @update:open="handleSaveModalOpen"
+    >
+      <div v-if="saveTarget" class="source-save-preview">
+        <h3 class="source-save-preview__title">{{ saveTarget.title || saveTarget.url }}</h3>
+        <p class="source-save-preview__url">{{ saveTarget.url }}</p>
+        <p class="source-save-preview__excerpt">{{ saveTarget.excerpt }}</p>
+        <p v-if="saveTarget.truncated" class="source-save-preview__notice">
+          正文已截断，保存的是现有快照中的部分正文。
+        </p>
+        <p class="source-save-preview__risk">
+          将创建一篇知识库笔记，不会重新抓取网页。仅搜索摘要或抓取失败的来源只会保存现有证据。
+        </p>
+        <p v-if="sourceSaveError" class="source-save-preview__error" role="alert">{{ sourceSaveError }}</p>
+      </div>
+      <template #footer>
+        <AppButton variant="ghost" size="sm" :disabled="!!savingSourceId" @click="closeSourceSave">取消</AppButton>
+        <AppButton size="sm" :disabled="!!savingSourceId" @click="confirmSourceSave">
+          {{ savingSourceId ? '保存中…' : '确认存入' }}
+        </AppButton>
+      </template>
+    </AppModal>
   </div>
 </template>
 
@@ -351,11 +406,15 @@ import {
   type CoreIntent,
   type PendingApproval,
   type TimelineEvent,
+  type WebSource,
 } from '@/api/agent'
 import MessageBubble from '@/components/domain/MessageBubble.vue'
 import ApprovalCard from '@/components/domain/ApprovalCard.vue'
+import SourceCard from '@/components/domain/SourceCard.vue'
 import ToolTrace from '@/components/agent/ToolTrace.vue'
 import AppButton from '@/components/ui/AppButton.vue'
+import AppModal from '@/components/ui/AppModal.vue'
+import ErrorBoundary from '@/components/ui/ErrorBoundary.vue'
 import { useAuthStore } from '@/stores/auth'
 import { SSEClient, type SSEMessage } from '@/utils/sse'
 import { relativeTime } from '@/lib/time'
@@ -376,9 +435,16 @@ const inputMessage = ref('')
 const loading = ref(false)
 const isStreaming = ref(false)
 const streamingContent = ref('')
+const streamingSources = ref<WebSource[]>([])
+const streamingMessageId = ref('')
+const highlightedSourceKey = ref('')
 const persistedTimeline = ref<TimelineEvent[]>([])
 const liveTimeline = ref<TimelineEvent[]>([])
 const pendingApproval = ref<PendingApproval | null>(null)
+const saveTarget = ref<WebSource | null>(null)
+const savingSourceId = ref('')
+const savedSourceIds = ref(new Set<string>())
+const sourceSaveError = ref('')
 /** 阶段1b:会话锚点(完整 core_intent),off/shadow 模式后端返回 null 即隐藏 */
 const anchorInfo = ref<CoreIntent | null>(null)
 const anchorVersion = ref(0)
@@ -459,9 +525,101 @@ const approvalVm = computed(() => {
   }
 })
 
-function renderAssistant(content: string) {
+function messageScope(message: ChatMessage, index: number) {
+  return message.id || `legacy-${index}`
+}
+
+function sourceHighlightKey(scope: string, sourceId: string) {
+  return `${scope}:${sourceId}`
+}
+
+function openSourceSave(source: WebSource) {
+  saveTarget.value = source
+  sourceSaveError.value = ''
+}
+
+function closeSourceSave() {
+  saveTarget.value = null
+  sourceSaveError.value = ''
+}
+
+function handleSaveModalOpen(open: boolean) {
+  if (!open && !savingSourceId.value) closeSourceSave()
+}
+
+async function confirmSourceSave() {
+  const source = saveTarget.value
+  if (!source || !currentChatId.value || savingSourceId.value) return
+  savingSourceId.value = source.source_id
+  sourceSaveError.value = ''
+  try {
+    await agentApi.saveSource(currentChatId.value, source.source_id)
+    savedSourceIds.value.add(source.source_id)
+    closeSourceSave()
+  } catch (error) {
+    const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+    sourceSaveError.value = detail || (error instanceof Error ? error.message : '保存失败，请重试')
+  } finally {
+    savingSourceId.value = ''
+  }
+}
+
+function renderAssistant(content: string, sources: WebSource[] = [], sourceScope = '') {
   const normalized = content.replace(/【([^】]+)】/g, '**$1**')
-  return DOMPurify.sanitize(md.render(normalized))
+  const sanitized = DOMPurify.sanitize(md.render(normalized))
+  if (!sources.length) return sanitized
+
+  const sourceByOrdinal = new Map(sources.map((source) => [source.ordinal, source]))
+  const document = new DOMParser().parseFromString(sanitized, 'text/html')
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+  const textNodes: Text[] = []
+  while (walker.nextNode()) textNodes.push(walker.currentNode as Text)
+
+  for (const node of textNodes) {
+    if (node.parentElement?.closest('a, code, pre')) continue
+    const text = node.textContent || ''
+    let cursor = 0
+    let replaced = false
+    const fragment = document.createDocumentFragment()
+    for (const match of text.matchAll(/\[(\d+)\]/g)) {
+      const source = sourceByOrdinal.get(Number(match[1]))
+      if (!source) continue
+      fragment.append(text.slice(cursor, match.index))
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = 'citation'
+      button.dataset.sourceId = source.source_id
+      button.dataset.sourceScope = sourceScope
+      button.setAttribute('aria-label', `查看来源 ${source.ordinal}`)
+      button.textContent = match[0]
+      fragment.append(button)
+      cursor = match.index + match[0].length
+      replaced = true
+    }
+    if (replaced) {
+      fragment.append(text.slice(cursor))
+      node.replaceWith(fragment)
+    }
+  }
+  return document.body.innerHTML
+}
+
+function handleConversationClick(event: MouseEvent) {
+  const target = event.target as HTMLElement | null
+  const citation = target?.closest<HTMLButtonElement>('button.citation')
+  if (!citation || !chatContainer.value?.contains(citation)) return
+
+  const sourceId = citation.dataset.sourceId
+  const scope = citation.dataset.sourceScope
+  if (!sourceId || !scope) return
+  const scopeElement = Array.from(chatContainer.value.querySelectorAll<HTMLElement>('.message-sources[data-source-scope]'))
+    .find((element) => element.dataset.sourceScope === scope)
+  const card = Array.from(scopeElement?.querySelectorAll<HTMLElement>('.source-card[data-source-id]') || [])
+    .find((element) => element.dataset.sourceId === sourceId)
+  if (!card) return
+
+  highlightedSourceKey.value = sourceHighlightKey(scope, sourceId)
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
 function resizeInput() {
@@ -523,6 +681,8 @@ async function switchChat(chatId: string) {
   pendingApproval.value = null
   approvalRecords.value = []
   sessionsOpen.value = false
+  closeSourceSave()
+  highlightedSourceKey.value = ''
 
   const meta = chatList.value.find((item) => item.id === chatId)
   sessionUsage.value =
@@ -538,6 +698,8 @@ async function switchChat(chatId: string) {
   anchorUpdated.value = false
 
   streamingContent.value = ''
+  streamingSources.value = []
+  streamingMessageId.value = ''
   loading.value = false
   isStreaming.value = false
   liveTimeline.value = []
@@ -631,6 +793,10 @@ function handleStreamMessage(message: SSEMessage) {
     }
   } else if (message.type === 'final_answer') {
     streamingContent.value = message.answer || ''
+    streamingMessageId.value = message.message_id || streamingMessageId.value
+  } else if (message.type === 'sources') {
+    streamingSources.value = message.sources || []
+    streamingMessageId.value = message.message_id || streamingMessageId.value
   } else if (message.type === 'usage') {
     sessionUsage.value = {
       tokens: message.session_tokens || 0,
@@ -660,12 +826,16 @@ function handleStreamMessage(message: SSEMessage) {
 async function refreshAfterStream() {
   if (streamingContent.value) {
     messages.value.push({
+      id: streamingMessageId.value || undefined,
       role: 'assistant',
       content: streamingContent.value,
+      sources: streamingSources.value.length ? [...streamingSources.value] : undefined,
       trace: liveTimeline.value.length ? [...liveTimeline.value] : undefined
     })
   }
   streamingContent.value = ''
+  streamingSources.value = []
+  streamingMessageId.value = ''
   liveTimeline.value = []
   loading.value = false
   isStreaming.value = false
@@ -785,6 +955,8 @@ async function sendMessage() {
   nextTick(() => resizeInput())
   liveTimeline.value = []
   streamingContent.value = ''
+  streamingSources.value = []
+  streamingMessageId.value = ''
   loading.value = true
   isStreaming.value = true
   offline.value = false
@@ -809,6 +981,8 @@ async function resumeApproval(approved: boolean) {
     time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
   })
   streamingContent.value = ''
+  streamingSources.value = []
+  streamingMessageId.value = ''
   loading.value = true
   isStreaming.value = true
   liveTimeline.value.push({
@@ -1434,6 +1608,94 @@ onUnmounted(() => {
 
 .message-markdown :deep(a) {
   color: var(--gold);
+}
+
+.message-markdown :deep(.citation) {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 var(--sp-1);
+  padding: 0 var(--sp-1);
+  border: 1px solid var(--gold-line);
+  border-radius: var(--r-sm);
+  background: var(--gold-soft);
+  color: var(--gold-deep);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  line-height: 1.6;
+  vertical-align: baseline;
+  cursor: pointer;
+  transition: color var(--d-fast) var(--ease-out), background var(--d-fast) var(--ease-out);
+}
+
+.message-markdown :deep(.citation:hover) {
+  background: var(--gold-deep);
+  color: var(--gold-ink);
+}
+
+.message-markdown :deep(.citation:focus-visible) {
+  outline: 1px solid var(--gold);
+  outline-offset: var(--sp-1);
+}
+
+.message-sources {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+  scroll-margin-block: var(--sp-6);
+}
+
+.source-save-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.source-save-preview__title {
+  color: var(--text);
+  font-size: var(--fs-body-l);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.source-save-preview__url {
+  color: var(--t3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  overflow-wrap: anywhere;
+}
+
+.source-save-preview__excerpt {
+  max-height: 24vh;
+  overflow-y: auto;
+  color: var(--t2);
+  font-size: var(--fs-body-s);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.source-save-preview__notice {
+  color: var(--gold-deep);
+  font-size: var(--fs-micro);
+  line-height: 1.7;
+}
+
+.source-save-preview__risk {
+  padding: var(--sp-3);
+  border-left: 2px solid var(--gold-line);
+  border-radius: var(--r-sm);
+  background: var(--gold-soft);
+  color: var(--t2);
+  font-size: var(--fs-micro);
+  line-height: 1.7;
+}
+
+.source-save-preview__error {
+  color: var(--danger);
+  font-size: var(--fs-micro);
+  line-height: 1.7;
 }
 
 .stream-block {

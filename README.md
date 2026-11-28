@@ -6,7 +6,7 @@
 [![Vue 3.4+](https://img.shields.io/badge/Vue-3.4%2B-brightgreen)](https://vuejs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-blue)](https://fastapi.tiangolo.com/)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-green)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-422%20passed-brightgreen)](backend/tests/)
+[![Tests](https://img.shields.io/badge/tests-472%20passed-brightgreen)](backend/tests/)
 
 ## ✨ 核心亮点：多 Agent Agentic RAG
 
@@ -28,12 +28,12 @@ flowchart TD
     N --> T3[查重 search_notes] --> H[interrupt 人工审批] -->|批准| W3[create_note] --> O
 ```
 
-- **🎯 编排器 + 4 专职子 Agent** - 入口 LLM 结构化输出意图四分类（fail-safe 兜底），各子 Agent **工具面收窄 + 专属提示词**：知识 Agent 移出写入工具（联网保留作误判回退）、联网 Agent 信源标注 + 仅幻觉查、写入 Agent 人工审批即质量关；**14 条意图边界用例集回归**与 50 条主集路由准确率均为 **100%**
+- **🎯 编排器 + 4 专职子 Agent** - 入口 LLM 结构化输出意图四分类（fail-safe 兜底），各子 Agent **工具面收窄 + 专属提示词**：知识 Agent 移出写入工具（联网保留作误判回退）、联网 Agent 信源标注 + 仅幻觉查、写入 Agent 人工审批即质量关；**12 条非已知局限边界用例全对**（b13/b14 混合意图单独标记局限）与 50 条主集路由准确率均为 **100%**
 - **🪞 Self-RAG 三查反思** - 资料相关性 / 幻觉检测 / 答案质量实现为**图强制节点 + 条件边**（结构保证每轮必检），并按子 Agent 裁剪：联网仅幻觉查、写入以人工审批为质量关
 - **🛡️ 结构兜底优于提示词恳求** - 实测模型会无视"先查重再写入"的流程指令，`execute_tool` 以结构拦截未查重的写入请求（复用熔断模式，错误恢复遵从性 > 预防性指令遵从性）
 - **🛑 防失控四道闸** - 最大迭代 + token 预算双硬截断、同轮重复检索短路、不可用工具熔断、编排意图提示仅首轮注入（防反复推回同一路由）；Agent 异常自动降级混合检索兜底链路
-- **↩️ 双图回退开关** - `AGENT_MULTI_AGENT` 多 Agent 图 / 单 Agent 图共存，改 .env 一键回滚；50 条评测实测**双图行为等价**（回退零风险），命中路由入库审计（`agent_route` 分布入可观测面板）
-- **📊 量化评估体系** - 50 条六类离线评测集（含 `expected_intent` 标注 + 路由准确率口径）+ 延迟 mean/P95 + token/成本口径；recall@k 纯计算 + 4 个独立裁判指标（faithfulness / answer_relevancy / context_recall / answer_coverage，判决模型与生成模型不同源：默认 GLM-5.3-Flash，坏输出容错）+ 10 条人工校准（裁判一致率 90% / 100%）；质量门禁 `eval_gate.py`（CI 阻断）+ 7 组消融
+- **↩️ 双图回退开关** - `AGENT_MULTI_AGENT` 多 Agent 图 / 单 Agent 图共存，改 .env 并重启进程即可回滚；50 条评测实测**双图行为等价**（回退零风险），命中路由入库审计（`agent_route` 分布入可观测面板）
+- **📊 量化评估体系** - 50 条六类离线评测集（含 `expected_intent` 标注 + 路由准确率口径）+ 延迟 mean/P95 + token/成本口径；baseline `recall@k` 与 agent 多步累计证据池召回 + 4 个独立裁判指标（faithfulness / answer_relevancy / context_recall / answer_coverage，判决模型与生成模型不同源：默认 GLM-5.3-Flash，坏输出容错）+ 10 条人工校准（裁判一致率 90% / 100%）；质量门禁 `eval_gate.py`（CI 阻断）+ 7 组消融
 - **🔌 知识库 MCP 化** - FastMCP 3.x 挂载 FastAPI（`/mcp` 端点），API Key timing-safe 认证、未配置 fail-closed；与 Agent 共享同一工具层，Claude Desktop / Cursor 可直连检索（验证脚本 7/7 通过）
 - **✍️ 写入人工审批（HITL）** - 笔记写入走 LangGraph interrupt，SSE 审批卡 + POST resume，中断状态可恢复（409 防串扰），工具调用全量审计
 - **🧠 双层记忆** - 短期 checkpoint（会话内多轮）+ 长期 store（跨会话用户偏好），LangGraph 官方标准模型
@@ -67,11 +67,17 @@ flowchart TD
 >
 > 门禁：`python eval/eval_gate.py` 读最新摘要按 7 项阈值判定，exit 0/1 直接用于 CI 阻断；本地已验证「放行达标」与「拦住人为回退」两条路径。
 
+### 2026-11-28 联网来源卡片验收
+
+- 后端全量 **472 passed**；前端 **47 个文件 / 250 项通过**，色值令牌检查与 `vue-tsc` 类型检查通过。
+- 独立联网评测 **5/5** 通过、路由 **5/5**，faithfulness **0.852**、relevancy **0.980**、context_recall **0.820**、coverage **0.900**、`judge_error=0`；未降低门槛，报告见 `backend/eval/reports/2026-11-28-comparison-source-cards-2026-11-28.md`。
+- 真实浏览器已验证引用定位、流式与历史恢复、保存取消/失败重试/幂等成功、摘要/失败/截断/快照缺失状态、XSS 防护、键盘焦点及深浅主题对比度。
+
 ### 2026-11-27 联网搜索升级回归
 
-- 后端全量测试 **422 passed**；DeepSeek Search/Fetch 真实冒烟 **4/4**，provider/MCP 权限冒烟 **5/5**。
-- 独立联网评测集 **5 条**（不并入上方冻结主集）：routing **5/5**、faithfulness **0.800**、relevancy **0.780**、context_recall **0.894**、coverage **0.666**、pass **1/5**；未通过项已归因为裁判错误、生成幻觉、答案不完整与覆盖不足，报告见 `backend/eval/reports/2026-11-27-comparison-web.md`。
-- 50 条主集回归（skip-judge）：recall **0.983**、routing **1.0**、pass **49/50**；路由硬门禁 `boundary_accuracy=1.0`、`routing_accuracy=1.0`。
+- 后端全量测试 **433 passed**；DeepSeek Search/Fetch 真实冒烟 **4/4**，provider/MCP 权限冒烟 **5/5**。
+- 独立联网评测集 **5 条**（不并入上方冻结主集）：修复后 routing **5/5**、faithfulness **0.944**、relevancy **0.940**、context_recall **0.900**、coverage **0.900**、pass **5/5**，`judge_error` 清零；修复前 pass 为 1/5，报告见 `backend/eval/reports/2026-11-27-comparison-web-quality-v6.md`。
+- 50 条主集修复前回归（skip-judge）：recall **0.983**、routing **1.0**、pass **49/50**；唯一失败 q039 为 `retrieval_miss`。TODO-9 修复后单条复跑 `2026-11-27-comparison-q039-binding-v4`：recall **1.000**、pass **1/1**；路由硬门禁 `boundary_accuracy=1.0`、`routing_accuracy=1.0`。
 
 ## ✨ 功能特性
 
@@ -84,6 +90,7 @@ flowchart TD
 ### 🤖 AI 能力
 - **Agentic RAG 智能问答** - 见上方核心亮点，SSE 流式输出
 - **联网搜索** - DeepSeek 官方 Search/Fetch 直调（默认），`web_search` 负责检索、`web_fetch` 按需抓正文；保留 Tavily 一键回滚、限速 + TTL 缓存 + 缺 Key 优雅降级
+- **联网来源卡片** - 回答中的 `[n]` 可点击定位到来源卡片；展示 URL、检索/抓取时间、证据摘录与正文状态，刷新后恢复；用户确认后把已有快照幂等存入知识库，不重新抓取
 - **结构化输出** - function_calling 方式结构化判定，规避 response_format 兼容问题
 - **Prompt / Skill 系统** - PromptLab + Skill 执行引擎 + Few-Shot 学习
 
@@ -102,7 +109,7 @@ flowchart TD
 | AI 编排 | LangGraph 0.2.x（编排器 + 4 专职子 Agent / ReAct / 三查 / HITL / checkpoint / 双图回退开关）· LangChain |
 | 模型 | DeepSeek-V4-flash（Agent 推理，显式关思考）· qwen3.7-text-embedding（向量化）· GLM-5.3-Flash（独立评估裁判，JSON mode + 坏输出容错） |
 | 数据 | FAISS（向量索引 + 混合检索）· SQLite |
-| 生态 | FastMCP 3.x（MCP Server）· DeepSeek Search/Fetch（联网主通道，Tavily 可回滚）· Langfuse（可观测）· pytest（后端 422 用例）· Vitest（前端 206 用例） |
+| 生态 | FastMCP 3.x（MCP Server）· DeepSeek Search/Fetch（联网主通道，Tavily 可回滚）· Langfuse（可观测）· pytest（后端 472 用例）· Vitest（前端 250 用例） |
 
 ## 🚀 快速开始
 
@@ -222,12 +229,15 @@ GET  /api/notes/:id/unlinked-mentions  # 未链接提及（正文纯文本提到
 
 # 检索
 GET  /api/search                # 全文搜索
-POST /api/search/hybrid         # 混合检索
+GET  /api/search/hybrid         # 混合检索
 POST /api/search/ai             # RAG 问答（基线链路）
 
 # Agentic RAG
-POST /api/agent/chat/stream     # Agent 问答（SSE 流式：thought/action/observation/check/final_answer）
+POST /api/agent/chat/stream     # Agent 问答（SSE 含 intent/thought/action/observation/check/approval_required/final_answer/sources/error/budget_exceeded/recovery/usage）
 GET  /api/agent/sessions        # 会话管理（?q= 标题关键词过滤、?limit= 条数上限）
+GET  /api/agent/sessions/{id}/messages      # 历史消息（助手消息含稳定 id 与 sources）
+GET  /api/agent/sessions/{id}/recovery      # 断流恢复核对
+POST /api/agent/sessions/{id}/sources/{source_id}/save  # 来源快照一键入库（幂等）
 GET  /api/agent/sessions/{id}/tasks         # 任务列表
 POST /api/agent/sessions/{id}/tasks         # 创建任务（建 active、旧 active 完成）
 POST /api/agent/sessions/{id}/tasks/{tid}/switch   # 切换当前任务

@@ -1,6 +1,7 @@
 import json
 import threading
 import time
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import httpx
@@ -315,11 +316,18 @@ def web_fetch(url: str) -> str:
     content = data.get("content") or ""
     if not content:
         return json.dumps({"error": "web_fetch 返回空正文", "url": url}, ensure_ascii=False)
-    if len(content) > FETCH_CONTENT_CAP:
+    truncated = len(content) > FETCH_CONTENT_CAP
+    if truncated:
         content = content[:FETCH_CONTENT_CAP] + "\n…[正文超长已截断,需要更多细节请换源或缩小范围]"
 
     payload = json.dumps(
-        {"title": data.get("title") or "", "url": url, "content": content},
+        {
+            "title": data.get("title") or "",
+            "url": url,
+            "content": content,
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "truncated": truncated,
+        },
         ensure_ascii=False,
     )
     _cache_put(cache_key, payload)

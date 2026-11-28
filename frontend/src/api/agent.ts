@@ -12,9 +12,25 @@ export interface AgentSession {
   updated_at?: string
 }
 
+export interface WebSource {
+  source_id: string
+  ordinal: number
+  title: string
+  url: string
+  site_name: string
+  retrieved_at: string | null
+  fetched_at: string | null
+  excerpt: string
+  content_state: 'summary' | 'fetched' | 'fetch_failed'
+  artifact_id: string | null
+  truncated: boolean
+}
+
 export interface AgentMessage {
+  id?: string
   role: 'user' | 'assistant'
   content: string
+  sources?: WebSource[]
 }
 
 /** 阶段1b:会话列表锚点摘要(仅 CORE_INTENT_ENABLED=on 时后端返回,off/shadow 为 null) */
@@ -125,6 +141,18 @@ export const agentApi = {
 
   getMessages: async (sessionId: string): Promise<SessionMessages> => {
     const response = await api.get(`/agent/sessions/${sessionId}/messages`)
+    return response.data.data
+  },
+
+  saveSource: async (sessionId: string, sourceId: string): Promise<{
+    id: string
+    title: string
+    folder_id: string | null
+    idempotent_replay?: boolean
+  }> => {
+    const response = await api.post(
+      `/agent/sessions/${encodeURIComponent(sessionId)}/sources/${encodeURIComponent(sourceId)}/save`
+    )
     return response.data.data
   },
 

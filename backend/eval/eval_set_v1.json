@@ -397,7 +397,8 @@
     "expected_answer": "豆包API用于给克劳德code接入大模型服务；Think/Think Hard用于控制Cloud Code的思考深度（来源：安装配置与六技巧笔记）",
     "relevant_doc_ids": [
       "ab11270b-d216-4f3a-bfb8-65c26cc319f9",
-      "62dc6357-b5ca-41f9-8b32-fcd45f6aa48a"
+      "62dc6357-b5ca-41f9-8b32-fcd45f6aa48a",
+      "0a659255-a04c-431c-ab8c-81791398870b"
     ],
     "category": "comparison",
     "expected_intent": "knowledge"

@@ -209,6 +209,28 @@ def test_web_fetch_offloaded_keeps_url_and_full_artifact(db_factory, monkeypatch
         db.close()
 
 
+def test_short_web_fetch_evidence_carries_snapshot_metadata(db_factory, monkeypatch):
+    """短 Fetch 正文也存档，证据携带 artifact_id、抓取时间和截断状态。"""
+    monkeypatch.setattr("app.db.session.SessionLocal", db_factory)
+    result = json.dumps(
+        {
+            "title": "短页",
+            "url": "https://e.com/short",
+            "content": "完整短正文",
+            "fetched_at": "2026-11-28T10:00:00+00:00",
+            "truncated": False,
+        },
+        ensure_ascii=False,
+    )
+
+    out = _execute_tool(monkeypatch, "web_fetch", {"url": "https://e.com/short"}, result)
+
+    doc = out["documents"][0]
+    assert doc["artifact_id"] == artifacts.artifact_id("s1", "call_1")
+    assert doc["fetched_at"] == "2026-11-28T10:00:00+00:00"
+    assert doc["truncated"] is False
+
+
 def test_compress_plain_text_keeps_head_and_tail():
     raw = "HEAD" + "m" * 5000 + "TAIL"
     squeezed = artifacts.compress_result(raw)

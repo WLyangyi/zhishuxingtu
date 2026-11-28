@@ -311,6 +311,17 @@ def test_fetch_happy_path(monkeypatch):
     assert kwargs["timeout"] == 25
 
 
+def test_fetch_reports_fetch_time_and_truncated_state(monkeypatch):
+    """成功 Fetch 返回 UTC 抓取时间，并明确标记正文未截断。"""
+    monkeypatch.setattr(settings, "DEEPSEEK_API_KEY", "sk-test")
+    _patch_post(monkeypatch, payload={"title": "页面标题", "content": "完整正文"})
+
+    out = json.loads(web_tools.web_fetch.func("https://e.com/page"))
+
+    assert out["fetched_at"].endswith("+00:00")
+    assert out["truncated"] is False
+
+
 @pytest.mark.parametrize("bad_url", ["", "ftp://x", "https://", "https://u:p@x.com", "https://e.com/" + "a" * 8192])
 def test_fetch_url_precheck(monkeypatch, bad_url):
     """行为17：非法 URL 预校验，error 含「URL 非法」，不发请求。"""
@@ -371,6 +382,7 @@ def test_fetch_content_cap(monkeypatch):
     assert out["content"].startswith("x" * 20000)
     assert len(out["content"]) > 20000
     assert "截断" in out["content"]
+    assert out["truncated"] is True
     out2 = json.loads(web_tools.web_fetch.func("https://e.com/page"))
     assert len(calls) == 1
     assert out2["content"] == out["content"]

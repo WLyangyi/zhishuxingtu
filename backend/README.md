@@ -60,7 +60,9 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000
 .venv\Scripts\python.exe scripts/migrate_note_links.py
 ```
 
-当前后端测试基线：**422 passed**（2026-11-27）。
+当前后端测试基线：**472 passed**（2026-11-28）。
+
+`/api/agent/chat/stream` 在 `final_answer` 后按需发送 `sources` SSE 事件（含 `session_id`、`message_id`、`sources`）；历史助手消息返回相同来源数组。来源保存端点不重新抓取网页，重复请求由 `agent:{session_id}:source:{source_id}` 幂等键返回同一篇笔记。
 
 ## 主要接口
 
@@ -77,6 +79,8 @@ POST /api/search/ai
 POST /api/agent/chat/stream
 GET  /api/agent/sessions
 GET  /api/agent/sessions/{id}/messages
+GET  /api/agent/sessions/{id}/recovery
+POST /api/agent/sessions/{id}/sources/{source_id}/save
 GET/POST /api/agent/sessions/{id}/tasks
 POST /api/agent/sessions/{id}/tasks/{tid}/switch
 POST /api/agent/sessions/{id}/tasks/{tid}/restore

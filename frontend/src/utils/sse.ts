@@ -1,3 +1,5 @@
+import type { WebSource } from '@/api/agent'
+
 export interface SSEMessage {
   type: 'content' | 'sources' | 'disclaimer' | 'error' | 'done' |
     'thought' | 'action' | 'observation' | 'check' | 'final_answer' | 'approval_required' |
@@ -9,6 +11,8 @@ export interface SSEMessage {
   answer?: string
   node?: string
   session_id?: string
+  message_id?: string
+  sources?: WebSource[]
   tool_call_id?: string
   tool_name?: string
   title?: string

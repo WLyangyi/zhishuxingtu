@@ -3,7 +3,7 @@
 M2-4 评估脚本:旧基线(baseline RAG) vs 新 agent(ReAct) 跑 eval set,输出对比报告。
 
 指标:
-  recall@k       确定性,纯计算(相关文档在检索 top-k 里的覆盖率)
+  recall@k       baseline 为单次检索 top-k 覆盖率;agent 为多步检索累计去重证据池覆盖率
   faithfulness   独立裁判(默认 GLM-5.3-Flash),答案声明是否 grounded 于检索证据
   answer_relevancy 独立裁判(默认 GLM-5.3-Flash),答案是否回应问题
   context_recall 独立裁判(新增),检索证据能否支撑标准答案的每个事实点(RAGAS 口径)
@@ -50,6 +50,14 @@ def recall_at_k(retrieved_ids: List[str], relevant_ids: List[str], k: int) -> Op
     if not relevant_ids:
         return None
     hit = set(retrieved_ids[:k]) & set(relevant_ids)
+    return len(hit) / len(relevant_ids)
+
+
+def agent_recall(retrieved_ids: List[str], relevant_ids: List[str]) -> Optional[float]:
+    """Agent 多步检索按累计去重证据池算召回；TOP_K 只约束单次 search_notes。"""
+    if not relevant_ids:
+        return None
+    hit = set(retrieved_ids) & set(relevant_ids)
     return len(hit) / len(relevant_ids)
 
 
@@ -136,7 +144,7 @@ def run_agent(question: str, user_id: str):
     final_answer = ""
     documents: List[dict] = []
     tool_calls = 0
-    seen: set = set()
+    seen: Dict[str, int] = {}
     started = time.perf_counter()
     cfg = build_stream_config(thread_id)
     cfg["recursion_limit"] = 40
@@ -147,9 +155,15 @@ def run_agent(question: str, user_id: str):
             tool_calls = max(tool_calls, len(v.get("tool_calls_log") or []))
             for d in v.get("documents") or []:
                 did = d.get("id") or d.get("url")
-                if did and did not in seen:
-                    seen.add(did)
-                    documents.append(d)
+                if not did:
+                    continue
+                if did in seen:
+                    # 同 URL 的 Fetch 正文比先到摘要更完整，合并而不是丢弃。
+                    if d.get("full_content"):
+                        documents[seen[did]].update(d)
+                    continue
+                seen[did] = len(documents)
+                documents.append(d)
     latency_ms = int((time.perf_counter() - started) * 1000)
 
     config = {"configurable": {"thread_id": thread_id}}
@@ -174,16 +188,25 @@ def agent_full_sources(a_ids: List[str], a_sources: List[dict], db) -> List[dict
     """faithfulness/coverage 证据:笔记按 id 查 DB 全文;联网文档(无 DB 行)用 full_content/snippet
     映射成裁判认识的 {title,content}(_format_sources 只读 content/text,直接传 url 文档会证据为空)。"""
     full = get_full_sources(a_ids, db) if a_ids else []
-    for d in a_sources:
-        if d.get("id") or not d.get("url"):
-            continue
-        full.append(
-            {
-                "title": d.get("title") or d.get("url"),
-                "content": (d.get("full_content") or d.get("snippet") or "")[:6000],
-            }
-        )
-    return full or a_sources
+    web_sources = sorted(
+        (d for d in a_sources if d.get("url") and not d.get("id")),
+        key=lambda d: not bool(d.get("full_content")),
+    )
+    fetched = [
+        {
+            "title": d.get("title") or d.get("url"),
+            "content": (d.get("full_content") or d.get("snippet") or "")[:6000],
+        }
+        for d in web_sources if d.get("full_content")
+    ]
+    summaries = [
+        {
+            "title": d.get("title") or d.get("url"),
+            "content": (d.get("snippet") or "")[:6000],
+        }
+        for d in web_sources if not d.get("full_content")
+    ]
+    return [*fetched, *full, *summaries] or a_sources
 
 
 def aggregate(results: List[dict]) -> Dict[str, Any]:
@@ -248,6 +271,7 @@ def write_report(report_path: str, version: str, results: List[dict], agg_b: dic
     lines += [
         "",
         "> context_recall / answer_coverage 为 Phase 3 新增指标,仅对 agent 侧计算(基线侧不参与消融对比,故留空)。",
+        "> 召回口径:baseline 为单次 top-k recall@k;agent 为多步检索累计去重证据池覆盖率,报告沿用 recall 字段名以兼容 eval_gate。",
         "",
         "## 按分类分桶",
         "",
@@ -524,7 +548,7 @@ def main() -> int:
                     "latency_ms": b_latency,
                 },
                 "agent": {
-                    "recall": recall_at_k(a_ids, rel_ids, TOP_K),
+                    "recall": agent_recall(a_ids, rel_ids),
                     "retrieved": a_ids,
                     "intent": a_intent,
                     "tool_calls": a_tool_calls,
